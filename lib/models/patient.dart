@@ -1,0 +1,53 @@
+class Patient {
+  final String id;
+  String firstName;
+  String lastName;
+  String dateOfBirth;
+  String phone;
+  String email;
+  String notes;
+  DateTime createdAt;
+  List<String> scanFiles; // paths to STL files
+
+  Patient({
+    required this.id,
+    required this.firstName,
+    required this.lastName,
+    this.dateOfBirth = '',
+    this.phone = '',
+    this.email = '',
+    this.notes = '',
+    required this.createdAt,
+    this.scanFiles = const [],
+  });
+
+  String get fullName => '$firstName $lastName';
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'firstName': firstName,
+      'lastName': lastName,
+      'dateOfBirth': dateOfBirth,
+      'phone': phone,
+      'email': email,
+      'notes': notes,
+      'createdAt': createdAt.toIso8601String(),
+      'scanFiles': scanFiles,
+    };
+  }
+
+  factory Patient.fromMap(Map<String, dynamic> map) {
+    return Patient(
+      id: map['id'],
+      firstName: map['firstName'],
+      lastName: map['lastName'],
+      dateOfBirth: map['dateOfBirth'] ?? '',
+      phone: map['phone'] ?? '',
+      email: map['email'] ?? '',
+      notes: map['notes'] ?? '',
+      createdAt: DateTime.parse(map['createdAt']),
+      scanFiles: List<String>.from(map['scanFiles'] ?? []),
+    );
+  }
+}
