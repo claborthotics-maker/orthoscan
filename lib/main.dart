@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'orthoscan_ffi.dart';
@@ -35,18 +36,17 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _isScanning = false;
   int _pointCount = 0;
   String _status = 'Ready to Scan';
+  Timer? _captureTimer;
 
   Future<void> _checkArCore() async {
     try {
       final result = await _channel.invokeMethod('isArCoreSupported');
-      debugPrint('ARCore supported: $result');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('ARCore supported: $result')),
         );
       }
     } catch (e) {
-      debugPrint('ARCore check error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('ARCore check failed: $e')),
@@ -55,16 +55,52 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  void _startScan() {
-    orthoscanStartSession();
-    setState(() {
-      _isScanning = true;
-      _pointCount = 0;
-      _status = 'Scanning...';
-    });
+  Future<void> _startScan() async {
+    try {
+      await _channel.invokeMethod('startScan');
+      orthoscanStartSession();
+
+      setState(() {
+        _isScanning = true;
+        _pointCount = 0;
+        _status = 'Scanning...';
+      });
+
+      // Capture depth frames every 100ms (10 times per second)
+      _captureTimer = Timer.periodic(
+        const Duration(milliseconds: 100),
+        (_) => _captureFrame(),
+      );
+    } catch (e) {
+      setState(() {
+        _status = 'Failed to start: $e';
+      });
+    }
   }
 
-  void _stopScan() {
+  Future<void> _captureFrame() async {
+    try {
+      await _channel.invokeMethod('captureFrame');
+      if (mounted) {
+        setState(() {
+          _pointCount = orthoscanGetPointCount();
+        });
+      }
+    } catch (e) {
+      debugPrint('Frame capture error: $e');
+    }
+  }
+
+  Future<void> _stopScan() async {
+    _captureTimer?.cancel();
+    _captureTimer = null;
+
+    try {
+      await _channel.invokeMethod('stopScan');
+    } catch (e) {
+      debugPrint('Stop scan error: $e');
+    }
+
     orthoscanStopSession();
     setState(() {
       _isScanning = false;
@@ -73,12 +109,20 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   void _reset() {
+    _captureTimer?.cancel();
+    _captureTimer = null;
     orthoscanReset();
     setState(() {
       _isScanning = false;
       _pointCount = 0;
       _status = 'Ready to Scan';
     });
+  }
+
+  @override
+  void dispose() {
+    _captureTimer?.cancel();
+    super.dispose();
   }
 
   @override

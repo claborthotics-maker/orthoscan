@@ -1,5 +1,6 @@
 #include "orthoscan_core.h"
 #include <android/log.h>
+#include <jni.h>
 
 #define LOG_TAG "OrthoScan"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -79,4 +80,15 @@ int orthoscan_export_ply(const char* filePath) {
     if (success) LOGI("PLY exported to %s", filePath);
     else LOGE("PLY export failed to %s", filePath);
     return success ? 1 : 0;
+}
+// ─── JNI Entry Point ──────────────────────────────────────────────────────────
+// This is called directly from Kotlin via System.loadLibrary("orthoscan_core")
+extern "C" JNIEXPORT void JNICALL
+Java_com_orthotics_orthoscan_MainActivity_addPointToCore(
+        JNIEnv* env,
+        jobject /* this */,
+        jfloat x,
+        jfloat y,
+        jfloat z) {
+    orthoscan_add_point(x, y, z);
 }
