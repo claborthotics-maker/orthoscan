@@ -2,17 +2,19 @@ class Patient {
   final String id;
   String firstName;
   String lastName;
+  String patientId;
   String dateOfBirth;
   String phone;
   String email;
   String notes;
   DateTime createdAt;
-  List<String> scanFiles; // paths to STL files
+  List<String> scanFiles;
 
   Patient({
     required this.id,
     required this.firstName,
     required this.lastName,
+    this.patientId = '',
     this.dateOfBirth = '',
     this.phone = '',
     this.email = '',
@@ -28,6 +30,7 @@ class Patient {
       'id': id,
       'firstName': firstName,
       'lastName': lastName,
+      'patientId': patientId,
       'dateOfBirth': dateOfBirth,
       'phone': phone,
       'email': email,
@@ -42,6 +45,7 @@ class Patient {
       id: map['id'],
       firstName: map['firstName'],
       lastName: map['lastName'],
+      patientId: map['patientId'] ?? '',
       dateOfBirth: map['dateOfBirth'] ?? '',
       phone: map['phone'] ?? '',
       email: map['email'] ?? '',

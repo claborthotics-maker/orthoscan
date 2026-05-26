@@ -3,11 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
 import '../orthoscan_ffi.dart';
+import 'scan_selection_screen.dart';
 
 class ScanScreen extends StatefulWidget {
   final Patient patient;
+  final ScanType scanType;
 
-  const ScanScreen({super.key, required this.patient});
+  const ScanScreen({
+    super.key,
+    required this.patient,
+    required this.scanType,
+  });
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
@@ -21,6 +27,48 @@ class _ScanScreenState extends State<ScanScreen> {
   String _status = 'Ready to Scan';
   Timer? _captureTimer;
 
+  String get _scanTypeLabel {
+    switch (widget.scanType) {
+      case ScanType.impressionBox:
+        return 'Impression Box Scan';
+      case ScanType.directFoot:
+        return 'Direct Foot Scan';
+    }
+  }
+
+  String get _scanInstructions {
+    switch (widget.scanType) {
+      case ScanType.impressionBox:
+        return '1. Place the impression box on a flat surface\n'
+            '2. Hold device 12-18 inches above the box\n'
+            '3. Tap Start Scan and slowly move around the box\n'
+            '4. Tap Stop when complete';
+      case ScanType.directFoot:
+        return '1. Have the patient sit with foot relaxed\n'
+            '2. Hold device 12-18 inches above the foot\n'
+            '3. Tap Start Scan and slowly move around the foot\n'
+            '4. Tap Stop when complete';
+    }
+  }
+
+  IconData get _scanIcon {
+    switch (widget.scanType) {
+      case ScanType.impressionBox:
+        return Icons.inventory_2;
+      case ScanType.directFoot:
+        return Icons.accessibility_new;
+    }
+  }
+
+  Color get _scanColor {
+    switch (widget.scanType) {
+      case ScanType.impressionBox:
+        return const Color(0xFF4FC3F7);
+      case ScanType.directFoot:
+        return Colors.green;
+    }
+  }
+
   Future<void> _startScan() async {
     try {
       await _channel.invokeMethod('startScan');
@@ -29,7 +77,7 @@ class _ScanScreenState extends State<ScanScreen> {
       setState(() {
         _isScanning = true;
         _pointCount = 0;
-        _status = 'Scanning impression box...';
+        _status = 'Scanning...';
       });
 
       _captureTimer = Timer.periodic(
@@ -97,10 +145,22 @@ class _ScanScreenState extends State<ScanScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF16213E),
         title: Text(
-          'Scan — ${widget.patient.fullName}',
+          _scanTypeLabel,
           style: const TextStyle(color: Colors.white),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Chip(
+              backgroundColor: _scanColor.withOpacity(0.15),
+              label: Text(
+                widget.patient.fullName,
+                style: TextStyle(color: _scanColor, fontSize: 12),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
@@ -117,22 +177,19 @@ class _ScanScreenState extends State<ScanScreen> {
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: _isScanning
-                      ? const Color(0xFF4FC3F7)
+                      ? _scanColor
                       : Colors.white12,
                 ),
               ),
               child: Column(
                 children: [
-                  // Animated icon
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
                     child: Icon(
-                      _isScanning ? Icons.radar : Icons.document_scanner,
+                      _isScanning ? Icons.radar : _scanIcon,
                       key: ValueKey(_isScanning),
                       size: 100,
-                      color: _isScanning
-                          ? const Color(0xFF4FC3F7)
-                          : Colors.white24,
+                      color: _isScanning ? _scanColor : Colors.white24,
                     ),
                   ),
 
@@ -150,7 +207,6 @@ class _ScanScreenState extends State<ScanScreen> {
 
                   const SizedBox(height: 12),
 
-                  // Point count
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 20, vertical: 8),
@@ -160,8 +216,8 @@ class _ScanScreenState extends State<ScanScreen> {
                     ),
                     child: Text(
                       '$_pointCount points captured',
-                      style: const TextStyle(
-                        color: Color(0xFF4FC3F7),
+                      style: TextStyle(
+                        color: _scanColor,
                         fontSize: 16,
                       ),
                     ),
@@ -170,7 +226,7 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
 
             // ─── Instructions ─────────────────────────────────────────────
             if (!_isScanning && _pointCount == 0)
@@ -180,23 +236,26 @@ class _ScanScreenState extends State<ScanScreen> {
                   color: Colors.white10,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Instructions',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Icon(_scanIcon, color: _scanColor, size: 16),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Instructions',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
-                      '1. Place the impression box on a flat surface\n'
-                      '2. Hold device 12-18 inches above the box\n'
-                      '3. Tap Start Scan and slowly move around the box\n'
-                      '4. Tap Stop when complete',
-                      style: TextStyle(
+                      _scanInstructions,
+                      style: const TextStyle(
                         color: Colors.white54,
                         height: 1.6,
                       ),
@@ -224,8 +283,9 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    _isScanning ? Colors.red.shade800 : const Color(0xFF0F3460),
+                backgroundColor: _isScanning
+                    ? Colors.red.shade800
+                    : const Color(0xFF0F3460),
                 padding: const EdgeInsets.all(18),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),

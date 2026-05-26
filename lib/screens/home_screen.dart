@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/patient.dart';
+import '../utils/input_formatters.dart';
 import 'patient_screen.dart';
-import 'work_order_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,9 +13,27 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Temporary in-memory patient list — we'll add a database later
   final List<Patient> _patients = [];
   int _selectedIndex = 0;
+  String _searchQuery = '';
+  bool _isSearching = false;
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<Patient> get _filteredPatients {
+    if (_searchQuery.isEmpty) return _patients;
+    final query = _searchQuery.toLowerCase();
+    return _patients.where((p) {
+      return p.fullName.toLowerCase().contains(query) ||
+          p.patientId.toLowerCase().contains(query) ||
+          p.phone.toLowerCase().contains(query);
+    }).toList();
+  }
 
   void _addPatient() {
     showDialog(
@@ -26,6 +46,14 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
     );
+  }
+
+  void _stopSearch() {
+    setState(() {
+      _isSearching = false;
+      _searchQuery = '';
+      _searchController.clear();
+    });
   }
 
   @override
@@ -49,8 +77,10 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Patients',
           ),
           NavigationDestination(
-            icon: Icon(Icons.assignment_outlined, color: Colors.white54),
-            selectedIcon: Icon(Icons.assignment, color: Colors.white),
+            icon: Icon(Icons.assignment_outlined,
+                color: Colors.white54),
+            selectedIcon:
+                Icon(Icons.assignment, color: Colors.white),
             label: 'Work Orders',
           ),
         ],
@@ -74,57 +104,128 @@ class _HomeScreenState extends State<HomeScreen> {
       slivers: [
         SliverAppBar(
           backgroundColor: const Color(0xFF16213E),
-          expandedHeight: 120,
+          expandedHeight: _isSearching ? 0 : 120,
           pinned: true,
-          flexibleSpace: FlexibleSpaceBar(
-            title: const Text(
-              'OrthoScan',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            background: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF16213E), Color(0xFF0F3460)],
+          flexibleSpace: _isSearching
+              ? null
+              : FlexibleSpaceBar(
+                  title: const Text(
+                    'OrthoScan',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  background: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFF16213E),
+                          Color(0xFF0F3460)
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
+          title: _isSearching
+              ? TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    hintText: 'Search by name or patient ID...',
+                    hintStyle: TextStyle(color: Colors.white38),
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (value) {
+                    setState(() => _searchQuery = value);
+                  },
+                )
+              : null,
           actions: [
-            IconButton(
-              icon: const Icon(Icons.search, color: Colors.white),
-              onPressed: () {},
-            ),
+            if (_isSearching)
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: _stopSearch,
+              )
+            else ...[
+              IconButton(
+                icon: const Icon(Icons.search, color: Colors.white),
+                onPressed: () {
+                  setState(() => _isSearching = true);
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.settings,
+                    color: Colors.white),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SettingsScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
           ],
         ),
 
-        if (_patients.isEmpty)
+        if (!_isSearching && _patients.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                '${_patients.length} patient${_patients.length == 1 ? '' : 's'}',
+                style: const TextStyle(
+                    color: Colors.white54, fontSize: 13),
+              ),
+            ),
+          ),
+
+        if (_isSearching)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                '${_filteredPatients.length} result${_filteredPatients.length == 1 ? '' : 's'}',
+                style: const TextStyle(
+                    color: Colors.white54, fontSize: 13),
+              ),
+            ),
+          ),
+
+        if (_filteredPatients.isEmpty)
           SliverFillRemaining(
             child: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Icons.people_outline,
+                    _isSearching
+                        ? Icons.search_off
+                        : Icons.people_outline,
                     size: 80,
                     color: Colors.white24,
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'No patients yet',
-                    style: TextStyle(
+                  Text(
+                    _isSearching
+                        ? 'No patients found'
+                        : 'No patients yet',
+                    style: const TextStyle(
                       color: Colors.white54,
                       fontSize: 18,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Tap + New Patient to get started',
-                    style: TextStyle(color: Colors.white38),
+                  Text(
+                    _isSearching
+                        ? 'Try a different search term'
+                        : 'Tap + New Patient to get started',
+                    style: const TextStyle(color: Colors.white38),
                   ),
                 ],
               ),
@@ -136,20 +237,21 @@ class _HomeScreenState extends State<HomeScreen> {
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final patient = _patients[index];
+                  final patient = _filteredPatients[index];
                   return _PatientCard(
                     patient: patient,
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => PatientScreen(patient: patient),
+                          builder: (_) =>
+                              PatientScreen(patient: patient),
                         ),
-                      );
+                      ).then((_) => setState(() {}));
                     },
                   );
                 },
-                childCount: _patients.length,
+                childCount: _filteredPatients.length,
               ),
             ),
           ),
@@ -182,27 +284,40 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings, color: Colors.white),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const SettingsScreen(),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
         SliverFillRemaining(
           child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+              children: const [
                 Icon(
                   Icons.assignment_outlined,
                   size: 80,
                   color: Colors.white24,
                 ),
-                const SizedBox(height: 16),
-                const Text(
+                SizedBox(height: 16),
+                Text(
                   'No work orders yet',
                   style: TextStyle(
                     color: Colors.white54,
                     fontSize: 18,
                   ),
                 ),
-                const SizedBox(height: 8),
-                const Text(
+                SizedBox(height: 8),
+                Text(
                   'Work orders appear here after scanning',
                   style: TextStyle(color: Colors.white38),
                 ),
@@ -262,6 +377,14 @@ class _PatientCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
+                      if (patient.patientId.isNotEmpty)
+                        Text(
+                          'ID: ${patient.patientId}',
+                          style: const TextStyle(
+                            color: Color(0xFF4FC3F7),
+                            fontSize: 12,
+                          ),
+                        ),
                       Text(
                         patient.dateOfBirth.isEmpty
                             ? 'No DOB'
@@ -310,6 +433,17 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
   final _lastNameController = TextEditingController();
   final _dobController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _patientIdController = TextEditingController();
+
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _dobController.dispose();
+    _phoneController.dispose();
+    _patientIdController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -327,11 +461,18 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
             const SizedBox(height: 12),
             _buildField('Last Name', _lastNameController),
             const SizedBox(height: 12),
+            _buildField('Patient ID', _patientIdController,
+                hint: 'Optional'),
+            const SizedBox(height: 12),
             _buildField('Date of Birth', _dobController,
-                hint: 'MM/DD/YYYY'),
+                hint: 'MM/DD/YYYY',
+                formatter: DobInputFormatter(),
+                keyboardType: TextInputType.number),
             const SizedBox(height: 12),
             _buildField('Phone', _phoneController,
-                hint: '(555) 555-5555'),
+                hint: '(555) 555-5555',
+                formatter: PhoneInputFormatter(),
+                keyboardType: TextInputType.phone),
           ],
         ),
       ),
@@ -350,6 +491,7 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               firstName: _firstNameController.text.trim(),
               lastName: _lastNameController.text.trim(),
+              patientId: _patientIdController.text.trim(),
               dateOfBirth: _dobController.text.trim(),
               phone: _phoneController.text.trim(),
               createdAt: DateTime.now(),
@@ -368,11 +510,18 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
     );
   }
 
-  Widget _buildField(String label, TextEditingController controller,
-      {String? hint}) {
+  Widget _buildField(
+    String label,
+    TextEditingController controller, {
+    String? hint,
+    TextInputFormatter? formatter,
+    TextInputType? keyboardType,
+  }) {
     return TextField(
       controller: controller,
       style: const TextStyle(color: Colors.white),
+      keyboardType: keyboardType,
+      inputFormatters: formatter != null ? [formatter] : [],
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -386,14 +535,5 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _firstNameController.dispose();
-    _lastNameController.dispose();
-    _dobController.dispose();
-    _phoneController.dispose();
-    super.dispose();
   }
 }
