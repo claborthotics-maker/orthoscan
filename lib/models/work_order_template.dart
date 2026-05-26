@@ -1,5 +1,4 @@
 import 'work_order.dart';
-
 enum TemplateType {
   rebound,
   polyShell,
@@ -14,7 +13,6 @@ class WorkOrderTemplate {
   String clinicName;
 
   // Product specs
-  FootSide footSide;
   String baseThickness;
   String topCover;
   String topCoverThickness;
@@ -50,7 +48,6 @@ class WorkOrderTemplate {
     required this.templateType,
     this.isCustom = false,
     this.clinicName = '',
-    this.footSide = FootSide.bilateral,
     this.baseThickness = '3/16"',
     this.topCover = 'Microcel Puff',
     this.topCoverThickness = '1/16"',
@@ -73,6 +70,7 @@ class WorkOrderTemplate {
     this.description = '',
   });
 
+  // Import FootSide from work_order.dart
   WorkOrder toWorkOrder({
     required String patientId,
     required String clinicianName,
@@ -81,8 +79,8 @@ class WorkOrderTemplate {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       patientId: patientId,
       name: name,
+      templateType: templateType,
       createdAt: DateTime.now(),
-      footSide: footSide,
       productType: name,
       materials: topCover,
       specialInstructions: specialInstructions,
@@ -102,7 +100,6 @@ class WorkOrderTemplate {
       'templateType': templateType.index,
       'isCustom': isCustom,
       'clinicName': clinicName,
-      'footSide': footSide.index,
       'baseThickness': baseThickness,
       'topCover': topCover,
       'topCoverThickness': topCoverThickness,
@@ -133,7 +130,6 @@ class WorkOrderTemplate {
       templateType: TemplateType.values[map['templateType']],
       isCustom: map['isCustom'] ?? false,
       clinicName: map['clinicName'] ?? '',
-      footSide: FootSide.values[map['footSide'] ?? 2],
       baseThickness: map['baseThickness'] ?? '3/16"',
       topCover: map['topCover'] ?? 'Microcel Puff',
       topCoverThickness: map['topCoverThickness'] ?? '1/16"',
@@ -157,6 +153,8 @@ class WorkOrderTemplate {
     );
   }
 }
+
+// Need to import WorkOrder after defining TemplateType
 
 // ─── Default Templates ────────────────────────────────────────────────────────
 class DefaultTemplates {

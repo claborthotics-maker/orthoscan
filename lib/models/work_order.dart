@@ -1,3 +1,5 @@
+import 'work_order_template.dart';
+
 enum WorkOrderStatus {
   draft,
   submitted,
@@ -16,6 +18,7 @@ class WorkOrder {
   final String id;
   final String patientId;
   String name;
+  TemplateType? templateType;
   WorkOrderStatus status;
   FootSide footSide;
   String productType;
@@ -48,6 +51,7 @@ class WorkOrder {
     required this.id,
     required this.patientId,
     this.name = '',
+    this.templateType,
     this.status = WorkOrderStatus.draft,
     this.footSide = FootSide.bilateral,
     this.productType = '',
@@ -116,6 +120,7 @@ class WorkOrder {
       id: newId ?? DateTime.now().millisecondsSinceEpoch.toString(),
       patientId: patientId,
       name: newName ?? 'Copy of $displayName',
+      templateType: templateType,
       status: WorkOrderStatus.draft,
       footSide: footSide,
       productType: productType,
@@ -142,6 +147,7 @@ class WorkOrder {
       'id': id,
       'patientId': patientId,
       'name': name,
+      'templateType': templateType?.index,
       'status': status.index,
       'footSide': footSide.index,
       'productType': productType,
@@ -170,6 +176,9 @@ class WorkOrder {
       id: map['id'],
       patientId: map['patientId'],
       name: map['name'] ?? '',
+      templateType: map['templateType'] != null
+          ? TemplateType.values[map['templateType']]
+          : null,
       status: WorkOrderStatus.values[map['status'] ?? 0],
       footSide: FootSide.values[map['footSide'] ?? 2],
       productType: map['productType'] ?? '',

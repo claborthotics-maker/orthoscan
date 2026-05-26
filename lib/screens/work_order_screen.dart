@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/patient.dart';
 import '../models/work_order.dart';
+import '../models/work_order_template.dart';
 import '../models/clinician.dart';
 import '../services/clinician_service.dart';
 
@@ -39,12 +40,17 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   DateTime? _expectedDeliveryDate;
   Clinician? _selectedClinician;
 
+  // Derived from template type
+  bool get _isPolyShell =>
+      widget.workOrder.templateType == TemplateType.polyShell;
+
   @override
   void initState() {
     super.initState();
     _productController.text = widget.workOrder.productType;
     _materialsController.text = widget.workOrder.materials;
-    _instructionsController.text = widget.workOrder.specialInstructions;
+    _instructionsController.text =
+        widget.workOrder.specialInstructions;
     _nameController.text = widget.workOrder.name;
     _status = widget.workOrder.status;
     _footSide = widget.workOrder.footSide;
@@ -93,13 +99,15 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       _footSide == FootSide.left || _footSide == FootSide.bilateral;
 
   bool get _showRightFoot =>
-      _footSide == FootSide.right || _footSide == FootSide.bilateral;
+      _footSide == FootSide.right ||
+      _footSide == FootSide.bilateral;
 
   void _save() {
     widget.workOrder.name = _nameController.text.trim();
     widget.workOrder.productType = _productController.text;
     widget.workOrder.materials = _materialsController.text;
-    widget.workOrder.specialInstructions = _instructionsController.text;
+    widget.workOrder.specialInstructions =
+        _instructionsController.text;
     widget.workOrder.status = _status;
     widget.workOrder.footSide = _footSide;
     widget.workOrder.quantityLeft = _quantityLeft;
@@ -207,7 +215,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   decoration: BoxDecoration(
                     color: _statusColor(_status).withOpacity(0.2),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _statusColor(_status)),
+                    border:
+                        Border.all(color: _statusColor(_status)),
                   ),
                   child: Text(
                     widget.workOrder.statusLabel,
@@ -242,7 +251,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     borderSide: BorderSide(color: Colors.white24),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Color(0xFF4FC3F7)),
+                    borderSide:
+                        BorderSide(color: Color(0xFF4FC3F7)),
                   ),
                 ),
               ),
@@ -295,7 +305,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   : DropdownButtonFormField<Clinician>(
                       value: _selectedClinician,
                       dropdownColor: const Color(0xFF16213E),
-                      style: const TextStyle(color: Colors.white),
+                      style:
+                          const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         enabledBorder: OutlineInputBorder(
                           borderSide:
@@ -315,7 +326,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                         );
                       }).toList(),
                       onChanged: (value) {
-                        setState(() => _selectedClinician = value);
+                        setState(
+                            () => _selectedClinician = value);
                       },
                     ),
             ),
@@ -357,13 +369,12 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   final isSelected = _footSide == side;
                   return Expanded(
                     child: Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4),
                       child: GestureDetector(
                         onTap: () {
                           setState(() {
                             _footSide = side;
-                            // Reset partial foot if foot removed
                             if (side == FootSide.right) {
                               _isPartialFootLeft = false;
                             }
@@ -379,7 +390,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                             color: isSelected
                                 ? const Color(0xFF0F3460)
                                 : Colors.transparent,
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius:
+                                BorderRadius.circular(8),
                             border: Border.all(
                               color: isSelected
                                   ? const Color(0xFF4FC3F7)
@@ -422,8 +434,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                             label: 'Left',
                             value: _quantityLeft,
                             color: Colors.blue,
-                            onChanged: (val) =>
-                                setState(() => _quantityLeft = val),
+                            onChanged: (val) => setState(
+                                () => _quantityLeft = val),
                           ),
                         ),
                       if (_showLeftFoot && _showRightFoot)
@@ -434,8 +446,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                             label: 'Right',
                             value: _quantityRight,
                             color: Colors.orange,
-                            onChanged: (val) =>
-                                setState(() => _quantityRight = val),
+                            onChanged: (val) => setState(
+                                () => _quantityRight = val),
                           ),
                         ),
                     ],
@@ -453,8 +465,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                           MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Total',
-                            style:
-                                TextStyle(color: Colors.white54)),
+                            style: TextStyle(
+                                color: Colors.white54)),
                         Text(
                           _quantityLabel,
                           style: const TextStyle(
@@ -471,15 +483,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Partial Foot ─────────────────────────────────────────────
-            if (_showLeftFoot || _showRightFoot)
+            // ─── Partial Foot (hidden for Poly Shell) ─────────────────────
+            if (!_isPolyShell && (_showLeftFoot || _showRightFoot))
               _buildSection(
                 title: 'Partial Foot',
                 icon: Icons.accessibility_new,
                 child: Column(
                   children: [
-                    // Left foot partial
-                    if (_showLeftFoot) ...[
+                    if (_showLeftFoot)
                       _PartialFootRow(
                         label: 'Left Foot is Partial',
                         isChecked: _isPartialFootLeft,
@@ -489,13 +500,9 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                         onToeCountChanged: (val) => setState(
                             () => _toeFillerCountLeft = val),
                       ),
-                    ],
-
                     if (_showLeftFoot && _showRightFoot)
                       const SizedBox(height: 8),
-
-                    // Right foot partial
-                    if (_showRightFoot) ...[
+                    if (_showRightFoot)
                       _PartialFootRow(
                         label: 'Right Foot is Partial',
                         isChecked: _isPartialFootRight,
@@ -505,7 +512,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                         onToeCountChanged: (val) => setState(
                             () => _toeFillerCountRight = val),
                       ),
-                    ],
                   ],
                 ),
               ),
@@ -518,7 +524,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
               icon: Icons.inventory,
               child: Column(
                 children: [
-                  _buildField('Product Type', _productController,
+                  _buildField(
+                      'Product Type', _productController,
                       hint: 'e.g. Diabetic Rebound'),
                   const SizedBox(height: 12),
                   _buildField('Materials', _materialsController,
@@ -560,7 +567,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _submit,
-                  icon: const Icon(Icons.send, color: Colors.white),
+                  icon:
+                      const Icon(Icons.send, color: Colors.white),
                   label: const Text(
                     'Submit to Lab',
                     style: TextStyle(
@@ -678,7 +686,6 @@ class _PartialFootRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Checkbox row
         GestureDetector(
           onTap: () => onChanged(!isChecked),
           child: Row(
@@ -707,15 +714,14 @@ class _PartialFootRow extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  color: isChecked ? Colors.white : Colors.white54,
+                  color:
+                      isChecked ? Colors.white : Colors.white54,
                   fontSize: 15,
                 ),
               ),
             ],
           ),
         ),
-
-        // Toe filler dropdown — only shows when checked
         if (isChecked) ...[
           const SizedBox(height: 10),
           Row(
@@ -723,8 +729,8 @@ class _PartialFootRow extends StatelessWidget {
               const SizedBox(width: 36),
               const Text(
                 'Number of toe fillers:',
-                style:
-                    TextStyle(color: Colors.white54, fontSize: 13),
+                style: TextStyle(
+                    color: Colors.white54, fontSize: 13),
               ),
               const SizedBox(width: 12),
               Container(
@@ -742,7 +748,8 @@ class _PartialFootRow extends StatelessWidget {
                   underline: const SizedBox(),
                   style: const TextStyle(
                       color: Colors.orange, fontSize: 15),
-                  items: List.generate(5, (i) => i + 1).map((n) {
+                  items:
+                      List.generate(5, (i) => i + 1).map((n) {
                     return DropdownMenuItem(
                       value: n,
                       child: Text(
@@ -809,13 +816,13 @@ class _QuantitySelector extends StatelessWidget {
                     color: color.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child:
-                      Icon(Icons.remove, color: color, size: 18),
+                  child: Icon(Icons.remove,
+                      color: color, size: 18),
                 ),
               ),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16),
                 child: Text(
                   '$value',
                   style: TextStyle(
@@ -835,7 +842,8 @@ class _QuantitySelector extends StatelessWidget {
                     color: color.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.add, color: color, size: 18),
+                  child:
+                      Icon(Icons.add, color: color, size: 18),
                 ),
               ),
             ],
