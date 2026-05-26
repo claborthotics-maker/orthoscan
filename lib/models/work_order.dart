@@ -38,6 +38,36 @@ class WorkOrder {
   int toeFillerCountLeft;
   int toeFillerCountRight;
 
+  // ─── Rebound Specs ───────────────────────────────────────────
+  String baseThickness;
+  String baseGrind;
+  String topCoverType;
+  String topCoverThickness;
+  String topCoverColor;
+
+  // ─── Poly Shell Specs ─────────────────────────────────────────
+  double? patientWeight;
+  String shellThickness;
+  String baseShellLength;
+  String midLayerType;
+  String midLayerThickness;
+
+  // ─── Arch Modification ───────────────────────────────────────
+  int archModification;
+
+  // ─── Accommodations ──────────────────────────────────────────
+  String heelPost;
+  String forefootPost;
+  String heelWedge;
+  String forefootWedge;
+  String metPadFoot;
+  String metPadSize;
+  String metBarFoot;
+  String metBarSize;
+  String heelLiftFoot;
+  String heelLiftHeight;
+  String heelCup;
+
   // Dates
   DateTime createdAt;
   DateTime? dateOfService;
@@ -66,6 +96,28 @@ class WorkOrder {
     this.isPartialFootRight = false,
     this.toeFillerCountLeft = 1,
     this.toeFillerCountRight = 1,
+    this.baseThickness = '3/16"',
+    this.baseGrind = 'None',
+    this.topCoverType = 'None',
+    this.topCoverThickness = 'None',
+    this.topCoverColor = 'None',
+    this.patientWeight,
+    this.shellThickness = '1/8"',
+    this.baseShellLength = 'None',
+    this.midLayerType = 'None',
+    this.midLayerThickness = 'None',
+    this.archModification = 0,
+    this.heelPost = 'None',
+    this.forefootPost = 'None',
+    this.heelWedge = 'None',
+    this.forefootWedge = 'None',
+    this.metPadFoot = 'None',
+    this.metPadSize = 'None',
+    this.metBarFoot = 'None',
+    this.metBarSize = 'None',
+    this.heelLiftFoot = 'None',
+    this.heelLiftHeight = '',
+    this.heelCup = 'Standard',
     required this.createdAt,
     this.dateOfService,
     this.expectedDeliveryDate,
@@ -78,6 +130,15 @@ class WorkOrder {
 
   String get displayName =>
       name.isNotEmpty ? name : (productType.isNotEmpty ? productType : 'Work Order');
+
+  // Auto-suggest shell thickness based on weight
+  String get suggestedShellThickness {
+    if (patientWeight == null) return '1/8"';
+    if (patientWeight! <= 170) return '1/8"';
+    if (patientWeight! <= 210) return '5/32"';
+    if (patientWeight! <= 250) return '3/16"';
+    return '1/4"';
+  }
 
   String get statusLabel {
     switch (status) {
@@ -135,6 +196,28 @@ class WorkOrder {
       isPartialFootRight: isPartialFootRight,
       toeFillerCountLeft: toeFillerCountLeft,
       toeFillerCountRight: toeFillerCountRight,
+      baseThickness: baseThickness,
+      baseGrind: baseGrind,
+      topCoverType: topCoverType,
+      topCoverThickness: topCoverThickness,
+      topCoverColor: topCoverColor,
+      patientWeight: patientWeight,
+      shellThickness: shellThickness,
+      baseShellLength: baseShellLength,
+      midLayerType: midLayerType,
+      midLayerThickness: midLayerThickness,
+      archModification: archModification,
+      heelPost: heelPost,
+      forefootPost: forefootPost,
+      heelWedge: heelWedge,
+      forefootWedge: forefootWedge,
+      metPadFoot: metPadFoot,
+      metPadSize: metPadSize,
+      metBarFoot: metBarFoot,
+      metBarSize: metBarSize,
+      heelLiftFoot: heelLiftFoot,
+      heelLiftHeight: heelLiftHeight,
+      heelCup: heelCup,
       createdAt: DateTime.now(),
       dateOfService: dateOfService,
       expectedDeliveryDate: expectedDeliveryDate,
@@ -162,6 +245,28 @@ class WorkOrder {
       'isPartialFootRight': isPartialFootRight,
       'toeFillerCountLeft': toeFillerCountLeft,
       'toeFillerCountRight': toeFillerCountRight,
+      'baseThickness': baseThickness,
+      'baseGrind': baseGrind,
+      'topCoverType': topCoverType,
+      'topCoverThickness': topCoverThickness,
+      'topCoverColor': topCoverColor,
+      'patientWeight': patientWeight,
+      'shellThickness': shellThickness,
+      'baseShellLength': baseShellLength,
+      'midLayerType': midLayerType,
+      'midLayerThickness': midLayerThickness,
+      'archModification': archModification,
+      'heelPost': heelPost,
+      'forefootPost': forefootPost,
+      'heelWedge': heelWedge,
+      'forefootWedge': forefootWedge,
+      'metPadFoot': metPadFoot,
+      'metPadSize': metPadSize,
+      'metBarFoot': metBarFoot,
+      'metBarSize': metBarSize,
+      'heelLiftFoot': heelLiftFoot,
+      'heelLiftHeight': heelLiftHeight,
+      'heelCup': heelCup,
       'createdAt': createdAt.toIso8601String(),
       'dateOfService': dateOfService?.toIso8601String(),
       'expectedDeliveryDate': expectedDeliveryDate?.toIso8601String(),
@@ -193,6 +298,28 @@ class WorkOrder {
       isPartialFootRight: map['isPartialFootRight'] ?? false,
       toeFillerCountLeft: map['toeFillerCountLeft'] ?? 1,
       toeFillerCountRight: map['toeFillerCountRight'] ?? 1,
+      baseThickness: map['baseThickness'] ?? '3/16"',
+      baseGrind: map['baseGrind'] ?? 'None',
+      topCoverType: map['topCoverType'] ?? 'None',
+      topCoverThickness: map['topCoverThickness'] ?? 'None',
+      topCoverColor: map['topCoverColor'] ?? 'None',
+      patientWeight: map['patientWeight']?.toDouble(),
+      shellThickness: map['shellThickness'] ?? '1/8"',
+      baseShellLength: map['baseShellLength'] ?? 'None',
+      midLayerType: map['midLayerType'] ?? 'None',
+      midLayerThickness: map['midLayerThickness'] ?? 'None',
+      archModification: map['archModification'] ?? 0,
+      heelPost: map['heelPost'] ?? 'None',
+      forefootPost: map['forefootPost'] ?? 'None',
+      heelWedge: map['heelWedge'] ?? 'None',
+      forefootWedge: map['forefootWedge'] ?? 'None',
+      metPadFoot: map['metPadFoot'] ?? 'None',
+      metPadSize: map['metPadSize'] ?? 'None',
+      metBarFoot: map['metBarFoot'] ?? 'None',
+      metBarSize: map['metBarSize'] ?? 'None',
+      heelLiftFoot: map['heelLiftFoot'] ?? 'None',
+      heelLiftHeight: map['heelLiftHeight'] ?? '',
+      heelCup: map['heelCup'] ?? 'Standard',
       createdAt: DateTime.parse(map['createdAt']),
       dateOfService: map['dateOfService'] != null
           ? DateTime.parse(map['dateOfService'])
