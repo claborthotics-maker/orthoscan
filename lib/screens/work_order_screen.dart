@@ -6,6 +6,7 @@ import '../models/work_order_template.dart';
 import '../models/clinician.dart';
 import '../services/clinician_service.dart';
 import 'work_order_widgets.dart';
+import 'foot_diagram_widget.dart';
 
 class WorkOrderScreen extends StatefulWidget {
   final WorkOrder workOrder;
@@ -70,6 +71,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   DateTime? _dateOfService;
   DateTime? _expectedDeliveryDate;
   Clinician? _selectedClinician;
+bool _isDrawMode = false;
 
   bool get _isPolyShell =>
       widget.workOrder.templateType == TemplateType.polyShell;
@@ -272,7 +274,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+  physics: _isDrawMode
+      ? const NeverScrollableScrollPhysics()
+      : const ClampingScrollPhysics(),
+  padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -974,6 +979,19 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
             ),
 
             const SizedBox(height: 16),
+const SizedBox(height: 16),
+
+// ─── Foot Diagram ─────────────────────────────────────────────────────────────
+_buildSection(
+  title: 'Foot Diagram',
+  icon: Icons.draw,
+  child: FootDiagramWidget(
+  onDrawModeChanged: (isDrawing) {
+    setState(() => _isDrawMode = isDrawing);
+  },
+),
+),
+
 
             // ─── Special Instructions ─────────────────────────────────────
             _buildSection(
