@@ -355,7 +355,7 @@ class _FootCanvas extends StatelessWidget {
       Container(
         height: 320,
         decoration: BoxDecoration(
-          color: const Color(0xFF0D1B2A),
+          color: Colors.black,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white12),
         ),
@@ -390,12 +390,18 @@ class _FootCanvas extends StatelessWidget {
               children: [
                 // Foot image with color filter to match dark theme
        Positioned.fill(
+  child: ColorFiltered(
+  colorFilter: const ColorFilter.matrix([
+    -1,  0,  0, 0, 255,
+     0, -1,  0, 0, 255,
+     0,  0, -1, 0, 255,
+     0,  0,  0, 1,   0,
+  ]),
   child: Image.asset(
     imagePath,
     fit: BoxFit.contain,
-    color: const Color(0xFF4FC3F7),
-    colorBlendMode: BlendMode.screen,
   ),
+),
 ),
                 // Drawing layer on top
                 Positioned.fill(
