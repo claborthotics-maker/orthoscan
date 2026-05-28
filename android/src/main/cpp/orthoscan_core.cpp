@@ -1,6 +1,7 @@
 #include "orthoscan_core.h"
 #include <android/log.h>
 #include <jni.h>
+#include <vector>
 
 #define LOG_TAG "OrthoScan"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -17,7 +18,7 @@ void orthoscan_start_session() {
 
 void orthoscan_stop_session() {
     g_isScanning = false;
-    LOGI("Scan session stopped — %zu points captured", g_pointCloud.size());
+    LOGI("Scan session stopped - %zu points captured", g_pointCloud.size());
 }
 
 void orthoscan_reset() {
@@ -47,7 +48,7 @@ int orthoscan_is_scanning() {
 
 int orthoscan_export_stl(const char* filePath) {
     if (g_pointCloud.isEmpty()) {
-        LOGE("Export failed — no points captured");
+        LOGE("Export failed - no points captured");
         return 0;
     }
     Mesh mesh;
@@ -60,7 +61,7 @@ int orthoscan_export_stl(const char* filePath) {
 
 int orthoscan_export_obj(const char* filePath) {
     if (g_pointCloud.isEmpty()) {
-        LOGE("Export failed — no points captured");
+        LOGE("Export failed - no points captured");
         return 0;
     }
     Mesh mesh;
@@ -73,7 +74,7 @@ int orthoscan_export_obj(const char* filePath) {
 
 int orthoscan_export_ply(const char* filePath) {
     if (g_pointCloud.isEmpty()) {
-        LOGE("Export failed — no points captured");
+        LOGE("Export failed - no points captured");
         return 0;
     }
     bool success = MeshExporter::exportPLY(g_pointCloud, std::string(filePath));
@@ -81,8 +82,9 @@ int orthoscan_export_ply(const char* filePath) {
     else LOGE("PLY export failed to %s", filePath);
     return success ? 1 : 0;
 }
-// ─── JNI Entry Point ──────────────────────────────────────────────────────────
-// This is called directly from Kotlin via System.loadLibrary("orthoscan_core")
+
+// ─── JNI Entry Points ─────────────────────────────────────────────────────────
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_orthotics_orthoscan_MainActivity_addPointToCore(
         JNIEnv* env,
@@ -91,4 +93,50 @@ Java_com_orthotics_orthoscan_MainActivity_addPointToCore(
         jfloat y,
         jfloat z) {
     orthoscan_add_point(x, y, z);
+}
+
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_orthotics_orthoscan_MainActivity_getPointsFromCore(
+        JNIEnv* env,
+        jobject /* this */) {
+    const auto& points = g_pointCloud.points;
+    int count = (int)points.size();
+
+    jfloatArray result = env->NewFloatArray(count * 3);
+    if (result == nullptr) return nullptr;
+
+    std::vector<float> flat;
+    flat.reserve(count * 3);
+    for (const auto& p : points) {
+        flat.push_back(p.x);
+        flat.push_back(p.y);
+        flat.push_back(p.z);
+    }
+
+    env->SetFloatArrayRegion(result, 0, count * 3, flat.data());
+    return result;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_orthotics_orthoscan_MainActivity_orthoscanStartSession(
+        JNIEnv* env, jobject /* this */) {
+    orthoscan_start_session();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_orthotics_orthoscan_MainActivity_orthoscanStopSession(
+        JNIEnv* env, jobject /* this */) {
+    orthoscan_stop_session();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_orthotics_orthoscan_MainActivity_orthoscanReset(
+        JNIEnv* env, jobject /* this */) {
+    orthoscan_reset();
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_orthotics_orthoscan_MainActivity_orthoscanGetPointCount(
+        JNIEnv* env, jobject /* this */) {
+    return orthoscan_get_point_count();
 }
