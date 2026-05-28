@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:camera/camera.dart';
 import '../models/patient.dart';
 import '../orthoscan_ffi.dart';
 import 'scan_selection_screen.dart';
@@ -19,13 +20,124 @@ class ScanScreen extends StatefulWidget {
   State<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen> {
+class _ScanScreenState extends State<ScanScreen>
+    with WidgetsBindingObserver {
   static const _channel = MethodChannel('com.orthotics.orthoscan/arcore');
 
   bool _isScanning = false;
   int _pointCount = 0;
   String _status = 'Ready to Scan';
   Timer? _captureTimer;
+
+  // Camera
+  CameraController? _cameraController;
+  bool _cameraInitialized = false;
+  bool _cameraError = false;
+  String _cameraErrorMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initCamera();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      return;
+    }
+    if (state == AppLifecycleState.inactive) {
+      _cameraController?.dispose();
+    } else if (state == AppLifecycleState.resumed) {
+      _initCamera();
+    }
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        setState(() {
+          _cameraError = true;
+          _cameraErrorMessage = 'No cameras found on device';
+        });
+        return;
+      }
+
+      // Use back camera
+      final backCamera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+
+      final controller = CameraController(
+        backCamera,
+        ResolutionPreset.high,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+
+      await controller.initialize();
+
+      if (mounted) {
+        setState(() {
+          _cameraController = controller;
+          _cameraInitialized = true;
+          _cameraError = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _cameraError = true;
+          _cameraErrorMessage = e.toString();
+        });
+
+        // Show permission dialog if camera permission denied
+        if (e.toString().contains('permission') ||
+            e.toString().contains('Permission')) {
+          _showPermissionDialog();
+        }
+      }
+    }
+  }
+
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Camera Permission Required',
+            style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'OrthoScan needs camera access to perform 3D scanning. '
+          'Please grant camera permission in Settings.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel',
+                style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Open app settings
+              const MethodChannel('com.orthotics.orthoscan/settings')
+                  .invokeMethod('openSettings');
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F3460)),
+            child: const Text('Open Settings',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
 
   String get _scanTypeLabel {
     switch (widget.scanType) {
@@ -48,15 +160,6 @@ class _ScanScreenState extends State<ScanScreen> {
             '2. Hold device 12-18 inches above the foot\n'
             '3. Tap Start Scan and slowly move around the foot\n'
             '4. Tap Stop when complete';
-    }
-  }
-
-  IconData get _scanIcon {
-    switch (widget.scanType) {
-      case ScanType.impressionBox:
-        return Icons.inventory_2;
-      case ScanType.directFoot:
-        return Icons.accessibility_new;
     }
   }
 
@@ -88,6 +191,10 @@ class _ScanScreenState extends State<ScanScreen> {
       setState(() {
         _status = 'Failed to start: $e';
       });
+      if (e.toString().contains('permission') ||
+          e.toString().contains('Permission')) {
+        _showPermissionDialog();
+      }
     }
   }
 
@@ -134,16 +241,63 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _captureTimer?.cancel();
+    _cameraController?.dispose();
     super.dispose();
+  }
+
+  Widget _buildCameraPreview() {
+    if (_cameraError) {
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.camera_alt,
+                  color: Colors.white24, size: 64),
+              const SizedBox(height: 16),
+              Text(
+                'Camera unavailable',
+                style: const TextStyle(
+                    color: Colors.white54, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _cameraErrorMessage,
+                style: const TextStyle(
+                    color: Colors.white24, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (!_cameraInitialized || _cameraController == null) {
+      return Container(
+        color: Colors.black,
+        child: const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF4FC3F7),
+          ),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      child: CameraPreview(_cameraController!),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF16213E),
+        backgroundColor: Colors.black.withOpacity(0.7),
         title: Text(
           _scanTypeLabel,
           style: const TextStyle(color: Colors.white),
@@ -162,158 +316,229 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      body: Stack(
+        children: [
 
-            // ─── Scan Status Card ─────────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: const Color(0xFF16213E),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: _isScanning
-                      ? _scanColor
-                      : Colors.white12,
+          // ─── Full Screen Camera Preview ──────────────────────────────
+          Positioned.fill(
+            child: _buildCameraPreview(),
+          ),
+
+          // ─── Scanning Overlay ────────────────────────────────────────
+          if (_isScanning)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: _scanColor.withOpacity(0.6),
+                    width: 3,
+                  ),
+                ),
+                child: CustomPaint(
+                  painter: _ScanOverlayPainter(color: _scanColor),
                 ),
               ),
-              child: Column(
+            ),
+
+          // ─── Top Status Bar ──────────────────────────────────────────
+          Positioned(
+            top: 16,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: _isScanning
+                        ? _scanColor.withOpacity(0.5)
+                        : Colors.white12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: Icon(
-                      _isScanning ? Icons.radar : _scanIcon,
-                      key: ValueKey(_isScanning),
-                      size: 100,
-                      color: _isScanning ? _scanColor : Colors.white24,
+                  Row(children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _isScanning ? Colors.red : Colors.white24,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  Text(
-                    _status,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(width: 8),
+                    Text(
+                      _status,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-
-                  const SizedBox(height: 12),
-
+                  ]),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 8),
+                        horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white10,
-                      borderRadius: BorderRadius.circular(20),
+                      color: _scanColor.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '$_pointCount points captured',
+                      '$_pointCount pts',
                       style: TextStyle(
-                        color: _scanColor,
-                        fontSize: 16,
-                      ),
+                          color: _scanColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
               ),
             ),
+          ),
 
-            const SizedBox(height: 24),
-
-            // ─── Instructions ─────────────────────────────────────────────
-            if (!_isScanning && _pointCount == 0)
-              Container(
+          // ─── Instructions (before scan) ──────────────────────────────
+          if (!_isScanning && _pointCount == 0)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 160,
+              child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white10,
+                  color: Colors.black.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white12),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(_scanIcon, color: _scanColor, size: 16),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Instructions',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _scanInstructions,
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        height: 1.6,
-                      ),
-                    ),
+                child: Text(
+                  _scanInstructions,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    height: 1.6,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+
+          // ─── Bottom Controls ─────────────────────────────────────────
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.9),
+                    Colors.transparent,
                   ],
                 ),
               ),
-
-            const SizedBox(height: 24),
-
-            // ─── Start/Stop Button ────────────────────────────────────────
-            ElevatedButton.icon(
-              onPressed: _isScanning ? _stopScan : _startScan,
-              icon: Icon(
-                _isScanning ? Icons.stop_circle : Icons.play_circle,
-                color: Colors.white,
-                size: 28,
-              ),
-              label: Text(
-                _isScanning ? 'Stop Scan' : 'Start Scan',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+              child: Row(children: [
+                // Reset button
+                OutlinedButton.icon(
+                  onPressed: _reset,
+                  icon: const Icon(Icons.refresh,
+                      color: Colors.white54, size: 20),
+                  label: const Text('Reset',
+                      style: TextStyle(color: Colors.white54)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    side: const BorderSide(color: Colors.white24),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isScanning
-                    ? Colors.red.shade800
-                    : const Color(0xFF0F3460),
-                padding: const EdgeInsets.all(18),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+
+                const SizedBox(width: 12),
+
+                // Start/Stop button
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isScanning ? _stopScan : _startScan,
+                    icon: Icon(
+                      _isScanning
+                          ? Icons.stop_circle
+                          : Icons.play_circle,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                    label: Text(
+                      _isScanning ? 'Stop Scan' : 'Start Scan',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isScanning
+                          ? Colors.red.shade800
+                          : const Color(0xFF0F3460),
+                      padding: const EdgeInsets.all(16),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
                 ),
-              ),
+              ]),
             ),
-
-            const SizedBox(height: 12),
-
-            // ─── Reset Button ─────────────────────────────────────────────
-            OutlinedButton.icon(
-              onPressed: _reset,
-              icon: const Icon(Icons.refresh, color: Colors.white54),
-              label: const Text(
-                'Reset',
-                style: TextStyle(color: Colors.white54),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.all(16),
-                side: const BorderSide(color: Colors.white24),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+// ─── Scan Overlay Painter ─────────────────────────────────────────────────────
+class _ScanOverlayPainter extends CustomPainter {
+  final Color color;
+  _ScanOverlayPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withOpacity(0.15)
+      ..style = PaintingStyle.fill;
+
+    // Corner markers
+    const cornerSize = 30.0;
+    const cornerWidth = 3.0;
+    final cornerPaint = Paint()
+      ..color = color
+      ..strokeWidth = cornerWidth
+      ..style = PaintingStyle.stroke;
+
+    // Top left
+    canvas.drawLine(
+        const Offset(0, cornerSize), const Offset(0, 0), cornerPaint);
+    canvas.drawLine(
+        const Offset(0, 0), Offset(cornerSize, 0), cornerPaint);
+
+    // Top right
+    canvas.drawLine(Offset(size.width - cornerSize, 0),
+        Offset(size.width, 0), cornerPaint);
+    canvas.drawLine(Offset(size.width, 0),
+        Offset(size.width, cornerSize), cornerPaint);
+
+    // Bottom left
+    canvas.drawLine(Offset(0, size.height - cornerSize),
+        Offset(0, size.height), cornerPaint);
+    canvas.drawLine(Offset(0, size.height),
+        Offset(cornerSize, size.height), cornerPaint);
+
+    // Bottom right
+    canvas.drawLine(Offset(size.width - cornerSize, size.height),
+        Offset(size.width, size.height), cornerPaint);
+    canvas.drawLine(Offset(size.width, size.height - cornerSize),
+        Offset(size.width, size.height), cornerPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScanOverlayPainter oldDelegate) => false;
 }
