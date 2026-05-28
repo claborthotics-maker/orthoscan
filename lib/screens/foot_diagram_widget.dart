@@ -210,8 +210,9 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: _FootCanvas(
-              label: 'Left',
-              imagePath: 'assets/images/left_foot.png',
+  label: 'Left',
+  imagePath: 'assets/images/left_foot.png',
+  isLeft: true,
               mode: _mode,
               selectedMarkType: _selectedMarkType,
               drawColor: _drawColor,
@@ -237,9 +238,10 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
               onUndo: _undoLeft, onRedo: _redoLeft, onClear: _clearLeft,
             )),
             const SizedBox(width: 12),
-            Expanded(child: _FootCanvas(
-              label: 'Right',
-              imagePath: 'assets/images/right_foot.png',
+           Expanded(child: _FootCanvas(
+  label: 'Right',
+  imagePath: 'assets/images/right_foot.png',
+  isLeft: false,
               mode: _mode,
               selectedMarkType: _selectedMarkType,
               drawColor: _drawColor,
@@ -291,28 +293,30 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
 }
 
 // ─── Foot Canvas ──────────────────────────────────────────────────────────────
-class _FootCanvas extends StatelessWidget {
-  final String label;
-  final String imagePath;
-  final DiagramMode mode;
-  final MarkType selectedMarkType;
-  final Color drawColor;
-  final List<FootMark> marks;
-  final List<DrawPath> paths;
-  final List<Offset>? currentPath;
-  final bool canUndo;
-  final bool canRedo;
-  final Function(FootMark) onMarkAdded;
-  final Function(List<Offset>) onPathStarted;
-  final Function(List<Offset>) onPathUpdated;
-  final Function(List<Offset>) onPathCompleted;
-  final VoidCallback onUndo;
-  final VoidCallback onRedo;
-  final VoidCallback onClear;
+class _FootCanvas extends StatefulWidget {
+final String label;
+final String imagePath;
+final bool isLeft;
+final DiagramMode mode;
+final MarkType selectedMarkType;
+final Color drawColor;
+final List<FootMark> marks;
+final List<DrawPath> paths;
+final List<Offset>? currentPath;
+final bool canUndo;
+final bool canRedo;
+final Function(FootMark) onMarkAdded;
+final Function(List<Offset>) onPathStarted;
+final Function(List<Offset>) onPathUpdated;
+final Function(List<Offset>) onPathCompleted;
+final VoidCallback onUndo;
+final VoidCallback onRedo;
+final VoidCallback onClear;
 
   const _FootCanvas({
     required this.label,
     required this.imagePath,
+    required this.isLeft,
     required this.mode,
     required this.selectedMarkType,
     required this.drawColor,
@@ -331,27 +335,36 @@ class _FootCanvas extends StatelessWidget {
   });
 
   @override
+  State<_FootCanvas> createState() => _FootCanvasState();
+}
+
+class _FootCanvasState extends State<_FootCanvas> {
+  final _canvasKey = GlobalKey();
+
+  Offset _getLocalPosition(Offset globalPosition) {
+    final box = _canvasKey.currentContext!.findRenderObject() as RenderBox;
+    return box.globalToLocal(globalPosition);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Column(children: [
-      // Label + clear
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('$label Foot',
+          Text('${widget.label} Foot',
               style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 14)),
           GestureDetector(
-            onTap: onClear,
+            onTap: widget.onClear,
             child: const Text('Clear',
                 style: TextStyle(color: Colors.red, fontSize: 12)),
           ),
         ],
       ),
       const SizedBox(height: 6),
-
-      // Canvas with image background
       Container(
         height: 320,
         decoration: BoxDecoration(
@@ -363,54 +376,52 @@ class _FootCanvas extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           child: Listener(
             onPointerDown: (event) {
-              final box = context.findRenderObject() as RenderBox;
-              final local = box.globalToLocal(event.position);
-              if (mode == DiagramMode.mark) {
-                onMarkAdded(FootMark(
-                    position: local, type: selectedMarkType));
+              final local = _getLocalPosition(event.position);
+              if (widget.mode == DiagramMode.mark) {
+                widget.onMarkAdded(FootMark(
+                    position: local, type: widget.selectedMarkType));
               } else {
-                onPathStarted([local]);
+                widget.onPathStarted([local]);
               }
             },
             onPointerMove: (event) {
-              if (mode == DiagramMode.draw) {
-                final box = context.findRenderObject() as RenderBox;
-                final local = box.globalToLocal(event.position);
-                if (currentPath != null) {
-                  onPathUpdated([...currentPath!, local]);
+              if (widget.mode == DiagramMode.draw) {
+                final local = _getLocalPosition(event.position);
+                if (widget.currentPath != null) {
+                  widget.onPathUpdated([...widget.currentPath!, local]);
                 }
               }
             },
             onPointerUp: (event) {
-              if (mode == DiagramMode.draw && currentPath != null) {
-                onPathCompleted(currentPath!);
+              if (widget.mode == DiagramMode.draw &&
+                  widget.currentPath != null) {
+                widget.onPathCompleted(widget.currentPath!);
               }
             },
             child: Stack(
+              key: _canvasKey,
               children: [
-                // Foot image with color filter to match dark theme
-       Positioned.fill(
-  child: ColorFiltered(
-  colorFilter: const ColorFilter.matrix([
-    -1,  0,  0, 0, 255,
-     0, -1,  0, 0, 255,
-     0,  0, -1, 0, 255,
-     0,  0,  0, 1,   0,
-  ]),
-  child: Image.asset(
-    imagePath,
-    fit: BoxFit.contain,
-  ),
-),
-),
-                // Drawing layer on top
+                Positioned.fill(
+                  child: ColorFiltered(
+                    colorFilter: const ColorFilter.matrix([
+                      -1,  0,  0, 0, 255,
+                       0, -1,  0, 0, 255,
+                       0,  0, -1, 0, 255,
+                       0,  0,  0, 1,   0,
+                    ]),
+                    child: Image.asset(
+                      widget.imagePath,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
                 Positioned.fill(
                   child: CustomPaint(
                     painter: _OverlayPainter(
-                      marks: marks,
-                      paths: paths,
-                      currentPath: currentPath,
-                      drawColor: drawColor,
+                      marks: widget.marks,
+                      paths: widget.paths,
+                      currentPath: widget.currentPath,
+                      drawColor: widget.drawColor,
                     ),
                   ),
                 ),
@@ -419,20 +430,21 @@ class _FootCanvas extends StatelessWidget {
           ),
         ),
       ),
-
       const SizedBox(height: 6),
-
-      // Undo/Redo
       Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _UndoRedoButton(
-              icon: Icons.undo, label: 'Undo',
-              enabled: canUndo, onTap: onUndo),
+              icon: Icons.undo,
+              label: 'Undo',
+              enabled: widget.canUndo,
+              onTap: widget.onUndo),
           const SizedBox(width: 16),
           _UndoRedoButton(
-              icon: Icons.redo, label: 'Redo',
-              enabled: canRedo, onTap: onRedo),
+              icon: Icons.redo,
+              label: 'Redo',
+              enabled: widget.canRedo,
+              onTap: widget.onRedo),
         ],
       ),
     ]);
