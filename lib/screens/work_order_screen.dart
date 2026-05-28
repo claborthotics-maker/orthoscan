@@ -206,7 +206,7 @@ bool _isDrawMode = false;
     if (_selectedClinician != null) {
       wo.clinicianId = _selectedClinician!.id;
       wo.clinicianName = _selectedClinician!.name;
-      wo.clinicName = _selectedClinician!.clinicName;
+      wo.clinicName = ClinicianService().activeClinic?.name ?? '';
     }
 
     widget.onSave(wo);

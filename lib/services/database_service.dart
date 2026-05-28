@@ -2,8 +2,9 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/patient.dart';
 import '../models/work_order.dart';
-import '../models/clinician.dart';
 import '../models/work_order_template.dart';
+import '../models/clinician.dart';
+import '../models/clinic.dart';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -24,13 +25,42 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createTables,
+      onUpgrade: _onUpgrade,
     );
   }
 
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Drop old clinicians table and recreate with new schema
+      await db.execute('DROP TABLE IF EXISTS clinicians');
+      await db.execute('''
+        CREATE TABLE clinicians (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          licenseNumber TEXT,
+          isDefault INTEGER DEFAULT 0
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE clinics (
+          id TEXT PRIMARY KEY,
+          clinicianId TEXT NOT NULL,
+          name TEXT NOT NULL,
+          address TEXT,
+          city TEXT,
+          state TEXT,
+          zip TEXT,
+          phone TEXT,
+          isDefault INTEGER DEFAULT 0,
+          FOREIGN KEY (clinicianId) REFERENCES clinicians (id)
+        )
+      ''');
+    }
+  }
+
   Future<void> _createTables(Database db, int version) async {
-    // Patients table
     await db.execute('''
       CREATE TABLE patients (
         id TEXT PRIMARY KEY,
@@ -46,7 +76,6 @@ class DatabaseService {
       )
     ''');
 
-    // Work orders table
     await db.execute('''
       CREATE TABLE work_orders (
         id TEXT PRIMARY KEY,
@@ -61,6 +90,7 @@ class DatabaseService {
         clinicianName TEXT,
         clinicName TEXT,
         clinicianId TEXT,
+        clinicId TEXT,
         quantityLeft INTEGER DEFAULT 1,
         quantityRight INTEGER DEFAULT 1,
         isPartialFootLeft INTEGER DEFAULT 0,
@@ -99,20 +129,27 @@ class DatabaseService {
       )
     ''');
 
-    // Clinicians table
     await db.execute('''
       CREATE TABLE clinicians (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        clinicName TEXT NOT NULL,
+        licenseNumber TEXT,
+        isDefault INTEGER DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE clinics (
+        id TEXT PRIMARY KEY,
+        clinicianId TEXT NOT NULL,
+        name TEXT NOT NULL,
         address TEXT,
         city TEXT,
         state TEXT,
         zip TEXT,
         phone TEXT,
-        email TEXT,
-        licenseNumber TEXT,
-        isDefault INTEGER DEFAULT 0
+        isDefault INTEGER DEFAULT 0,
+        FOREIGN KEY (clinicianId) REFERENCES clinicians (id)
       )
     ''');
   }
@@ -166,7 +203,8 @@ class DatabaseService {
 
   Future<List<Patient>> getAllPatients() async {
     final db = await database;
-    final maps = await db.query('patients', orderBy: 'LOWER(firstName) ASC, LOWER(lastName) ASC');
+    final maps = await db.query('patients',
+        orderBy: 'LOWER(firstName) ASC, LOWER(lastName) ASC');
     return maps.map((map) => Patient(
       id: map['id'] as String,
       firstName: map['firstName'] as String,
@@ -240,6 +278,7 @@ class DatabaseService {
       'clinicianName': wo.clinicianName,
       'clinicName': wo.clinicName,
       'clinicianId': wo.clinicianId,
+      'clinicId': wo.clinicId,
       'quantityLeft': wo.quantityLeft,
       'quantityRight': wo.quantityRight,
       'isPartialFootLeft': wo.isPartialFootLeft ? 1 : 0,
@@ -283,8 +322,8 @@ class DatabaseService {
       patientId: map['patientId'] as String,
       name: map['name'] as String? ?? '',
       templateType: map['templateType'] != null
-    ? TemplateType.values[map['templateType'] as int]
-    : null,
+          ? TemplateType.values[map['templateType'] as int]
+          : null,
       status: WorkOrderStatus.values[map['status'] as int? ?? 0],
       footSide: FootSide.values[map['footSide'] as int? ?? 2],
       productType: map['productType'] as String? ?? '',
@@ -293,6 +332,7 @@ class DatabaseService {
       clinicianName: map['clinicianName'] as String? ?? '',
       clinicName: map['clinicName'] as String? ?? '',
       clinicianId: map['clinicianId'] as String? ?? '',
+      clinicId: map['clinicId'] as String? ?? '',
       quantityLeft: map['quantityLeft'] as int? ?? 1,
       quantityRight: map['quantityRight'] as int? ?? 1,
       isPartialFootLeft: (map['isPartialFootLeft'] as int? ?? 0) == 1,
@@ -301,7 +341,7 @@ class DatabaseService {
       toeFillerCountRight: map['toeFillerCountRight'] as int? ?? 1,
       baseThickness: map['baseThickness'] as String? ?? '3/16"',
       baseGrind: map['baseGrind'] as String? ?? 'None',
-      topCoverType: map['topCoverType'] as String? ?? 'None',
+      topCoverType: map['topCoverType'] as String? ?? 'Microcel Puff',
       topCoverThickness: map['topCoverThickness'] as String? ?? 'None',
       topCoverColor: map['topCoverColor'] as String? ?? 'None',
       patientWeight: map['patientWeight'] as double?,
@@ -346,7 +386,12 @@ class DatabaseService {
     final db = await database;
     await db.insert(
       'clinicians',
-      _clinicianToMap(clinician),
+      {
+        'id': clinician.id,
+        'name': clinician.name,
+        'licenseNumber': clinician.licenseNumber,
+        'isDefault': clinician.isDefault ? 1 : 0,
+      },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -355,7 +400,11 @@ class DatabaseService {
     final db = await database;
     await db.update(
       'clinicians',
-      _clinicianToMap(clinician),
+      {
+        'name': clinician.name,
+        'licenseNumber': clinician.licenseNumber,
+        'isDefault': clinician.isDefault ? 1 : 0,
+      },
       where: 'id = ?',
       whereArgs: [clinician.id],
     );
@@ -364,6 +413,8 @@ class DatabaseService {
   Future<void> deleteClinician(String id) async {
     final db = await database;
     await db.delete('clinicians', where: 'id = ?', whereArgs: [id]);
+    await db.delete('clinics',
+        where: 'clinicianId = ?', whereArgs: [id]);
   }
 
   Future<List<Clinician>> getAllClinicians() async {
@@ -372,13 +423,6 @@ class DatabaseService {
     return maps.map((map) => Clinician(
       id: map['id'] as String,
       name: map['name'] as String,
-      clinicName: map['clinicName'] as String,
-      address: map['address'] as String? ?? '',
-      city: map['city'] as String? ?? '',
-      state: map['state'] as String? ?? '',
-      zip: map['zip'] as String? ?? '',
-      phone: map['phone'] as String? ?? '',
-      email: map['email'] as String? ?? '',
       licenseNumber: map['licenseNumber'] as String? ?? '',
       isDefault: (map['isDefault'] as int? ?? 0) == 1,
     )).toList();
@@ -391,20 +435,88 @@ class DatabaseService {
         where: 'id = ?', whereArgs: [id]);
   }
 
-  Map<String, dynamic> _clinicianToMap(Clinician c) {
-    return {
-      'id': c.id,
-      'name': c.name,
-      'clinicName': c.clinicName,
-      'address': c.address,
-      'city': c.city,
-      'state': c.state,
-      'zip': c.zip,
-      'phone': c.phone,
-      'email': c.email,
-      'licenseNumber': c.licenseNumber,
-      'isDefault': c.isDefault ? 1 : 0,
-    };
+  // ─── Clinic CRUD ───────────────────────────────────────────────────────────
+
+  Future<void> insertClinic(Clinic clinic) async {
+    final db = await database;
+    await db.insert(
+      'clinics',
+      {
+        'id': clinic.id,
+        'clinicianId': clinic.clinicianId,
+        'name': clinic.name,
+        'address': clinic.address,
+        'city': clinic.city,
+        'state': clinic.state,
+        'zip': clinic.zip,
+        'phone': clinic.phone,
+        'isDefault': clinic.isDefault ? 1 : 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> updateClinic(Clinic clinic) async {
+    final db = await database;
+    await db.update(
+      'clinics',
+      {
+        'name': clinic.name,
+        'address': clinic.address,
+        'city': clinic.city,
+        'state': clinic.state,
+        'zip': clinic.zip,
+        'phone': clinic.phone,
+        'isDefault': clinic.isDefault ? 1 : 0,
+      },
+      where: 'id = ?',
+      whereArgs: [clinic.id],
+    );
+  }
+
+  Future<void> deleteClinic(String id) async {
+    final db = await database;
+    await db.delete('clinics', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Clinic>> getClinicsForClinician(String clinicianId) async {
+    final db = await database;
+    final maps = await db.query('clinics',
+        where: 'clinicianId = ?', whereArgs: [clinicianId]);
+    return maps.map((map) => Clinic(
+      id: map['id'] as String,
+      clinicianId: map['clinicianId'] as String,
+      name: map['name'] as String,
+      address: map['address'] as String? ?? '',
+      city: map['city'] as String? ?? '',
+      state: map['state'] as String? ?? '',
+      zip: map['zip'] as String? ?? '',
+      phone: map['phone'] as String? ?? '',
+      isDefault: (map['isDefault'] as int? ?? 0) == 1,
+    )).toList();
+  }
+
+  Future<void> setDefaultClinic(String clinicianId, String clinicId) async {
+    final db = await database;
+    await db.update('clinics', {'isDefault': 0},
+        where: 'clinicianId = ?', whereArgs: [clinicianId]);
+    await db.update('clinics', {'isDefault': 1},
+        where: 'id = ?', whereArgs: [clinicId]);
+  }
+
+  Future<List<Clinic>> getAllClinics() async {
+    final db = await database;
+    final maps = await db.query('clinics');
+    return maps.map((map) => Clinic(
+      id: map['id'] as String,
+      clinicianId: map['clinicianId'] as String,
+      name: map['name'] as String,
+      address: map['address'] as String? ?? '',
+      city: map['city'] as String? ?? '',
+      state: map['state'] as String? ?? '',
+      zip: map['zip'] as String? ?? '',
+      phone: map['phone'] as String? ?? '',
+      isDefault: (map['isDefault'] as int? ?? 0) == 1,
+    )).toList();
   }
 }
-

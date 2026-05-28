@@ -27,6 +27,7 @@ class WorkOrder {
   String clinicianName;
   String clinicName;
   String clinicianId;
+  String clinicId;
 
   // Quantity
   int quantityLeft;
@@ -90,6 +91,7 @@ class WorkOrder {
     this.clinicianName = '',
     this.clinicName = '',
     this.clinicianId = '',
+    this.clinicId = '',
     this.quantityLeft = 1,
     this.quantityRight = 1,
     this.isPartialFootLeft = false,
@@ -190,6 +192,7 @@ class WorkOrder {
       clinicianName: clinicianName,
       clinicName: clinicName,
       clinicianId: clinicianId,
+      clinicId: clinicId,
       quantityLeft: quantityLeft,
       quantityRight: quantityRight,
       isPartialFootLeft: isPartialFootLeft,
@@ -239,6 +242,7 @@ class WorkOrder {
       'clinicianName': clinicianName,
       'clinicName': clinicName,
       'clinicianId': clinicianId,
+      'clinicId': clinicId,
       'quantityLeft': quantityLeft,
       'quantityRight': quantityRight,
       'isPartialFootLeft': isPartialFootLeft,
@@ -292,6 +296,7 @@ class WorkOrder {
       clinicianName: map['clinicianName'] ?? '',
       clinicName: map['clinicName'] ?? '',
       clinicianId: map['clinicianId'] ?? '',
+      clinicId: map['clinicId'] as String? ?? '',
       quantityLeft: map['quantityLeft'] ?? 1,
       quantityRight: map['quantityRight'] ?? 1,
       isPartialFootLeft: map['isPartialFootLeft'] ?? false,

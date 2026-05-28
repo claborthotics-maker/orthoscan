@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
+import '../models/clinician.dart';
+import '../models/clinic.dart';
 import '../utils/input_formatters.dart';
 import 'patient_screen.dart';
 import 'settings_screen.dart';
 import '../services/database_service.dart';
+import '../services/clinician_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,6 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _searchQuery = '';
   bool _isSearching = false;
   final _searchController = TextEditingController();
+  final _clinicianService = ClinicianService();
 
 @override
 void initState() {
@@ -72,6 +76,183 @@ Future<void> _loadPatients() async {
       _searchController.clear();
     });
   }
+
+  void _showSessionSwitcher() {
+  final clinicians = _clinicianService.all;
+  if (clinicians.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content: Text('No clinicians set up. Go to Settings first.')),
+    );
+    return;
+  }
+
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: const Color(0xFF16213E),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) => StatefulBuilder(
+      builder: (context, setSheetState) {
+        Clinician selectedClinician =
+    _clinicianService.activeClinician ?? clinicians.first;
+        final clinics = _clinicianService
+            .getClinicsForClinician(selectedClinician.id);
+
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                alignment: Alignment.center,
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const Text('Active Session',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              const Text('Clinician',
+                  style: TextStyle(
+                      color: Colors.white54, fontSize: 13)),
+              const SizedBox(height: 8),
+              ...clinicians.map((c) => GestureDetector(
+                onTap: () {
+                  setSheetState(() => selectedClinician = c);
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: selectedClinician.id == c.id
+                        ? const Color(0xFF0F3460)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: selectedClinician.id == c.id
+                          ? const Color(0xFF4FC3F7)
+                          : Colors.white24,
+                    ),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.person,
+                        color: Color(0xFF4FC3F7), size: 18),
+                    const SizedBox(width: 10),
+                    Text(c.name,
+                        style: TextStyle(
+                            color: selectedClinician.id == c.id
+                                ? Colors.white
+                                : Colors.white54,
+                            fontWeight: selectedClinician.id == c.id
+                                ? FontWeight.bold
+                                : FontWeight.normal)),
+                  ]),
+                ),
+              )),
+              const SizedBox(height: 16),
+              const Text('Clinic',
+                  style: TextStyle(
+                      color: Colors.white54, fontSize: 13)),
+              const SizedBox(height: 8),
+              if (clinics.isEmpty)
+                const Text('No clinics added for this clinician',
+                    style: TextStyle(color: Colors.white38))
+              else
+                ...clinics.map((c) {
+                  final isSelected =
+                      _clinicianService.activeClinic?.id == c.id &&
+                      selectedClinician.id ==
+                          _clinicianService.activeClinician?.id;
+                  return GestureDetector(
+                    onTap: () {
+                      _clinicianService.setActive(
+                          selectedClinician, c);
+                      setState(() {});
+                      Navigator.pop(context);
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF0F3460)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFF4FC3F7)
+                              : Colors.white24,
+                        ),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.location_on,
+                            color: Color(0xFF4FC3F7), size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Text(c.name,
+                                  style: TextStyle(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.white54,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal)),
+                              if (c.fullAddress.isNotEmpty)
+                                Text(c.fullAddress,
+                                    style: const TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                      ]),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    final clinics = _clinicianService
+                        .getClinicsForClinician(
+                            selectedClinician.id);
+                    _clinicianService.setActive(
+                        selectedClinician,
+                        clinics.isNotEmpty ? clinics.first : null);
+                    setState(() {});
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F3460),
+                    padding: const EdgeInsets.all(14),
+                  ),
+                  child: const Text('Set Active Session',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -168,25 +349,51 @@ Future<void> _loadPatients() async {
                 onPressed: _stopSearch,
               )
             else ...[
-              IconButton(
-                icon: const Icon(Icons.search, color: Colors.white),
-                onPressed: () {
-                  setState(() => _isSearching = true);
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.settings,
-                    color: Colors.white),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const SettingsScreen(),
-                    ),
-                  );
-                },
-              ),
-            ],
+  IconButton(
+    icon: const Icon(Icons.search, color: Colors.white),
+    onPressed: () {
+      setState(() => _isSearching = true);
+    },
+  ),
+  GestureDetector(
+    onTap: _showSessionSwitcher,
+    child: Container(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F3460),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+            color: const Color(0xFF4FC3F7).withOpacity(0.4)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.medical_services,
+            color: Color(0xFF4FC3F7), size: 14),
+        const SizedBox(width: 4),
+        Text(
+          _clinicianService.activeLabel,
+          style: const TextStyle(
+              color: Colors.white, fontSize: 11),
+        ),
+        const Icon(Icons.arrow_drop_down,
+            color: Color(0xFF4FC3F7), size: 14),
+      ]),
+    ),
+  ),
+  IconButton(
+    icon: const Icon(Icons.settings, color: Colors.white),
+    onPressed: () async {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const SettingsScreen(),
+        ),
+      );
+      await _clinicianService.load();
+      setState(() {});
+    },
+),
+],
           ],
         ),
 
