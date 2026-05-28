@@ -166,7 +166,7 @@ class DatabaseService {
 
   Future<List<Patient>> getAllPatients() async {
     final db = await database;
-    final maps = await db.query('patients', orderBy: 'createdAt DESC');
+    final maps = await db.query('patients', orderBy: 'LOWER(firstName) ASC, LOWER(lastName) ASC');
     return maps.map((map) => Patient(
       id: map['id'] as String,
       firstName: map['firstName'] as String,

@@ -213,7 +213,8 @@ bool _isDrawMode = false;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Work order saved')),
     );
-    Navigator.pop(context);
+   int count = 0;
+Navigator.pop(context);
   }
 
   void _submit() {
@@ -399,60 +400,6 @@ bool _isDrawMode = false;
               ]),
             ),
 
-            const SizedBox(height: 16),
-
-            // ─── Foot Side ────────────────────────────────────────────────
-            _buildSection(
-              title: 'Foot Side',
-              icon: Icons.swap_horiz,
-              child: Row(
-                children: FootSide.values.map((side) {
-                  final labels = ['Left', 'Right', 'Bilateral'];
-                  final isSelected = _footSide == side;
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4),
-                      child: GestureDetector(
-                        onTap: () => setState(() {
-                          _footSide = side;
-                          if (side == FootSide.right)
-                            _isPartialFootLeft = false;
-                          if (side == FootSide.left)
-                            _isPartialFootRight = false;
-                        }),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 12),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? const Color(0xFF0F3460)
-                                : Colors.transparent,
-                            borderRadius:
-                                BorderRadius.circular(8),
-                            border: Border.all(
-                                color: isSelected
-                                    ? const Color(0xFF4FC3F7)
-                                    : Colors.white24),
-                          ),
-                          child: Text(labels[side.index],
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  color: isSelected
-                                      ? Colors.white
-                                      : Colors.white54,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.normal)),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-
-            const SizedBox(height: 16),
 
             // ─── Quantity ─────────────────────────────────────────────────
             _buildSection(
@@ -571,27 +518,23 @@ bool _isDrawMode = false;
 
                   // Top Cover Type
                   OptionRow(
-                    label: 'Top Cover',
-                    options: const [
-                      'None', 'Microcel Puff', 'P-Cell'
-                    ],
+  label: 'Top Cover',
+  options: const [
+    'Microcel Puff', 'P-Cell'
+  ],
                     selected: _topCoverType,
                     onChanged: (v) {
-                      setState(() {
-                        _topCoverType = v;
-                        // Reset dependent fields
-                        if (v == 'P-Cell') {
-                          _topCoverThickness = '1/8"';
-                          _topCoverColor = 'Solid Black';
-                        } else if (v == 'None') {
-                          _topCoverThickness = 'None';
-                          _topCoverColor = 'None';
-                        } else {
-                          _topCoverThickness = '1/16"';
-                          _topCoverColor = 'Solid Blue';
-                        }
-                      });
-                    },
+  setState(() {
+    _topCoverType = v;
+    if (v == 'P-Cell') {
+      _topCoverThickness = '1/8"';
+      _topCoverColor = 'Solid Black';
+    } else {
+      _topCoverThickness = '1/16"';
+      _topCoverColor = 'Solid Blue';
+    }
+  });
+},
                   ),
 
                   // Top Cover Thickness (only for Microcel Puff)

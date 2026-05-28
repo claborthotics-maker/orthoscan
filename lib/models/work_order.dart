@@ -98,7 +98,7 @@ class WorkOrder {
     this.toeFillerCountRight = 1,
     this.baseThickness = '3/16"',
     this.baseGrind = 'None',
-    this.topCoverType = 'None',
+    this.topCoverType = 'Microcel Puff',
     this.topCoverThickness = 'None',
     this.topCoverColor = 'None',
     this.patientWeight,

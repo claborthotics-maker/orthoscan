@@ -4,10 +4,9 @@ import '../models/patient.dart';
 import '../models/work_order.dart';
 import '../models/work_order_template.dart';
 import '../utils/input_formatters.dart';
+import '../services/database_service.dart';
 import 'scan_selection_screen.dart';
 import 'work_order_screen.dart';
-import 'template_selection_screen.dart';
-import '../services/database_service.dart';
 
 class PatientScreen extends StatefulWidget {
   final Patient patient;
@@ -32,10 +31,12 @@ class _PatientScreenState extends State<PatientScreen> {
 
   Future<void> _loadWorkOrders() async {
     final orders = await _db.getWorkOrdersForPatient(widget.patient.id);
-    setState(() {
-      _workOrders.clear();
-      _workOrders.addAll(orders);
-    });
+    if (mounted) {
+      setState(() {
+        _workOrders.clear();
+        _workOrders.addAll(orders);
+      });
+    }
   }
 
   @override
@@ -47,9 +48,11 @@ class _PatientScreenState extends State<PatientScreen> {
   Future<void> _saveNotes() async {
     widget.patient.notes = _notesController.text;
     await _db.updatePatient(widget.patient);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Notes saved')),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Notes saved')),
+      );
+    }
   }
 
   void _startScan() {
@@ -62,42 +65,79 @@ class _PatientScreenState extends State<PatientScreen> {
   }
 
   void _newWorkOrder() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => TemplateSelectionScreen(
-          patient: widget.patient,
-          onTemplateSelected: (template) async {
-            final workOrder = template.toWorkOrder(
-              patientId: widget.patient.id,
-              clinicianName: '',
-            );
-            workOrder.name = template.name;
-            await _db.insertWorkOrder(workOrder);
-            setState(() {
-              _workOrders.add(workOrder);
-            });
-            Navigator.pop(context);
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => WorkOrderScreen(
-                  workOrder: workOrder,
-                  patient: widget.patient,
-                  onSave: (wo) async {
-                    await _db.updateWorkOrder(wo);
-                    setState(() {
-                      final index = _workOrders
-                          .indexWhere((w) => w.id == wo.id);
-                      if (index != -1) {
-                        _workOrders[index] = wo;
-                      }
-                    });
-                  },
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF16213E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (_, scrollController) => Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Select Template',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-            );
-          },
+            ),
+            Expanded(
+              child: _TemplateSheetContent(
+                onTemplateSelected: (template) async {
+                  Navigator.pop(sheetContext);
+
+                  final workOrder = template.toWorkOrder(
+                    patientId: widget.patient.id,
+                    clinicianName: '',
+                  );
+                  workOrder.name = template.name;
+                  await _db.insertWorkOrder(workOrder);
+
+                  if (mounted) {
+                    setState(() => _workOrders.insert(0, workOrder));
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => WorkOrderScreen(
+                          workOrder: workOrder,
+                          patient: widget.patient,
+                          onSave: (wo) async {
+                            await _db.updateWorkOrder(wo);
+                            if (mounted) {
+                              setState(() {
+                                final index = _workOrders
+                                    .indexWhere((w) => w.id == wo.id);
+                                if (index != -1) _workOrders[index] = wo;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    );
+                    if (mounted) _loadWorkOrders();
+                  }
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -112,13 +152,13 @@ class _PatientScreenState extends State<PatientScreen> {
           patient: widget.patient,
           onSave: (saved) async {
             await _db.updateWorkOrder(saved);
-            setState(() {
-              final index =
-                  _workOrders.indexWhere((w) => w.id == saved.id);
-              if (index != -1) {
-                _workOrders[index] = saved;
-              }
-            });
+            if (mounted) {
+              setState(() {
+                final index =
+                    _workOrders.indexWhere((w) => w.id == saved.id);
+                if (index != -1) _workOrders[index] = saved;
+              });
+            }
           },
         ),
       ),
@@ -130,6 +170,7 @@ class _PatientScreenState extends State<PatientScreen> {
     setState(() {
       _workOrders.add(copy);
     });
+    _db.insertWorkOrder(copy);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Copied "${wo.displayName}"'),
@@ -141,7 +182,7 @@ class _PatientScreenState extends State<PatientScreen> {
     );
   }
 
-void _deleteWorkOrder(WorkOrder wo) {
+  void _deleteWorkOrder(WorkOrder wo) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -165,9 +206,11 @@ void _deleteWorkOrder(WorkOrder wo) {
                 _workOrders.removeWhere((w) => w.id == wo.id);
               });
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Work order deleted')),
-              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Work order deleted')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.shade800),
@@ -209,10 +252,11 @@ void _deleteWorkOrder(WorkOrder wo) {
                 style: TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               setState(() {
                 wo.name = controller.text.trim();
               });
+              await _db.updateWorkOrder(wo);
               Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(
@@ -279,7 +323,7 @@ void _deleteWorkOrder(WorkOrder wo) {
                 style: TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               setState(() {
                 widget.patient.firstName =
                     firstNameController.text.trim();
@@ -292,6 +336,7 @@ void _deleteWorkOrder(WorkOrder wo) {
                 widget.patient.phone = phoneController.text.trim();
                 widget.patient.email = emailController.text.trim();
               });
+              await _db.updatePatient(widget.patient);
               Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(
@@ -356,7 +401,7 @@ void _deleteWorkOrder(WorkOrder wo) {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ─── Patient Info Card ───────────────────────────────────────
+            // ─── Patient Info ────────────────────────────────────────────
             _SectionCard(
               title: 'Patient Info',
               icon: Icons.person,
@@ -365,18 +410,15 @@ void _deleteWorkOrder(WorkOrder wo) {
                   _InfoRow('Name', widget.patient.fullName),
                   if (widget.patient.patientId.isNotEmpty)
                     _InfoRow('Patient ID', widget.patient.patientId),
-                  _InfoRow(
-                      'Date of Birth',
+                  _InfoRow('Date of Birth',
                       widget.patient.dateOfBirth.isEmpty
                           ? 'Not set'
                           : widget.patient.dateOfBirth),
-                  _InfoRow(
-                      'Phone',
+                  _InfoRow('Phone',
                       widget.patient.phone.isEmpty
                           ? 'Not set'
                           : widget.patient.phone),
-                  _InfoRow(
-                      'Email',
+                  _InfoRow('Email',
                       widget.patient.email.isEmpty
                           ? 'Not set'
                           : widget.patient.email),
@@ -395,21 +437,17 @@ void _deleteWorkOrder(WorkOrder wo) {
                   if (widget.patient.scanFiles.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'No scans yet',
-                        style: TextStyle(color: Colors.white54),
-                      ),
+                      child: Text('No scans yet',
+                          style: TextStyle(color: Colors.white54)),
                     )
                   else
                     ...widget.patient.scanFiles.map(
                       (f) => ListTile(
                         leading: const Icon(Icons.threed_rotation,
                             color: Color(0xFF4FC3F7)),
-                        title: Text(
-                          f.split('/').last,
-                          style:
-                              const TextStyle(color: Colors.white),
-                        ),
+                        title: Text(f.split('/').last,
+                            style:
+                                const TextStyle(color: Colors.white)),
                       ),
                     ),
                   const SizedBox(height: 8),
@@ -447,8 +485,7 @@ void _deleteWorkOrder(WorkOrder wo) {
                       hintText: 'Enter clinical notes here...',
                       hintStyle: TextStyle(color: Colors.white24),
                       enabledBorder: OutlineInputBorder(
-                        borderSide:
-                            BorderSide(color: Colors.white24),
+                        borderSide: BorderSide(color: Colors.white24),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderSide:
@@ -483,10 +520,8 @@ void _deleteWorkOrder(WorkOrder wo) {
                   if (_workOrders.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'No work orders yet',
-                        style: TextStyle(color: Colors.white54),
-                      ),
+                      child: Text('No work orders yet',
+                          style: TextStyle(color: Colors.white54)),
                     )
                   else
                     ..._workOrders.map(
@@ -500,17 +535,14 @@ void _deleteWorkOrder(WorkOrder wo) {
                         child: ListTile(
                           leading: const Icon(Icons.assignment,
                               color: Color(0xFF4FC3F7)),
-                          title: Text(
-                            wo.displayName,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500),
-                          ),
+                          title: Text(wo.displayName,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500)),
                           subtitle: Text(
                             '${wo.statusLabel} · ${wo.quantityLabel}',
                             style: const TextStyle(
-                                color: Colors.white54,
-                                fontSize: 12),
+                                color: Colors.white54, fontSize: 12),
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -519,8 +551,7 @@ void _deleteWorkOrder(WorkOrder wo) {
                               const SizedBox(width: 4),
                               PopupMenuButton<String>(
                                 icon: const Icon(Icons.more_vert,
-                                    color: Colors.white38,
-                                    size: 20),
+                                    color: Colors.white38, size: 20),
                                 color: const Color(0xFF16213E),
                                 onSelected: (value) {
                                   if (value == 'open')
@@ -548,7 +579,9 @@ void _deleteWorkOrder(WorkOrder wo) {
                                   const PopupMenuItem(
                                     value: 'rename',
                                     child: Row(children: [
-                                      Icon(Icons.drive_file_rename_outline,
+                                      Icon(
+                                          Icons
+                                              .drive_file_rename_outline,
                                           color: Colors.white54,
                                           size: 18),
                                       SizedBox(width: 8),
@@ -573,8 +606,7 @@ void _deleteWorkOrder(WorkOrder wo) {
                                     value: 'delete',
                                     child: Row(children: [
                                       Icon(Icons.delete,
-                                          color: Colors.red,
-                                          size: 18),
+                                          color: Colors.red, size: 18),
                                       SizedBox(width: 8),
                                       Text('Delete',
                                           style: TextStyle(
@@ -594,8 +626,7 @@ void _deleteWorkOrder(WorkOrder wo) {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: _newWorkOrder,
-                      icon: const Icon(Icons.add,
-                          color: Colors.white),
+                      icon: const Icon(Icons.add, color: Colors.white),
                       label: const Text('New Work Order',
                           style: TextStyle(color: Colors.white)),
                       style: ElevatedButton.styleFrom(
@@ -635,22 +666,19 @@ void _deleteWorkOrder(WorkOrder wo) {
         break;
     }
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.15),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color.withOpacity(0.4)),
       ),
-      child: Text(
-        status.name,
-        style: TextStyle(color: color, fontSize: 11),
-      ),
+      child: Text(status.name,
+          style: TextStyle(color: color, fontSize: 11)),
     );
   }
 }
 
-// ─── Reusable Section Card ────────────────────────────────────────────────────
+// ─── Section Card ─────────────────────────────────────────────────────────────
 class _SectionCard extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -673,20 +701,15 @@ class _SectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, color: const Color(0xFF4FC3F7), size: 20),
-              const SizedBox(width: 8),
-              Text(
-                title,
+          Row(children: [
+            Icon(icon, color: const Color(0xFF4FC3F7), size: 20),
+            const SizedBox(width: 8),
+            Text(title,
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16)),
+          ]),
           const SizedBox(height: 12),
           child,
         ],
@@ -711,21 +734,156 @@ class _InfoRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 100,
-            child: Text(
-              label,
-              style: const TextStyle(
-                  color: Colors.white54, fontSize: 13),
-            ),
+            child: Text(label,
+                style: const TextStyle(
+                    color: Colors.white54, fontSize: 13)),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                  color: Colors.white, fontSize: 13),
-            ),
+            child: Text(value,
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 13)),
           ),
         ],
       ),
     );
+  }
+}
+
+// ─── Template Sheet Content ───────────────────────────────────────────────────
+class _TemplateSheetContent extends StatefulWidget {
+  final Function(WorkOrderTemplate) onTemplateSelected;
+
+  const _TemplateSheetContent({required this.onTemplateSelected});
+
+  @override
+  State<_TemplateSheetContent> createState() =>
+      _TemplateSheetContentState();
+}
+
+class _TemplateSheetContentState extends State<_TemplateSheetContent>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final List<WorkOrderTemplate> _templates = DefaultTemplates.getAll();
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  List<WorkOrderTemplate> _filterByType(TemplateType type) =>
+      _templates.where((t) => t.templateType == type).toList();
+
+  Color _typeColor(TemplateType type) {
+    switch (type) {
+      case TemplateType.rebound:
+        return Colors.blue;
+      case TemplateType.polyShell:
+        return Colors.purple;
+      case TemplateType.partialFoot:
+        return Colors.orange;
+    }
+  }
+
+  IconData _typeIcon(TemplateType type) {
+    switch (type) {
+      case TemplateType.rebound:
+        return Icons.layers;
+      case TemplateType.polyShell:
+        return Icons.view_in_ar;
+      case TemplateType.partialFoot:
+        return Icons.accessibility_new;
+    }
+  }
+
+  Widget _buildList(List<WorkOrderTemplate> templates) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: templates.length,
+      itemBuilder: (context, index) {
+        final t = templates[index];
+        final color = _typeColor(t.templateType);
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Material(
+            color: const Color(0xFF1A1A2E),
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => widget.onTemplateSelected(t),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: color.withOpacity(0.4)),
+                    ),
+                    child: Icon(_typeIcon(t.templateType),
+                        color: color, size: 28),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(t.name,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15)),
+                        const SizedBox(height: 4),
+                        Text(t.description,
+                            style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right,
+                      color: Colors.white38),
+                ]),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      TabBar(
+        controller: _tabController,
+        indicatorColor: const Color(0xFF4FC3F7),
+        labelColor: Colors.white,
+        unselectedLabelColor: Colors.white38,
+        tabs: const [
+          Tab(text: 'Rebound'),
+          Tab(text: 'Poly Shell'),
+          Tab(text: 'Partial Foot'),
+        ],
+      ),
+      Expanded(
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildList(_filterByType(TemplateType.rebound)),
+            _buildList(_filterByType(TemplateType.polyShell)),
+            _buildList(_filterByType(TemplateType.partialFoot)),
+          ],
+        ),
+      ),
+    ]);
   }
 }
