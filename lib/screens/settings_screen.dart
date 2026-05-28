@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/clinician.dart';
 import '../services/clinician_service.dart';
 import '../utils/input_formatters.dart';
+import '../services/database_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,6 +14,17 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _clinicianService = ClinicianService();
+
+@override
+void initState() {
+  super.initState();
+  _loadClinicians();
+}
+
+Future<void> _loadClinicians() async {
+  await _clinicianService.load();
+  setState(() {});
+}
 
   void _addClinician() {
     _showClinicianDialog();
@@ -40,11 +52,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
-            onPressed: () {
-              _clinicianService.delete(clinician.id);
-              setState(() {});
-              Navigator.pop(context);
-            },
+           onPressed: () async {
+  await _clinicianService.delete(clinician.id);
+  setState(() {});
+  Navigator.pop(context);
+},
             style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.shade800),
             child: const Text('Delete',
@@ -130,11 +142,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
-            onPressed: () {
-              if (nameController.text.isEmpty ||
-                  clinicController.text.isEmpty) return;
+            onPressed: () async {
+  if (nameController.text.isEmpty ||
+      clinicController.text.isEmpty) return;
 
-              if (isEditing) {
+  if (isEditing) {
                 clinician!.name = nameController.text.trim();
                 clinician.clinicName = clinicController.text.trim();
                 clinician.address = addressController.text.trim();
@@ -145,7 +157,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 clinician.email = emailController.text.trim();
                 clinician.licenseNumber =
                     licenseController.text.trim();
-                _clinicianService.update(clinician);
+                await _clinicianService.update(clinician);
               } else {
                 final newClinician = Clinician(
                   id: DateTime.now()
@@ -161,7 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   email: emailController.text.trim(),
                   licenseNumber: licenseController.text.trim(),
                 );
-                _clinicianService.add(newClinician);
+                await _clinicianService.add(newClinician);
               }
 
               setState(() {});
@@ -277,11 +289,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onEdit: () => _editClinician(clinician),
                           onDelete: () =>
                               _deleteClinician(clinician),
-                          onSetDefault: () {
-                            _clinicianService
-                                .setDefault(clinician.id);
-                            setState(() {});
-                          },
+                          onSetDefault: () async {
+  await _clinicianService.setDefault(clinician.id);
+  setState(() {});
+},
                         )),
                 ],
               ),

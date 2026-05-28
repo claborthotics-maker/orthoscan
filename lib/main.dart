@@ -1,7 +1,17 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
+import 'services/database_service.dart';
+import 'services/clinician_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize database
+  await DatabaseService().database;
+  
+  // Load clinicians
+  await ClinicianService().load();
+  
   runApp(const OrthoScanApp());
 }
 

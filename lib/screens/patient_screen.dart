@@ -7,6 +7,7 @@ import '../utils/input_formatters.dart';
 import 'scan_selection_screen.dart';
 import 'work_order_screen.dart';
 import 'template_selection_screen.dart';
+import '../services/database_service.dart';
 
 class PatientScreen extends StatefulWidget {
   final Patient patient;
@@ -20,11 +21,21 @@ class PatientScreen extends StatefulWidget {
 class _PatientScreenState extends State<PatientScreen> {
   final List<WorkOrder> _workOrders = [];
   final _notesController = TextEditingController();
+  final _db = DatabaseService();
 
   @override
   void initState() {
     super.initState();
     _notesController.text = widget.patient.notes;
+    _loadWorkOrders();
+  }
+
+  Future<void> _loadWorkOrders() async {
+    final orders = await _db.getWorkOrdersForPatient(widget.patient.id);
+    setState(() {
+      _workOrders.clear();
+      _workOrders.addAll(orders);
+    });
   }
 
   @override
@@ -33,8 +44,9 @@ class _PatientScreenState extends State<PatientScreen> {
     super.dispose();
   }
 
-  void _saveNotes() {
+  Future<void> _saveNotes() async {
     widget.patient.notes = _notesController.text;
+    await _db.updatePatient(widget.patient);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Notes saved')),
     );
@@ -50,46 +62,46 @@ class _PatientScreenState extends State<PatientScreen> {
   }
 
   void _newWorkOrder() {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => TemplateSelectionScreen(
-        patient: widget.patient,
-        onTemplateSelected: (template) {
-          final workOrder = template.toWorkOrder(
-            patientId: widget.patient.id,
-            clinicianName: '',
-          );
-          workOrder.name = template.name;
-          setState(() {
-            _workOrders.add(workOrder);
-          });
-
-          // Pop template screen then push work order
-          Navigator.pop(context);
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => WorkOrderScreen(
-                workOrder: workOrder,
-                patient: widget.patient,
-                onSave: (wo) {
-                  setState(() {
-                    final index = _workOrders
-                        .indexWhere((w) => w.id == wo.id);
-                    if (index != -1) {
-                      _workOrders[index] = wo;
-                    }
-                  });
-                },
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TemplateSelectionScreen(
+          patient: widget.patient,
+          onTemplateSelected: (template) async {
+            final workOrder = template.toWorkOrder(
+              patientId: widget.patient.id,
+              clinicianName: '',
+            );
+            workOrder.name = template.name;
+            await _db.insertWorkOrder(workOrder);
+            setState(() {
+              _workOrders.add(workOrder);
+            });
+            Navigator.pop(context);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => WorkOrderScreen(
+                  workOrder: workOrder,
+                  patient: widget.patient,
+                  onSave: (wo) async {
+                    await _db.updateWorkOrder(wo);
+                    setState(() {
+                      final index = _workOrders
+                          .indexWhere((w) => w.id == wo.id);
+                      if (index != -1) {
+                        _workOrders[index] = wo;
+                      }
+                    });
+                  },
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   void _openWorkOrder(WorkOrder wo) {
     Navigator.push(
@@ -98,7 +110,8 @@ class _PatientScreenState extends State<PatientScreen> {
         builder: (_) => WorkOrderScreen(
           workOrder: wo,
           patient: widget.patient,
-          onSave: (saved) {
+          onSave: (saved) async {
+            await _db.updateWorkOrder(saved);
             setState(() {
               final index =
                   _workOrders.indexWhere((w) => w.id == saved.id);
@@ -128,7 +141,7 @@ class _PatientScreenState extends State<PatientScreen> {
     );
   }
 
-  void _deleteWorkOrder(WorkOrder wo) {
+void _deleteWorkOrder(WorkOrder wo) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -146,7 +159,8 @@ class _PatientScreenState extends State<PatientScreen> {
                 style: TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              await _db.deleteWorkOrder(wo.id);
               setState(() {
                 _workOrders.removeWhere((w) => w.id == wo.id);
               });

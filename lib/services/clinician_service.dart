@@ -1,15 +1,30 @@
 import '../models/clinician.dart';
+import 'database_service.dart';
 
-// In-memory clinician storage
-// We will replace this with a real database later
 class ClinicianService {
   static final ClinicianService _instance = ClinicianService._internal();
   factory ClinicianService() => _instance;
   ClinicianService._internal();
 
-  final List<Clinician> _clinicians = [];
+  final _db = DatabaseService();
+  List<Clinician> _clinicians = [];
+  bool _loaded = false;
 
-  List<Clinician> get all => List.unmodifiable(_clinicians);
+  Future<void> _ensureLoaded() async {
+    if (!_loaded) {
+      _clinicians = await _db.getAllClinicians();
+      _loaded = true;
+    }
+  }
+
+  Future<List<Clinician>> getAll() async {
+    await _ensureLoaded();
+    return List.unmodifiable(_clinicians);
+  }
+
+  List<Clinician> get all {
+    return List.unmodifiable(_clinicians);
+  }
 
   Clinician? get defaultClinician {
     try {
@@ -19,30 +34,38 @@ class ClinicianService {
     }
   }
 
-  void add(Clinician clinician) {
-    // If this is the first clinician, make it default
+  Future<void> load() async {
+    _clinicians = await _db.getAllClinicians();
+    _loaded = true;
+  }
+
+  Future<void> add(Clinician clinician) async {
     if (_clinicians.isEmpty) {
       clinician.isDefault = true;
     }
+    await _db.insertClinician(clinician);
     _clinicians.add(clinician);
   }
 
-  void update(Clinician clinician) {
+  Future<void> update(Clinician clinician) async {
+    await _db.updateClinician(clinician);
     final index = _clinicians.indexWhere((c) => c.id == clinician.id);
     if (index != -1) {
       _clinicians[index] = clinician;
     }
   }
 
-  void delete(String id) {
+  Future<void> delete(String id) async {
+    await _db.deleteClinician(id);
     _clinicians.removeWhere((c) => c.id == id);
-    // If we deleted the default, make the first one default
     if (_clinicians.isNotEmpty && defaultClinician == null) {
       _clinicians.first.isDefault = true;
+      await _db.updateClinician(_clinicians.first);
     }
   }
 
-  void setDefault(String id) {
+  Future<void> setDefault(String id) async {
+    await _db.setDefaultClinician(id);
     for (final c in _clinicians) {
       c.isDefault = c.id == id;
     }

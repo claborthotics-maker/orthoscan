@@ -4,6 +4,7 @@ import '../models/patient.dart';
 import '../utils/input_formatters.dart';
 import 'patient_screen.dart';
 import 'settings_screen.dart';
+import '../services/database_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,10 +15,25 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final List<Patient> _patients = [];
+  final _db = DatabaseService();
   int _selectedIndex = 0;
   String _searchQuery = '';
   bool _isSearching = false;
   final _searchController = TextEditingController();
+
+@override
+void initState() {
+  super.initState();
+  _loadPatients();
+}
+
+Future<void> _loadPatients() async {
+  final patients = await _db.getAllPatients();
+  setState(() {
+    _patients.clear();
+    _patients.addAll(patients);
+  });
+}
 
   @override
   void dispose() {
@@ -35,18 +51,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
   }
 
-  void _addPatient() {
-    showDialog(
-      context: context,
-      builder: (context) => _NewPatientDialog(
-        onSave: (patient) {
-          setState(() {
-            _patients.add(patient);
-          });
-        },
-      ),
-    );
-  }
+ void _addPatient() {
+  showDialog(
+    context: context,
+    builder: (context) => _NewPatientDialog(
+      onSave: (patient) async {
+        await _db.insertPatient(patient);
+        setState(() {
+          _patients.add(patient);
+        });
+      },
+    ),
+  );
+}
 
   void _stopSearch() {
     setState(() {
