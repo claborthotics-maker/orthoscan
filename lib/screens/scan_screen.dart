@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
 import 'scan_selection_screen.dart';
+import 'model_viewer_screen.dart';
+import '../services/database_service.dart';
 
 class ScanScreen extends StatefulWidget {
   final Patient patient;
@@ -95,21 +97,91 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Future<void> _stopScan() async {
-    _updateTimer?.cancel();
-    _updateTimer = null;
-    try {
-      await _viewChannel.invokeMethod('stopScan');
-    } catch (e) {
-      debugPrint('Stop error: $e');
-    }
-    if (mounted) {
-      setState(() {
-        _isScanning = false;
-        _status = 'Scan complete — $_pointCount points captured';
-        _scanComplete = true;
-      });
-    }
+  _updateTimer?.cancel();
+  _updateTimer = null;
+  try {
+    await _viewChannel.invokeMethod('stopScan');
+  } catch (e) {
+    debugPrint('Stop error: $e');
   }
+  if (!mounted) return;
+
+  setState(() {
+    _isScanning = false;
+    _status = 'Scan complete — $_pointCount points captured';
+    _scanComplete = true;
+  });
+
+    // Fetch the captured points and open the 3D viewer
+  List<double> points = [];
+  try {
+    final raw = await _viewChannel.invokeMethod<List>('getPoints');
+    final all = raw?.cast<double>() ?? [];
+    points = _downsampleForViewer(all, 15000);
+  } catch (e) {
+    debugPrint('Get points error: $e');
+  }
+
+  if (points.length < 3) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No points captured. Try scanning again.'),
+      ),
+    );
+    return;
+  }
+
+  if (!mounted) return;
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => ModelViewerScreen(
+        points: points,
+        patientName: widget.patient.fullName,
+        onFinish: () => _saveScan(points),
+      ),
+    ),
+  );
+}
+
+// Reduce point count for smooth 3D preview rendering
+List<double> _downsampleForViewer(List<double> flat, int maxPoints) {
+  final total = flat.length ~/ 3;
+  if (total <= maxPoints) return flat;
+  final stride = (total / maxPoints).ceil();
+  final out = <double>[];
+  for (int i = 0; i < total; i += stride) {
+    final base = i * 3;
+    out.add(flat[base]);
+    out.add(flat[base + 1]);
+    out.add(flat[base + 2]);
+  }
+  return out;
+}
+
+Future<void> _saveScan(List<double> points) async {
+  // Save scan to patient
+  final scanLabel =
+      'Scan ${DateTime.now().toString().substring(0, 16)} '
+      '(${points.length ~/ 3} pts)';
+  widget.patient.scanFiles.add(scanLabel);
+
+  try {
+    await DatabaseService().updatePatient(widget.patient);
+  } catch (e) {
+    debugPrint('Save scan error: $e');
+  }
+
+  if (!mounted) return;
+  // Pop the viewer
+  Navigator.pop(context);
+  // Pop the scan screen back to patient
+  Navigator.pop(context);
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Scan saved to patient')),
+  );
+}
 
   Future<void> _reset() async {
     _updateTimer?.cancel();

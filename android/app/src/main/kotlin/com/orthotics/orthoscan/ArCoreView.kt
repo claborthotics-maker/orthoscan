@@ -1,9 +1,11 @@
 package com.orthotics.orthoscan
 
 import android.content.Context
+import android.media.Image
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.opengl.Matrix
 import android.util.Log
 import android.view.View
 import com.google.ar.core.*
@@ -39,11 +41,34 @@ class ArCorePlatformView(
     private var arSession: Session? = null
     private var isScanning = false
     private var cameraTextureId = 0
+
+    // Camera background shader
     private var quadProgram = 0
     private var quadPositionAttrib = 0
     private var quadTexCoordAttrib = 0
     private var quadTextureUniform = 0
     private var transformedUvCoords: FloatBuffer? = null
+
+    // Point cloud shader
+    private var pointProgram = 0
+    private var pointPositionAttrib = 0
+    private var pointMvpUniform = 0
+    private var pointDepthRangeUniform = 0
+
+    // Accumulated world-space points (x,y,z triples)
+    private var pointsBuffer: FloatBuffer = ByteBuffer
+        .allocateDirect(60000 * 4)
+        .order(ByteOrder.nativeOrder())
+        .asFloatBuffer()
+    private var pointFloatCount = 0
+    private var shouldClear = false
+    private val maxFloats = 900000 // ~300k points cap
+
+    // Voxel dedup grid (3mm)
+    private val voxelSet = HashSet<Long>()
+    private val voxelSize = 0.003f
+    private var floorY = Float.NaN
+
     private var surfaceWidth = 0
     private var surfaceHeight = 0
 
@@ -71,13 +96,41 @@ class ArCorePlatformView(
         }
     """.trimIndent()
 
-    private val QUAD_VERTS = floatArrayOf(
-        -1f, -1f, +1f, -1f, -1f, +1f, +1f, +1f
-    )
+    private val POINT_VERTEX_SHADER = """
+        uniform mat4 u_ModelViewProjection;
+        uniform vec2 u_DepthRange;
+        attribute vec4 a_Position;
+        varying vec4 v_Color;
+        void main() {
+            gl_Position = u_ModelViewProjection * vec4(a_Position.xyz, 1.0);
+            gl_PointSize = 5.0;
+            float depth = gl_Position.w;
+            float t = clamp((depth - u_DepthRange.x) / (u_DepthRange.y - u_DepthRange.x), 0.0, 1.0);
+            vec3 nearColor = vec3(1.0, 0.2, 0.1);
+            vec3 midColor = vec3(1.0, 0.85, 0.1);
+            vec3 farColor = vec3(0.1, 0.5, 1.0);
+            vec3 color;
+            if (t < 0.5) {
+                color = mix(nearColor, midColor, t * 2.0);
+            } else {
+                color = mix(midColor, farColor, (t - 0.5) * 2.0);
+            }
+            v_Color = vec4(color, 1.0);
+        }
+    """.trimIndent()
 
-    private val QUAD_UVS = floatArrayOf(
-        0f, 1f, 1f, 1f, 0f, 0f, 1f, 0f
-    )
+    private val POINT_FRAGMENT_SHADER = """
+        precision mediump float;
+        varying vec4 v_Color;
+        void main() {
+            vec2 coord = gl_PointCoord - vec2(0.5);
+            if (length(coord) > 0.5) discard;
+            gl_FragColor = v_Color;
+        }
+    """.trimIndent()
+
+    private val QUAD_VERTS = floatArrayOf(-1f, -1f, +1f, -1f, -1f, +1f, +1f, +1f)
+    private val QUAD_UVS = floatArrayOf(0f, 1f, 1f, 1f, 0f, 0f, 1f, 0f)
 
     init {
         setupGL()
@@ -90,7 +143,6 @@ class ArCorePlatformView(
         glSurfaceView.setEGLConfigChooser(8, 8, 8, 8, 16, 0)
         glSurfaceView.setRenderer(object : GLSurfaceView.Renderer {
             override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-                // Create camera texture
                 val ids = IntArray(1)
                 GLES20.glGenTextures(1, ids, 0)
                 cameraTextureId = ids[0]
@@ -104,7 +156,6 @@ class ArCorePlatformView(
                 GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
                     GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
 
-                // Build shader program
                 val vert = loadShader(GLES20.GL_VERTEX_SHADER, VERTEX_SHADER)
                 val frag = loadShader(GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER)
                 quadProgram = GLES20.glCreateProgram()
@@ -115,7 +166,16 @@ class ArCorePlatformView(
                 quadTexCoordAttrib = GLES20.glGetAttribLocation(quadProgram, "a_TexCoord")
                 quadTextureUniform = GLES20.glGetUniformLocation(quadProgram, "sTexture")
 
-                // Init UV buffer
+                val pVert = loadShader(GLES20.GL_VERTEX_SHADER, POINT_VERTEX_SHADER)
+                val pFrag = loadShader(GLES20.GL_FRAGMENT_SHADER, POINT_FRAGMENT_SHADER)
+                pointProgram = GLES20.glCreateProgram()
+                GLES20.glAttachShader(pointProgram, pVert)
+                GLES20.glAttachShader(pointProgram, pFrag)
+                GLES20.glLinkProgram(pointProgram)
+                pointPositionAttrib = GLES20.glGetAttribLocation(pointProgram, "a_Position")
+                pointMvpUniform = GLES20.glGetUniformLocation(pointProgram, "u_ModelViewProjection")
+                pointDepthRangeUniform = GLES20.glGetUniformLocation(pointProgram, "u_DepthRange")
+
                 transformedUvCoords = ByteBuffer
                     .allocateDirect(QUAD_UVS.size * 4)
                     .order(ByteOrder.nativeOrder())
@@ -137,12 +197,21 @@ class ArCorePlatformView(
                 GLES20.glClearColor(0f, 0f, 0f, 1f)
                 GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
+                if (shouldClear) {
+                    pointFloatCount = 0
+                    voxelSet.clear()
+                    shouldClear = false
+                }
+
                 val session = arSession ?: return
                 try {
                     session.setCameraTextureName(cameraTextureId)
                     val frame = session.update()
 
-                    // Update UV transform
+                    if (isScanning) {
+                        updateFloorPlane(session)
+                    }
+
                     if (frame.hasDisplayGeometryChanged() && transformedUvCoords != null) {
                         val uvBuf = ByteBuffer
                             .allocateDirect(QUAD_UVS.size * 4)
@@ -163,13 +232,14 @@ class ArCorePlatformView(
                         transformedUvCoords = uvBuf
                     }
 
-                    // Draw camera background
                     drawCameraBackground()
 
-                    // Capture depth points if scanning
                     if (isScanning) {
-                        capturePoints(frame)
+                        captureDepthImage(frame)
                     }
+
+                    drawAccumulatedPoints(frame)
+
                 } catch (e: CameraNotAvailableException) {
                     Log.e(TAG, "Camera not available: ${e.message}")
                 } catch (e: Exception) {
@@ -182,7 +252,6 @@ class ArCorePlatformView(
 
     private fun drawCameraBackground() {
         val uvCoords = transformedUvCoords ?: return
-
         val vertBuf = ByteBuffer
             .allocateDirect(QUAD_VERTS.size * 4)
             .order(ByteOrder.nativeOrder())
@@ -195,10 +264,8 @@ class ArCorePlatformView(
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, cameraTextureId)
         GLES20.glUniform1i(quadTextureUniform, 0)
-        GLES20.glVertexAttribPointer(quadPositionAttrib, 2,
-            GLES20.GL_FLOAT, false, 0, vertBuf)
-        GLES20.glVertexAttribPointer(quadTexCoordAttrib, 2,
-            GLES20.GL_FLOAT, false, 0, uvCoords)
+        GLES20.glVertexAttribPointer(quadPositionAttrib, 2, GLES20.GL_FLOAT, false, 0, vertBuf)
+        GLES20.glVertexAttribPointer(quadTexCoordAttrib, 2, GLES20.GL_FLOAT, false, 0, uvCoords)
         GLES20.glEnableVertexAttribArray(quadPositionAttrib)
         GLES20.glEnableVertexAttribArray(quadTexCoordAttrib)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
@@ -208,39 +275,156 @@ class ArCorePlatformView(
         GLES20.glEnable(GLES20.GL_DEPTH_TEST)
     }
 
-    private fun capturePoints(frame: Frame) {
+    private fun appendPoint(x: Float, y: Float, z: Float) {
+        if (pointFloatCount + 3 > pointsBuffer.capacity()) {
+            if (pointsBuffer.capacity() * 2 > maxFloats) return
+            val newBuf = ByteBuffer
+                .allocateDirect(pointsBuffer.capacity() * 2 * 4)
+                .order(ByteOrder.nativeOrder())
+                .asFloatBuffer()
+            pointsBuffer.position(0)
+            pointsBuffer.limit(pointFloatCount)
+            newBuf.put(pointsBuffer)
+            pointsBuffer = newBuf
+        }
+        pointsBuffer.position(pointFloatCount)
+        pointsBuffer.put(x)
+        pointsBuffer.put(y)
+        pointsBuffer.put(z)
+        pointFloatCount += 3
+    }
+
+    private fun updateFloorPlane(session: Session) {
         try {
-            val pointCloud = frame.acquirePointCloud()
-            val points = pointCloud.points
-            var i = 0
-            while (i < points.limit() - 3) {
-                val x = points.get(i)
-                val y = points.get(i + 1)
-                val z = points.get(i + 2)
-                val confidence = points.get(i + 3)
-                if (confidence > 0.1f) {
-                    mainActivity.addPointToCore(x, y, z)
+            var lowest = Float.NaN
+            for (plane in session.getAllTrackables(Plane::class.java)) {
+                if (plane.trackingState == TrackingState.TRACKING &&
+                    plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING) {
+                    val y = plane.centerPose.ty()
+                    if (lowest.isNaN() || y < lowest) lowest = y
                 }
-                i += 4
             }
-            pointCloud.release()
-        } catch (e: NotYetAvailableException) {
-            // Normal
+            if (!lowest.isNaN()) floorY = lowest
         } catch (e: Exception) {
-            Log.e(TAG, "Capture points error: ${e.message}")
+            // ignore
+        }
+    }
+
+    private fun captureDepthImage(frame: Frame) {
+        var depthImage: Image? = null
+        try {
+            depthImage = frame.acquireDepthImage16Bits()
+            val dw = depthImage.width
+            val dh = depthImage.height
+            val plane = depthImage.planes[0]
+            val buffer = plane.buffer
+            val rowStride = plane.rowStride
+            val pixelStride = plane.pixelStride
+
+            val intr = frame.camera.imageIntrinsics
+            val fx = intr.focalLength[0]
+            val fy = intr.focalLength[1]
+            val cxp = intr.principalPoint[0]
+            val cyp = intr.principalPoint[1]
+            val iw = intr.imageDimensions[0]
+            val ih = intr.imageDimensions[1]
+            val sx = dw.toFloat() / iw
+            val sy = dh.toFloat() / ih
+            val fxd = fx * sx
+            val fyd = fy * sy
+            val cxd = cxp * sx
+            val cyd = cyp * sy
+
+            val pose = frame.camera.pose
+            val pt = FloatArray(3)
+            val step = 2
+
+            val uStart = (dw * 0.15f).toInt()
+            val uEnd = (dw * 0.85f).toInt()
+            val vStart = (dh * 0.15f).toInt()
+            val vEnd = (dh * 0.85f).toInt()
+
+            var v = vStart
+            while (v < vEnd) {
+                var u = uStart
+                while (u < uEnd) {
+                    val byteIndex = v * rowStride + u * pixelStride
+                    val lo = buffer.get(byteIndex).toInt() and 0xFF
+                    val hi = buffer.get(byteIndex + 1).toInt() and 0xFF
+                    val raw = (hi shl 8) or lo
+                    val depthMm = raw and 0x1FFF
+                    if (depthMm in 150..900) { // 15cm - 90cm
+                        val d = depthMm / 1000.0f
+                        val x = (u - cxd) * d / fxd
+                        val y = (v - cyd) * d / fyd
+                        pt[0] = x
+                        pt[1] = -y
+                        pt[2] = -d
+                        val world = pose.transformPoint(pt)
+                        val aboveFloor = floorY.isNaN() ||
+                                world[1] > floorY + 0.015f
+                        if (aboveFloor) {
+                            val gx = Math.round(world[0] / voxelSize).toLong()
+                            val gy = Math.round(world[1] / voxelSize).toLong()
+                            val gz = Math.round(world[2] / voxelSize).toLong()
+                            val key = (gx and 0x1FFFFF) or
+                                    ((gy and 0x1FFFFF) shl 21) or
+                                    ((gz and 0x1FFFFF) shl 42)
+                            if (voxelSet.add(key)) {
+                                appendPoint(world[0], world[1], world[2])
+                                mainActivity.addPointToCore(world[0], world[1], world[2])
+                            }
+                        }
+                    }
+                    u += step
+                }
+                v += step
+            }
+        } catch (e: NotYetAvailableException) {
+            // depth not ready yet
+        } catch (e: Exception) {
+            Log.d(TAG, "Depth capture: ${e.message}")
+        } finally {
+            depthImage?.close()
+        }
+    }
+
+    private fun drawAccumulatedPoints(frame: Frame) {
+        if (pointFloatCount < 3) return
+        try {
+            val camera = frame.camera
+            val projMatrix = FloatArray(16)
+            camera.getProjectionMatrix(projMatrix, 0, 0.1f, 100.0f)
+            val viewMatrix = FloatArray(16)
+            camera.getViewMatrix(viewMatrix, 0)
+            val mvpMatrix = FloatArray(16)
+            Matrix.multiplyMM(mvpMatrix, 0, projMatrix, 0, viewMatrix, 0)
+
+            GLES20.glUseProgram(pointProgram)
+            GLES20.glUniformMatrix4fv(pointMvpUniform, 1, false, mvpMatrix, 0)
+            GLES20.glUniform2f(pointDepthRangeUniform, 0.2f, 1.5f)
+
+            pointsBuffer.position(0)
+            pointsBuffer.limit(pointFloatCount)
+            GLES20.glVertexAttribPointer(
+                pointPositionAttrib, 3, GLES20.GL_FLOAT, false, 0, pointsBuffer)
+            GLES20.glEnableVertexAttribArray(pointPositionAttrib)
+            GLES20.glDrawArrays(GLES20.GL_POINTS, 0, pointFloatCount / 3)
+            GLES20.glDisableVertexAttribArray(pointPositionAttrib)
+            pointsBuffer.limit(pointsBuffer.capacity())
+        } catch (e: Exception) {
+            Log.d(TAG, "Draw accumulated: ${e.message}")
         }
     }
 
     private fun initArSession() {
         try {
-            val installStatus = ArCoreApk.getInstance()
-                .requestInstall(mainActivity, true)
-            if (installStatus == ArCoreApk.InstallStatus.INSTALL_REQUESTED) {
-                return
-            }
+            val installStatus = ArCoreApk.getInstance().requestInstall(mainActivity, true)
+            if (installStatus == ArCoreApk.InstallStatus.INSTALL_REQUESTED) return
             val session = Session(context)
             val config = Config(session).apply {
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
                 depthMode = if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC))
                     Config.DepthMode.AUTOMATIC
                 else Config.DepthMode.DISABLED
@@ -271,6 +455,7 @@ class ArCorePlatformView(
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "startScan" -> {
+                    shouldClear = true
                     isScanning = true
                     mainActivity.startScanSession()
                     result.success("started")
@@ -285,10 +470,28 @@ class ArCorePlatformView(
                 }
                 "getPoints" -> {
                     val pts = mainActivity.getPointsFromCore()
-                    result.success(pts?.toList() ?: emptyList<Float>())
+                    if (pts == null || pts.isEmpty()) {
+                        result.success(emptyList<Float>())
+                    } else {
+                        val total = pts.size / 3
+                        val maxPoints = 15000
+                        val stride = if (total <= maxPoints) 1
+                                     else (total + maxPoints - 1) / maxPoints
+                        val out = ArrayList<Float>(minOf(total, maxPoints) * 3)
+                        var i = 0
+                        while (i < total) {
+                            val base = i * 3
+                            out.add(pts[base])
+                            out.add(pts[base + 1])
+                            out.add(pts[base + 2])
+                            i += stride
+                        }
+                        result.success(out)
+                    }
                 }
                 "reset" -> {
                     isScanning = false
+                    shouldClear = true
                     mainActivity.resetScan()
                     result.success("reset")
                 }
