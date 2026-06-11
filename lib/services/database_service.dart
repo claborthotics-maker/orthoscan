@@ -25,7 +25,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createTables,
       onUpgrade: _onUpgrade,
     );
@@ -33,7 +33,6 @@ class DatabaseService {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      // Drop old clinicians table and recreate with new schema
       await db.execute('DROP TABLE IF EXISTS clinicians');
       await db.execute('''
         CREATE TABLE clinicians (
@@ -57,6 +56,20 @@ class DatabaseService {
           FOREIGN KEY (clinicianId) REFERENCES clinicians (id)
         )
       ''');
+    }
+    if (oldVersion < 3) {
+      try {
+        await db.execute(
+            'ALTER TABLE work_orders ADD COLUMN clinicId TEXT');
+      } catch (e) {
+        // Column may already exist
+      }
+      try {
+        await db.execute(
+            'ALTER TABLE work_orders ADD COLUMN clinicianId TEXT');
+      } catch (e) {
+        // Column may already exist
+      }
     }
   }
 

@@ -103,37 +103,36 @@ class _PatientScreenState extends State<PatientScreen> {
               child: _TemplateSheetContent(
                 onTemplateSelected: (template) async {
                   Navigator.pop(sheetContext);
-
                   final workOrder = template.toWorkOrder(
                     patientId: widget.patient.id,
                     clinicianName: '',
                   );
                   workOrder.name = template.name;
                   await _db.insertWorkOrder(workOrder);
-
-                  if (mounted) {
-                    setState(() => _workOrders.insert(0, workOrder));
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => WorkOrderScreen(
-                          workOrder: workOrder,
-                          patient: widget.patient,
-                          onSave: (wo) async {
-                            await _db.updateWorkOrder(wo);
-                            if (mounted) {
-                              setState(() {
-                                final index = _workOrders
-                                    .indexWhere((w) => w.id == wo.id);
-                                if (index != -1) _workOrders[index] = wo;
-                              });
-                            }
-                          },
-                        ),
+                  await Future.delayed(
+                      const Duration(milliseconds: 300));
+                  if (!mounted) return;
+                  setState(() => _workOrders.insert(0, workOrder));
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => WorkOrderScreen(
+                        workOrder: workOrder,
+                        patient: widget.patient,
+                        onSave: (wo) async {
+                          await _db.updateWorkOrder(wo);
+                          if (mounted) {
+                            setState(() {
+                              final index = _workOrders
+                                  .indexWhere((w) => w.id == wo.id);
+                              if (index != -1)
+                                _workOrders[index] = wo;
+                            });
+                          }
+                        },
                       ),
-                    );
-                    if (mounted) _loadWorkOrders();
-                  }
+                    ),
+                  );
+                  if (mounted) _loadWorkOrders();
                 },
               ),
             ),

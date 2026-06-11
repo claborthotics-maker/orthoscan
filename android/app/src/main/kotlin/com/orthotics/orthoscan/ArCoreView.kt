@@ -42,32 +42,35 @@ class ArCorePlatformView(
     private var isScanning = false
     private var cameraTextureId = 0
 
-    // Camera background shader
     private var quadProgram = 0
     private var quadPositionAttrib = 0
     private var quadTexCoordAttrib = 0
     private var quadTextureUniform = 0
     private var transformedUvCoords: FloatBuffer? = null
 
-    // Point cloud shader
     private var pointProgram = 0
     private var pointPositionAttrib = 0
     private var pointMvpUniform = 0
     private var pointDepthRangeUniform = 0
 
-    // Accumulated world-space points (x,y,z triples)
     private var pointsBuffer: FloatBuffer = ByteBuffer
         .allocateDirect(60000 * 4)
         .order(ByteOrder.nativeOrder())
         .asFloatBuffer()
     private var pointFloatCount = 0
     private var shouldClear = false
-    private val maxFloats = 900000 // ~300k points cap
+    private val maxFloats = 900000
 
-    // Voxel dedup grid (3mm)
     private val voxelSet = HashSet<Long>()
     private val voxelSize = 0.003f
     private var floorY = Float.NaN
+
+    // Organized depth grid (last frame) for meshing
+    private val gridStep = 2
+    private var gridW = 0
+    private var gridH = 0
+    private var latestGrid: FloatArray? = null
+    private val gridLock = Any()
 
     private var surfaceWidth = 0
     private var surfaceHeight = 0
@@ -306,7 +309,6 @@ class ArCorePlatformView(
             }
             if (!lowest.isNaN()) floorY = lowest
         } catch (e: Exception) {
-            // ignore
         }
     }
 
@@ -337,23 +339,28 @@ class ArCorePlatformView(
 
             val pose = frame.camera.pose
             val pt = FloatArray(3)
-            val step = 2
 
             val uStart = (dw * 0.15f).toInt()
             val uEnd = (dw * 0.85f).toInt()
             val vStart = (dh * 0.15f).toInt()
             val vEnd = (dh * 0.85f).toInt()
 
-            var v = vStart
-            while (v < vEnd) {
-                var u = uStart
-                while (u < uEnd) {
+            val gw = (uEnd - uStart) / gridStep
+            val gh = (vEnd - vStart) / gridStep
+            val newGrid = FloatArray(gw * gh * 3) { Float.NaN }
+
+            var gj = 0
+            while (gj < gh) {
+                val v = vStart + gj * gridStep
+                var gi = 0
+                while (gi < gw) {
+                    val u = uStart + gi * gridStep
                     val byteIndex = v * rowStride + u * pixelStride
                     val lo = buffer.get(byteIndex).toInt() and 0xFF
                     val hi = buffer.get(byteIndex + 1).toInt() and 0xFF
                     val raw = (hi shl 8) or lo
                     val depthMm = raw and 0x1FFF
-                    if (depthMm in 150..900) { // 15cm - 90cm
+                    if (depthMm in 150..900) {
                         val d = depthMm / 1000.0f
                         val x = (u - cxd) * d / fxd
                         val y = (v - cyd) * d / fyd
@@ -364,6 +371,11 @@ class ArCorePlatformView(
                         val aboveFloor = floorY.isNaN() ||
                                 world[1] > floorY + 0.015f
                         if (aboveFloor) {
+                            val gidx = (gj * gw + gi) * 3
+                            newGrid[gidx] = world[0]
+                            newGrid[gidx + 1] = world[1]
+                            newGrid[gidx + 2] = world[2]
+
                             val gx = Math.round(world[0] / voxelSize).toLong()
                             val gy = Math.round(world[1] / voxelSize).toLong()
                             val gz = Math.round(world[2] / voxelSize).toLong()
@@ -376,16 +388,68 @@ class ArCorePlatformView(
                             }
                         }
                     }
-                    u += step
+                    gi++
                 }
-                v += step
+                gj++
+            }
+
+            synchronized(gridLock) {
+                latestGrid = newGrid
+                gridW = gw
+                gridH = gh
             }
         } catch (e: NotYetAvailableException) {
-            // depth not ready yet
         } catch (e: Exception) {
             Log.d(TAG, "Depth capture: ${e.message}")
         } finally {
             depthImage?.close()
+        }
+    }
+
+    private fun buildMeshTriangles(): FloatArray {
+        synchronized(gridLock) {
+            val grid = latestGrid ?: return FloatArray(0)
+            val w = gridW
+            val h = gridH
+            if (w < 2 || h < 2) return FloatArray(0)
+            val out = ArrayList<Float>()
+            val maxEdge = 0.04f
+
+            fun valid(i: Int, j: Int): Boolean {
+                return !grid[(j * w + i) * 3].isNaN()
+            }
+            fun dist(ai: Int, aj: Int, bi: Int, bj: Int): Float {
+                val a = (aj * w + ai) * 3
+                val b = (bj * w + bi) * 3
+                val dx = grid[a] - grid[b]
+                val dy = grid[a + 1] - grid[b + 1]
+                val dz = grid[a + 2] - grid[b + 2]
+                return Math.sqrt((dx * dx + dy * dy + dz * dz).toDouble()).toFloat()
+            }
+            fun put(i: Int, j: Int) {
+                val idx = (j * w + i) * 3
+                out.add(grid[idx]); out.add(grid[idx + 1]); out.add(grid[idx + 2])
+            }
+
+            var j = 0
+            while (j < h - 1) {
+                var i = 0
+                while (i < w - 1) {
+                    if (valid(i, j) && valid(i + 1, j) &&
+                        valid(i, j + 1) && valid(i + 1, j + 1)) {
+                        if (dist(i, j, i + 1, j) < maxEdge &&
+                            dist(i, j, i, j + 1) < maxEdge &&
+                            dist(i + 1, j, i + 1, j + 1) < maxEdge &&
+                            dist(i, j + 1, i + 1, j + 1) < maxEdge) {
+                            put(i, j); put(i + 1, j); put(i, j + 1)
+                            put(i + 1, j); put(i + 1, j + 1); put(i, j + 1)
+                        }
+                    }
+                    i++
+                }
+                j++
+            }
+            return out.toFloatArray()
         }
     }
 
@@ -488,6 +552,12 @@ class ArCorePlatformView(
                         }
                         result.success(out)
                     }
+                }
+                "buildMesh" -> {
+                    val tris = buildMeshTriangles()
+                    val out = ArrayList<Float>(tris.size)
+                    for (f in tris) out.add(f)
+                    result.success(out)
                 }
                 "reset" -> {
                     isScanning = false

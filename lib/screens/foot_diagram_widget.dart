@@ -6,7 +6,9 @@ class FootMark {
   final Offset position;
   final MarkType type;
   final double size;
-  FootMark({required this.position, required this.type, this.size = 12});
+  final String? note;
+  FootMark({required this.position, required this.type, 
+            this.size = 12, this.note});
 
   Color get color {
     switch (type) {
@@ -34,7 +36,7 @@ class DrawPath {
   DrawPath({required this.points, required this.color, this.strokeWidth = 2.5});
 }
 
-enum DiagramMode { mark, draw }
+enum DiagramMode { none, mark, draw }
 
 class FootDiagramWidget extends StatefulWidget {
   final Function(bool)? onDrawModeChanged;
@@ -45,7 +47,8 @@ class FootDiagramWidget extends StatefulWidget {
 }
 
 class _FootDiagramWidgetState extends State<FootDiagramWidget> {
-  DiagramMode _mode = DiagramMode.mark;
+  // Default to none — no fat-fingering while scrolling
+  DiagramMode _mode = DiagramMode.none;
   MarkType _selectedMarkType = MarkType.pressure;
   Color _drawColor = Colors.blue;
 
@@ -121,25 +124,138 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
     });
   }
 
+  void _showNoteDialog(Offset position, bool isLeft) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Add Note',
+            style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'Enter note...',
+            hintStyle: TextStyle(color: Colors.white38),
+            enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24)),
+            focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFF4FC3F7))),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel',
+                style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              final mark = FootMark(
+                position: position,
+                type: MarkType.general,
+                note: controller.text.trim().isEmpty
+                    ? null
+                    : controller.text.trim(),
+              );
+              if (isLeft) {
+                setState(() {
+                  _leftMarks.add(mark);
+                  _leftHistory.add(mark);
+                  _leftRedoStack.clear();
+                });
+              } else {
+                setState(() {
+                  _rightMarks.add(mark);
+                  _rightHistory.add(mark);
+                  _rightRedoStack.clear();
+                });
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F3460)),
+            child: const Text('Add',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isActive = _mode != DiagramMode.none;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Mode switcher
+        // Mode buttons row
         Row(children: [
-          _ModeButton(label: 'Mark', icon: Icons.location_on,
-              isSelected: _mode == DiagramMode.mark,
-              onTap: () => _setMode(DiagramMode.mark)),
+          _ModeButton(
+            label: 'Mark',
+            icon: Icons.location_on,
+            isSelected: _mode == DiagramMode.mark,
+            onTap: () => _setMode(
+                _mode == DiagramMode.mark
+                    ? DiagramMode.none
+                    : DiagramMode.mark),
+          ),
           const SizedBox(width: 8),
-          _ModeButton(label: 'Draw', icon: Icons.draw,
-              isSelected: _mode == DiagramMode.draw,
-              onTap: () => _setMode(DiagramMode.draw)),
-          if (_mode == DiagramMode.draw) ...[
-            const SizedBox(width: 12),
-            const Text('✏️ Scroll locked',
-                style: TextStyle(color: Color(0xFF4FC3F7), fontSize: 12)),
-          ],
+          _ModeButton(
+            label: 'Draw',
+            icon: Icons.draw,
+            isSelected: _mode == DiagramMode.draw,
+            onTap: () => _setMode(
+                _mode == DiagramMode.draw
+                    ? DiagramMode.none
+                    : DiagramMode.draw),
+          ),
+          const SizedBox(width: 8),
+          // Scroll unlock button — always visible
+          GestureDetector(
+            onTap: () => _setMode(DiagramMode.none),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: !isActive
+                    ? const Color(0xFF0F3460).withOpacity(0.3)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: !isActive
+                        ? const Color(0xFF4FC3F7)
+                        : Colors.white24),
+              ),
+              child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      !isActive
+                          ? Icons.lock_open
+                          : Icons.lock,
+                      color: !isActive
+                          ? const Color(0xFF4FC3F7)
+                          : Colors.white38,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      !isActive ? 'Scroll' : 'Locked',
+                      style: TextStyle(
+                        color: !isActive
+                            ? const Color(0xFF4FC3F7)
+                            : Colors.white38,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ]),
+            ),
+          ),
         ]),
 
         const SizedBox(height: 12),
@@ -147,12 +263,15 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
         // Mark type selector
         if (_mode == DiagramMode.mark)
           Wrap(
-            spacing: 6, runSpacing: 6,
+            spacing: 6,
+            runSpacing: 6,
             children: MarkType.values.map((type) {
-              final mark = FootMark(position: Offset.zero, type: type);
+              final mark =
+                  FootMark(position: Offset.zero, type: type);
               final isSelected = _selectedMarkType == type;
               return GestureDetector(
-                onTap: () => setState(() => _selectedMarkType = type),
+                onTap: () =>
+                    setState(() => _selectedMarkType = type),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 6),
@@ -162,17 +281,27 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: isSelected ? mark.color : Colors.white24),
+                        color: isSelected
+                            ? mark.color
+                            : Colors.white24),
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(width: 10, height: 10,
-                        decoration: BoxDecoration(
-                            color: mark.color, shape: BoxShape.circle)),
-                    const SizedBox(width: 6),
-                    Text(mark.label, style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.white54,
-                        fontSize: 12)),
-                  ]),
+                  child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                                color: mark.color,
+                                shape: BoxShape.circle)),
+                        const SizedBox(width: 6),
+                        Text(mark.label,
+                            style: TextStyle(
+                                color: isSelected
+                                    ? Colors.white
+                                    : Colors.white54,
+                                fontSize: 12)),
+                      ]),
                 ),
               );
             }).toList(),
@@ -182,20 +311,31 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
         if (_mode == DiagramMode.draw)
           Row(children: [
             const Text('Color:',
-                style: TextStyle(color: Colors.white54, fontSize: 13)),
+                style: TextStyle(
+                    color: Colors.white54, fontSize: 13)),
             const SizedBox(width: 8),
-            ...[Colors.blue, Colors.red, Colors.green, Colors.orange, Colors.white]
-                .map((color) {
+            ...[
+              Colors.blue,
+              Colors.red,
+              Colors.green,
+              Colors.orange,
+              Colors.white
+            ].map((color) {
               final isSelected = _drawColor == color;
               return GestureDetector(
-                onTap: () => setState(() => _drawColor = color),
+                onTap: () =>
+                    setState(() => _drawColor = color),
                 child: Container(
                   margin: const EdgeInsets.only(right: 8),
-                  width: 28, height: 28,
+                  width: 28,
+                  height: 28,
                   decoration: BoxDecoration(
-                    color: color, shape: BoxShape.circle,
+                    color: color,
+                    shape: BoxShape.circle,
                     border: Border.all(
-                        color: isSelected ? Colors.white : Colors.transparent,
+                        color: isSelected
+                            ? Colors.white
+                            : Colors.transparent,
                         width: 2),
                   ),
                 ),
@@ -209,10 +349,11 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _FootCanvas(
-  label: 'Left',
-  imagePath: 'assets/images/left_foot.png',
-  isLeft: true,
+            Expanded(
+                child: _FootCanvas(
+              label: 'Left',
+              imagePath: 'assets/images/left_foot.png',
+              isLeft: true,
               mode: _mode,
               selectedMarkType: _selectedMarkType,
               drawColor: _drawColor,
@@ -226,22 +367,32 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
                 _leftHistory.add(mark);
                 _leftRedoStack.clear();
               }),
-              onPathStarted: (p) => setState(() => _currentLeftPath = p),
-              onPathUpdated: (p) => setState(() => _currentLeftPath = p),
+              onNoteRequested: (pos) =>
+                  _showNoteDialog(pos, true),
+              onPathStarted: (p) =>
+                  setState(() => _currentLeftPath = p),
+              onPathUpdated: (p) =>
+                  setState(() => _currentLeftPath = p),
               onPathCompleted: (p) {
-                final dp = DrawPath(points: List.from(p), color: _drawColor);
+                final dp = DrawPath(
+                    points: List.from(p), color: _drawColor);
                 setState(() {
-                  _leftPaths.add(dp); _leftHistory.add(dp);
-                  _leftRedoStack.clear(); _currentLeftPath = null;
+                  _leftPaths.add(dp);
+                  _leftHistory.add(dp);
+                  _leftRedoStack.clear();
+                  _currentLeftPath = null;
                 });
               },
-              onUndo: _undoLeft, onRedo: _redoLeft, onClear: _clearLeft,
+              onUndo: _undoLeft,
+              onRedo: _redoLeft,
+              onClear: _clearLeft,
             )),
             const SizedBox(width: 12),
-           Expanded(child: _FootCanvas(
-  label: 'Right',
-  imagePath: 'assets/images/right_foot.png',
-  isLeft: false,
+            Expanded(
+                child: _FootCanvas(
+              label: 'Right',
+              imagePath: 'assets/images/right_foot.png',
+              isLeft: false,
               mode: _mode,
               selectedMarkType: _selectedMarkType,
               drawColor: _drawColor,
@@ -255,16 +406,25 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
                 _rightHistory.add(mark);
                 _rightRedoStack.clear();
               }),
-              onPathStarted: (p) => setState(() => _currentRightPath = p),
-              onPathUpdated: (p) => setState(() => _currentRightPath = p),
+              onNoteRequested: (pos) =>
+                  _showNoteDialog(pos, false),
+              onPathStarted: (p) =>
+                  setState(() => _currentRightPath = p),
+              onPathUpdated: (p) =>
+                  setState(() => _currentRightPath = p),
               onPathCompleted: (p) {
-                final dp = DrawPath(points: List.from(p), color: _drawColor);
+                final dp = DrawPath(
+                    points: List.from(p), color: _drawColor);
                 setState(() {
-                  _rightPaths.add(dp); _rightHistory.add(dp);
-                  _rightRedoStack.clear(); _currentRightPath = null;
+                  _rightPaths.add(dp);
+                  _rightHistory.add(dp);
+                  _rightRedoStack.clear();
+                  _currentRightPath = null;
                 });
               },
-              onUndo: _undoRight, onRedo: _redoRight, onClear: _clearRight,
+              onUndo: _undoRight,
+              onRedo: _redoRight,
+              onClear: _clearRight,
             )),
           ],
         ),
@@ -273,18 +433,26 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
 
         // Legend
         Wrap(
-          spacing: 12, runSpacing: 4,
+          spacing: 12,
+          runSpacing: 4,
           children: MarkType.values.map((type) {
-            final mark = FootMark(position: Offset.zero, type: type);
-            return Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(width: 8, height: 8,
-                  decoration: BoxDecoration(
-                      color: mark.color, shape: BoxShape.circle)),
-              const SizedBox(width: 4),
-              Text(mark.label,
-                  style: const TextStyle(
-                      color: Colors.white38, fontSize: 11)),
-            ]);
+            final mark =
+                FootMark(position: Offset.zero, type: type);
+            return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                          color: mark.color,
+                          shape: BoxShape.circle)),
+                  const SizedBox(width: 4),
+                  Text(mark.label,
+                      style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11)),
+                ]);
           }).toList(),
         ),
       ],
@@ -294,24 +462,25 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
 
 // ─── Foot Canvas ──────────────────────────────────────────────────────────────
 class _FootCanvas extends StatefulWidget {
-final String label;
-final String imagePath;
-final bool isLeft;
-final DiagramMode mode;
-final MarkType selectedMarkType;
-final Color drawColor;
-final List<FootMark> marks;
-final List<DrawPath> paths;
-final List<Offset>? currentPath;
-final bool canUndo;
-final bool canRedo;
-final Function(FootMark) onMarkAdded;
-final Function(List<Offset>) onPathStarted;
-final Function(List<Offset>) onPathUpdated;
-final Function(List<Offset>) onPathCompleted;
-final VoidCallback onUndo;
-final VoidCallback onRedo;
-final VoidCallback onClear;
+  final String label;
+  final String imagePath;
+  final bool isLeft;
+  final DiagramMode mode;
+  final MarkType selectedMarkType;
+  final Color drawColor;
+  final List<FootMark> marks;
+  final List<DrawPath> paths;
+  final List<Offset>? currentPath;
+  final bool canUndo;
+  final bool canRedo;
+  final Function(FootMark) onMarkAdded;
+  final Function(Offset) onNoteRequested;
+  final Function(List<Offset>) onPathStarted;
+  final Function(List<Offset>) onPathUpdated;
+  final Function(List<Offset>) onPathCompleted;
+  final VoidCallback onUndo;
+  final VoidCallback onRedo;
+  final VoidCallback onClear;
 
   const _FootCanvas({
     required this.label,
@@ -326,6 +495,7 @@ final VoidCallback onClear;
     required this.canUndo,
     required this.canRedo,
     required this.onMarkAdded,
+    required this.onNoteRequested,
     required this.onPathStarted,
     required this.onPathUpdated,
     required this.onPathCompleted,
@@ -342,12 +512,15 @@ class _FootCanvasState extends State<_FootCanvas> {
   final _canvasKey = GlobalKey();
 
   Offset _getLocalPosition(Offset globalPosition) {
-    final box = _canvasKey.currentContext!.findRenderObject() as RenderBox;
+    final box =
+        _canvasKey.currentContext!.findRenderObject() as RenderBox;
     return box.globalToLocal(globalPosition);
   }
 
   @override
   Widget build(BuildContext context) {
+    final isActive = widget.mode != DiagramMode.none;
+
     return Column(children: [
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -370,44 +543,60 @@ class _FootCanvasState extends State<_FootCanvas> {
         decoration: BoxDecoration(
           color: Colors.black,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white12),
+          border: Border.all(
+              color: isActive
+                  ? const Color(0xFF4FC3F7).withOpacity(0.4)
+                  : Colors.white12),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: Listener(
-            onPointerDown: (event) {
-              final local = _getLocalPosition(event.position);
-              if (widget.mode == DiagramMode.mark) {
-                widget.onMarkAdded(FootMark(
-                    position: local, type: widget.selectedMarkType));
-              } else {
-                widget.onPathStarted([local]);
-              }
-            },
-            onPointerMove: (event) {
-              if (widget.mode == DiagramMode.draw) {
-                final local = _getLocalPosition(event.position);
-                if (widget.currentPath != null) {
-                  widget.onPathUpdated([...widget.currentPath!, local]);
-                }
-              }
-            },
-            onPointerUp: (event) {
-              if (widget.mode == DiagramMode.draw &&
-                  widget.currentPath != null) {
-                widget.onPathCompleted(widget.currentPath!);
-              }
-            },
+            onPointerDown: isActive
+                ? (event) {
+                    final local =
+                        _getLocalPosition(event.position);
+                    if (widget.mode == DiagramMode.mark) {
+                      if (widget.selectedMarkType ==
+                          MarkType.general) {
+                        widget.onNoteRequested(local);
+                      } else {
+                        widget.onMarkAdded(FootMark(
+                            position: local,
+                            type: widget.selectedMarkType));
+                      }
+                    } else if (widget.mode == DiagramMode.draw) {
+                      widget.onPathStarted([local]);
+                    }
+                  }
+                : null,
+            onPointerMove: (widget.mode == DiagramMode.draw)
+                ? (event) {
+                    final local =
+                        _getLocalPosition(event.position);
+                    if (widget.currentPath != null) {
+                      widget.onPathUpdated(
+                          [...widget.currentPath!, local]);
+                    }
+                  }
+                : null,
+            onPointerUp: (widget.mode == DiagramMode.draw)
+                ? (event) {
+                    if (widget.currentPath != null) {
+                      widget
+                          .onPathCompleted(widget.currentPath!);
+                    }
+                  }
+                : null,
             child: Stack(
               key: _canvasKey,
               children: [
                 Positioned.fill(
                   child: ColorFiltered(
                     colorFilter: const ColorFilter.matrix([
-                      -1,  0,  0, 0, 255,
-                       0, -1,  0, 0, 255,
-                       0,  0, -1, 0, 255,
-                       0,  0,  0, 1,   0,
+                      -1, 0, 0, 0, 255,
+                      0, -1, 0, 0, 255,
+                      0, 0, -1, 0, 255,
+                      0, 0, 0, 1, 0,
                     ]),
                     child: Image.asset(
                       widget.imagePath,
@@ -425,6 +614,16 @@ class _FootCanvasState extends State<_FootCanvas> {
                     ),
                   ),
                 ),
+                // Scroll-locked overlay hint
+                if (!isActive)
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: Colors.transparent,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -451,7 +650,7 @@ class _FootCanvasState extends State<_FootCanvas> {
   }
 }
 
-// ─── Overlay Painter (marks and drawings only) ────────────────────────────────
+// ─── Overlay Painter ──────────────────────────────────────────────────────────
 class _OverlayPainter extends CustomPainter {
   final List<FootMark> marks;
   final List<DrawPath> paths;
@@ -467,7 +666,6 @@ class _OverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Draw completed paths
     for (final drawPath in paths) {
       if (drawPath.points.length < 2) continue;
       final paint = Paint()
@@ -477,14 +675,15 @@ class _OverlayPainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round
         ..style = PaintingStyle.stroke;
       final path = Path();
-      path.moveTo(drawPath.points.first.dx, drawPath.points.first.dy);
+      path.moveTo(
+          drawPath.points.first.dx, drawPath.points.first.dy);
       for (int i = 1; i < drawPath.points.length; i++) {
-        path.lineTo(drawPath.points[i].dx, drawPath.points[i].dy);
+        path.lineTo(
+            drawPath.points[i].dx, drawPath.points[i].dy);
       }
       canvas.drawPath(path, paint);
     }
 
-    // Current path being drawn
     if (currentPath != null && currentPath!.length >= 2) {
       final paint = Paint()
         ..color = drawColor
@@ -493,27 +692,47 @@ class _OverlayPainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round
         ..style = PaintingStyle.stroke;
       final path = Path();
-      path.moveTo(currentPath!.first.dx, currentPath!.first.dy);
+      path.moveTo(
+          currentPath!.first.dx, currentPath!.first.dy);
       for (int i = 1; i < currentPath!.length; i++) {
         path.lineTo(currentPath![i].dx, currentPath![i].dy);
       }
       canvas.drawPath(path, paint);
     }
 
-    // Marks
     for (final mark in marks) {
-      canvas.drawCircle(mark.position, mark.size / 2,
-          Paint()..color = mark.color..style = PaintingStyle.fill);
-      canvas.drawCircle(mark.position, mark.size / 2,
+      canvas.drawCircle(
+          mark.position,
+          mark.size / 2,
+          Paint()
+            ..color = mark.color
+            ..style = PaintingStyle.fill);
+      canvas.drawCircle(
+          mark.position,
+          mark.size / 2,
           Paint()
             ..color = Colors.white
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.5);
+      // Show note indicator
+      if (mark.note != null && mark.note!.isNotEmpty) {
+        final tp = TextPainter(
+          text: TextSpan(
+            text: '📝',
+            style: const TextStyle(fontSize: 10),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        tp.layout();
+        tp.paint(canvas,
+            mark.position + Offset(mark.size / 2, -mark.size));
+      }
     }
   }
 
   @override
-  bool shouldRepaint(covariant _OverlayPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _OverlayPainter oldDelegate) =>
+      true;
 }
 
 // ─── Mode Button ──────────────────────────────────────────────────────────────
@@ -524,8 +743,10 @@ class _ModeButton extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ModeButton({
-    required this.label, required this.icon,
-    required this.isSelected, required this.onTap,
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
   });
 
   @override
@@ -552,11 +773,14 @@ class _ModeButton extends StatelessWidget {
                   : Colors.white54,
               size: 18),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white54,
-              fontWeight: isSelected
-                  ? FontWeight.bold
-                  : FontWeight.normal)),
+          Text(label,
+              style: TextStyle(
+                  color: isSelected
+                      ? Colors.white
+                      : Colors.white54,
+                  fontWeight: isSelected
+                      ? FontWeight.bold
+                      : FontWeight.normal)),
         ]),
       ),
     );
@@ -571,8 +795,10 @@ class _UndoRedoButton extends StatelessWidget {
   final VoidCallback onTap;
 
   const _UndoRedoButton({
-    required this.icon, required this.label,
-    required this.enabled, required this.onTap,
+    required this.icon,
+    required this.label,
+    required this.enabled,
+    required this.onTap,
   });
 
   @override
@@ -588,16 +814,20 @@ class _UndoRedoButton extends StatelessWidget {
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-              color: enabled ? Colors.white24 : Colors.white12),
+              color:
+                  enabled ? Colors.white24 : Colors.white12),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon,
               color: enabled ? Colors.white54 : Colors.white24,
               size: 16),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(
-              color: enabled ? Colors.white54 : Colors.white24,
-              fontSize: 12)),
+          Text(label,
+              style: TextStyle(
+                  color: enabled
+                      ? Colors.white54
+                      : Colors.white24,
+                  fontSize: 12)),
         ]),
       ),
     );
