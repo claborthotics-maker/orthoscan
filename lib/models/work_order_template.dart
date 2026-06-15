@@ -83,7 +83,7 @@ class WorkOrderTemplate {
       createdAt: DateTime.now(),
       productType: name,
       materials: topCover,
-      specialInstructions: specialInstructions,
+       specialInstructions: '',
       clinicianName: clinicianName,
       clinicName: clinicName,
       isPartialFootLeft: isPartialFootLeft,

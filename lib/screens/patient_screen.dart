@@ -107,7 +107,7 @@ class _PatientScreenState extends State<PatientScreen> {
                     patientId: widget.patient.id,
                     clinicianName: '',
                   );
-                  workOrder.name = template.name;
+                  workOrder.name = '';
                   await _db.insertWorkOrder(workOrder);
                   await Future.delayed(
                       const Duration(milliseconds: 300));
