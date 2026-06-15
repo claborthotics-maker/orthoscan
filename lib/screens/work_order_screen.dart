@@ -31,6 +31,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   final _weightController = TextEditingController();
   final _heelLiftHeightController = TextEditingController();
   final _customShoeWidthController = TextEditingController();
+  final _customShoeWidthLeftController = TextEditingController();
+  final _customShoeWidthRightController = TextEditingController();
 
   late WorkOrderStatus _status;
   late FootSide _footSide;
@@ -65,16 +67,21 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   late String _heelLiftFoot;
   late String _heelCup;
 
+  // Shoe size
   late String _shoeSize;
   late String _shoeSizeGender;
   late String _shoeWidth;
+  late bool _sameSizeForBothFeet;
+  late String _shoeSizeLeft;
+  late String _shoeWidthLeft;
+  late String _shoeSizeRight;
+  late String _shoeWidthRight;
 
   DateTime? _dateOfService;
   DateTime? _expectedDeliveryDate;
   Clinician? _selectedClinician;
   bool _isDrawMode = false;
 
-  // Shoe size lists
   static const _maleSizes = [
     '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5',
     '10', '10.5', '11', '11.5', '12', '12.5', '13',
@@ -89,10 +96,13 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   List<String> _shoeSizes(String gender) =>
       gender == 'Female' ? _femaleSizes : _maleSizes;
 
-  String get _shoeSizeDropdownValue {
-    final sizes = _shoeSizes(_shoeSizeGender);
-    return sizes.contains(_shoeSize) ? _shoeSize : sizes.first;
+  String _validSize(String size, String gender) {
+    final sizes = _shoeSizes(gender);
+    return sizes.contains(size) ? size : sizes.first;
   }
+
+  String _widthOption(String width) =>
+      (width == 'M' || width == 'L' || width == 'XL') ? width : 'Custom';
 
   bool get _isPolyShell =>
       widget.workOrder.templateType == TemplateType.polyShell;
@@ -142,14 +152,22 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     _heelLiftFoot = wo.heelLiftFoot;
     _heelCup = wo.heelCup;
     _shoeSizeGender = wo.shoeSizeGender.isEmpty ? 'Male' : wo.shoeSizeGender;
-    final sizes = _shoeSizes(_shoeSizeGender);
-    _shoeSize = sizes.contains(wo.shoeSize) ? wo.shoeSize : sizes.first;
+    _shoeSize = _validSize(wo.shoeSize, _shoeSizeGender);
     _shoeWidth = wo.shoeWidth.isEmpty ? 'M' : wo.shoeWidth;
-    if (_shoeWidth != 'M' && _shoeWidth != 'L' &&
-        _shoeWidth != 'XL') {
+    _sameSizeForBothFeet = wo.sameSizeForBothFeet;
+    _shoeSizeLeft = _validSize(wo.shoeSizeLeft, _shoeSizeGender);
+    _shoeWidthLeft = wo.shoeWidthLeft.isEmpty ? 'M' : wo.shoeWidthLeft;
+    _shoeSizeRight = _validSize(wo.shoeSizeRight, _shoeSizeGender);
+    _shoeWidthRight = wo.shoeWidthRight.isEmpty ? 'M' : wo.shoeWidthRight;
+
+    // Set custom width controllers
+    if (_widthOption(_shoeWidth) == 'Custom')
       _customShoeWidthController.text = _shoeWidth;
-      _shoeWidth = 'Custom';
-    }
+    if (_widthOption(_shoeWidthLeft) == 'Custom')
+      _customShoeWidthLeftController.text = _shoeWidthLeft;
+    if (_widthOption(_shoeWidthRight) == 'Custom')
+      _customShoeWidthRightController.text = _shoeWidthRight;
+
     _dateOfService = wo.dateOfService;
     _expectedDeliveryDate = wo.expectedDeliveryDate;
 
@@ -172,6 +190,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     _weightController.dispose();
     _heelLiftHeightController.dispose();
     _customShoeWidthController.dispose();
+    _customShoeWidthLeftController.dispose();
+    _customShoeWidthRightController.dispose();
     super.dispose();
   }
 
@@ -193,6 +213,11 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       else if (weight <= 250) _shellThickness = '3/16"';
       else _shellThickness = '1/4"';
     });
+  }
+
+  String _resolveWidth(String widthOption, TextEditingController custom) {
+    if (widthOption == 'Custom') return custom.text.trim();
+    return widthOption;
   }
 
   void _save() {
@@ -229,11 +254,27 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     wo.heelLiftFoot = _heelLiftFoot;
     wo.heelLiftHeight = _heelLiftHeightController.text.trim();
     wo.heelCup = _heelCup;
-    wo.shoeSize = _shoeSize;
     wo.shoeSizeGender = _shoeSizeGender;
-    wo.shoeWidth = _shoeWidth == 'Custom'
-        ? _customShoeWidthController.text.trim()
-        : _shoeWidth;
+    wo.sameSizeForBothFeet = _sameSizeForBothFeet;
+    if (_sameSizeForBothFeet) {
+      wo.shoeSize = _shoeSize;
+      wo.shoeWidth = _resolveWidth(
+          _widthOption(_shoeWidth), _customShoeWidthController);
+      wo.shoeSizeLeft = _shoeSize;
+      wo.shoeWidthLeft = wo.shoeWidth;
+      wo.shoeSizeRight = _shoeSize;
+      wo.shoeWidthRight = wo.shoeWidth;
+    } else {
+      wo.shoeSize = _shoeSizeLeft;
+      wo.shoeWidth = _resolveWidth(
+          _widthOption(_shoeWidthLeft), _customShoeWidthLeftController);
+      wo.shoeSizeLeft = _shoeSizeLeft;
+      wo.shoeWidthLeft = _resolveWidth(
+          _widthOption(_shoeWidthLeft), _customShoeWidthLeftController);
+      wo.shoeSizeRight = _shoeSizeRight;
+      wo.shoeWidthRight = _resolveWidth(
+          _widthOption(_shoeWidthRight), _customShoeWidthRightController);
+    }
     wo.dateOfService = _dateOfService;
     wo.expectedDeliveryDate = _expectedDeliveryDate;
 
@@ -287,6 +328,77 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   String _formatDate(DateTime? date) {
     if (date == null) return 'Tap to set';
     return '${date.month}/${date.day}/${date.year}';
+  }
+
+  Widget _shoeSizeColumn({
+    required String label,
+    required String size,
+    required String gender,
+    required String widthOption,
+    required TextEditingController customWidthController,
+    required Function(String) onSizeChanged,
+    required Function(String) onWidthChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                color: Color(0xFF4FC3F7),
+                fontWeight: FontWeight.bold,
+                fontSize: 13)),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: _validSize(size, gender),
+          dropdownColor: const Color(0xFF16213E),
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'Size',
+            labelStyle: TextStyle(color: Colors.white54),
+            enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24)),
+            focusedBorder: OutlineInputBorder(
+                borderSide:
+                    BorderSide(color: Color(0xFF4FC3F7))),
+          ),
+          items: _shoeSizes(gender)
+              .map((s) => DropdownMenuItem(
+                    value: s,
+                    child: Text(s,
+                        style: const TextStyle(
+                            color: Colors.white)),
+                  ))
+              .toList(),
+          onChanged: (v) => onSizeChanged(v ?? size),
+        ),
+        const SizedBox(height: 8),
+        OptionRow(
+          label: 'Width',
+          options: const ['M', 'L', 'XL', 'Custom'],
+          selected: _widthOption(widthOption),
+          onChanged: (v) {
+            onWidthChanged(v);
+            if (v != 'Custom') customWidthController.clear();
+          },
+        ),
+        if (_widthOption(widthOption) == 'Custom') ...[
+          const SizedBox(height: 8),
+          TextField(
+            controller: customWidthController,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              labelText: 'Custom Width',
+              labelStyle: TextStyle(color: Colors.white54),
+              enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24)),
+              focusedBorder: OutlineInputBorder(
+                  borderSide:
+                      BorderSide(color: Color(0xFF4FC3F7))),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -366,7 +478,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   if (widget.patient.patientId.isNotEmpty)
                     Text('ID: ${widget.patient.patientId}',
                         style: const TextStyle(
-                            color: Color(0xFF4FC3F7), fontSize: 13)),
+                            color: Color(0xFF4FC3F7),
+                            fontSize: 13)),
                   if (widget.patient.dateOfBirth.isNotEmpty)
                     Text('DOB: ${widget.patient.dateOfBirth}',
                         style: const TextStyle(
@@ -391,8 +504,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         enabledBorder: OutlineInputBorder(
-                            borderSide:
-                                BorderSide(color: Colors.white24)),
+                            borderSide: BorderSide(
+                                color: Colors.white24)),
                         focusedBorder: OutlineInputBorder(
                             borderSide: BorderSide(
                                 color: Color(0xFF4FC3F7))),
@@ -437,6 +550,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
               title: 'Shoe Size',
               icon: Icons.straighten,
               child: Column(children: [
+                // Gender
                 OptionRow(
                   label: 'Gender',
                   options: const ['Male', 'Female'],
@@ -444,61 +558,118 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   onChanged: (v) => setState(() {
                     _shoeSizeGender = v;
                     _shoeSize = _shoeSizes(v).first;
+                    _shoeSizeLeft = _shoeSizes(v).first;
+                    _shoeSizeRight = _shoeSizes(v).first;
                   }),
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: _shoeSizeDropdownValue,
-                  dropdownColor: const Color(0xFF16213E),
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Shoe Size',
-                    labelStyle: TextStyle(color: Colors.white54),
-                    enabledBorder: OutlineInputBorder(
-                        borderSide:
-                            BorderSide(color: Colors.white24)),
-                    focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(
-                            color: Color(0xFF4FC3F7))),
-                  ),
-                  items: _shoeSizes(_shoeSizeGender)
-                      .map((s) => DropdownMenuItem(
-                            value: s,
-                            child: Text(s,
-                                style: const TextStyle(
-                                    color: Colors.white)),
-                          ))
-                      .toList(),
-                  onChanged: (v) =>
-                      setState(() => _shoeSize = v ?? _shoeSize),
+                // Same for both feet toggle
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Same size for both feet',
+                        style: TextStyle(
+                            color: Colors.white70, fontSize: 14)),
+                    Switch(
+                      value: _sameSizeForBothFeet,
+                      activeColor: const Color(0xFF4FC3F7),
+                      onChanged: (v) =>
+                          setState(() => _sameSizeForBothFeet = v),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
-                OptionRow(
-                  label: 'Width',
-                  options: const ['M', 'L', 'XL', 'Custom'],
-                  selected: _shoeWidth,
-                  onChanged: (v) => setState(() {
-                    _shoeWidth = v;
-                    if (v != 'Custom')
-                      _customShoeWidthController.clear();
-                  }),
-                ),
-                if (_shoeWidth == 'Custom') ...[
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _customShoeWidthController,
+                if (_sameSizeForBothFeet) ...[
+                  // Single size
+                  DropdownButtonFormField<String>(
+                    value: _validSize(_shoeSize, _shoeSizeGender),
+                    dropdownColor: const Color(0xFF16213E),
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
-                      labelText: 'Custom Width',
-                      labelStyle:
-                          TextStyle(color: Colors.white54),
+                      labelText: 'Shoe Size',
+                      labelStyle: TextStyle(color: Colors.white54),
                       enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                              color: Colors.white24)),
+                          borderSide:
+                              BorderSide(color: Colors.white24)),
                       focusedBorder: OutlineInputBorder(
                           borderSide: BorderSide(
                               color: Color(0xFF4FC3F7))),
                     ),
+                    items: _shoeSizes(_shoeSizeGender)
+                        .map((s) => DropdownMenuItem(
+                              value: s,
+                              child: Text(s,
+                                  style: const TextStyle(
+                                      color: Colors.white)),
+                            ))
+                        .toList(),
+                    onChanged: (v) =>
+                        setState(() => _shoeSize = v ?? _shoeSize),
+                  ),
+                  const SizedBox(height: 12),
+                  OptionRow(
+                    label: 'Width',
+                    options: const ['M', 'L', 'XL', 'Custom'],
+                    selected: _widthOption(_shoeWidth),
+                    onChanged: (v) => setState(() {
+                      _shoeWidth = v;
+                      if (v != 'Custom')
+                        _customShoeWidthController.clear();
+                    }),
+                  ),
+                  if (_widthOption(_shoeWidth) == 'Custom') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _customShoeWidthController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Custom Width',
+                        labelStyle:
+                            TextStyle(color: Colors.white54),
+                        enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                                color: Colors.white24)),
+                        focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                                color: Color(0xFF4FC3F7))),
+                      ),
+                    ),
+                  ],
+                ] else ...[
+                  // Split left/right
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _shoeSizeColumn(
+                          label: 'Left Foot',
+                          size: _shoeSizeLeft,
+                          gender: _shoeSizeGender,
+                          widthOption: _shoeWidthLeft,
+                          customWidthController:
+                              _customShoeWidthLeftController,
+                          onSizeChanged: (v) =>
+                              setState(() => _shoeSizeLeft = v),
+                          onWidthChanged: (v) =>
+                              setState(() => _shoeWidthLeft = v),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _shoeSizeColumn(
+                          label: 'Right Foot',
+                          size: _shoeSizeRight,
+                          gender: _shoeSizeGender,
+                          widthOption: _shoeWidthRight,
+                          customWidthController:
+                              _customShoeWidthRightController,
+                          onSizeChanged: (v) =>
+                              setState(() => _shoeSizeRight = v),
+                          onWidthChanged: (v) =>
+                              setState(() => _shoeWidthRight = v),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ]),
@@ -539,8 +710,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                       color: Colors.white10,
                       borderRadius: BorderRadius.circular(8)),
                   child: Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Total',
                           style: TextStyle(color: Colors.white54)),
@@ -691,14 +861,12 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     ],
                     decoration: const InputDecoration(
                       labelText: 'Patient Weight (lbs)',
-                      labelStyle:
-                          TextStyle(color: Colors.white54),
+                      labelStyle: TextStyle(color: Colors.white54),
                       suffixText: 'lbs',
-                      suffixStyle:
-                          TextStyle(color: Colors.white38),
+                      suffixStyle: TextStyle(color: Colors.white38),
                       enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                              color: Colors.white24)),
+                          borderSide:
+                              BorderSide(color: Colors.white24)),
                       focusedBorder: OutlineInputBorder(
                           borderSide: BorderSide(
                               color: Color(0xFF4FC3F7))),
@@ -715,15 +883,12 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     onChanged: (v) =>
                         setState(() => _shellThickness = v),
                     subtitle: _weightController.text.isNotEmpty
-                        ? 'Auto-suggested from weight'
-                        : null,
+                        ? 'Auto-suggested from weight' : null,
                   ),
                   const SizedBox(height: 12),
                   OptionRow(
                     label: 'Base Shell Length',
-                    options: const [
-                      'None', 'Mets', 'Sulcus', 'Full'
-                    ],
+                    options: const ['None', 'Mets', 'Sulcus', 'Full'],
                     selected: _baseShellLength,
                     onChanged: (v) =>
                         setState(() => _baseShellLength = v),
@@ -731,9 +896,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   const SizedBox(height: 12),
                   OptionRow(
                     label: 'Mid Layer',
-                    options: const [
-                      'None', 'Microcel Puff', 'Poron'
-                    ],
+                    options: const ['None', 'Microcel Puff', 'Poron'],
                     selected: _midLayerType,
                     onChanged: (v) {
                       setState(() {
@@ -758,8 +921,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     label: 'Top Cover',
                     options: const [
                       'None', 'Microcel Puff',
-                      'Neoprene w/Nylon', 'Microfiber Suede',
-                      'Vinyl',
+                      'Neoprene w/Nylon', 'Microfiber Suede', 'Vinyl',
                     ],
                     selected: _topCoverType,
                     onChanged: (v) {
@@ -892,8 +1054,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   label: 'Forefoot Post',
                   options: const ['None', 'Lateral', 'Medial'],
                   selected: _forefootPost,
-                  onChanged: (v) =>
-                      setState(() => _forefootPost = v),
+                  onChanged: (v) => setState(() => _forefootPost = v),
                 ),
                 const SizedBox(height: 12),
                 OptionRow(
@@ -907,28 +1068,23 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   label: 'Forefoot Wedge',
                   options: const ['None', 'Lateral', 'Medial'],
                   selected: _forefootWedge,
-                  onChanged: (v) =>
-                      setState(() => _forefootWedge = v),
+                  onChanged: (v) => setState(() => _forefootWedge = v),
                 ),
                 const SizedBox(height: 12),
                 FootAccommodationRow(
                   label: 'Met Pad',
                   footValue: _metPadFoot,
                   sizeValue: _metPadSize,
-                  onFootChanged: (v) =>
-                      setState(() => _metPadFoot = v),
-                  onSizeChanged: (v) =>
-                      setState(() => _metPadSize = v),
+                  onFootChanged: (v) => setState(() => _metPadFoot = v),
+                  onSizeChanged: (v) => setState(() => _metPadSize = v),
                 ),
                 const SizedBox(height: 12),
                 FootAccommodationRow(
                   label: 'Met Bar',
                   footValue: _metBarFoot,
                   sizeValue: _metBarSize,
-                  onFootChanged: (v) =>
-                      setState(() => _metBarFoot = v),
-                  onSizeChanged: (v) =>
-                      setState(() => _metBarSize = v),
+                  onFootChanged: (v) => setState(() => _metBarFoot = v),
+                  onSizeChanged: (v) => setState(() => _metBarSize = v),
                 ),
                 const SizedBox(height: 12),
                 HeelLiftRow(

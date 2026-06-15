@@ -24,7 +24,7 @@ class DatabaseService {
     final path = join(dbPath, 'orthoscan.db');
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _createTables,
       onUpgrade: _onUpgrade,
     );
@@ -66,6 +66,13 @@ class DatabaseService {
     }
     if (oldVersion < 5) {
       try { await db.execute('ALTER TABLE work_orders ADD COLUMN shoeWidth TEXT'); } catch (e) {}
+    }
+    if (oldVersion < 6) {
+      try { await db.execute('ALTER TABLE work_orders ADD COLUMN sameSizeForBothFeet INTEGER DEFAULT 1'); } catch (e) {}
+      try { await db.execute('ALTER TABLE work_orders ADD COLUMN shoeSizeLeft TEXT'); } catch (e) {}
+      try { await db.execute('ALTER TABLE work_orders ADD COLUMN shoeWidthLeft TEXT'); } catch (e) {}
+      try { await db.execute('ALTER TABLE work_orders ADD COLUMN shoeSizeRight TEXT'); } catch (e) {}
+      try { await db.execute('ALTER TABLE work_orders ADD COLUMN shoeWidthRight TEXT'); } catch (e) {}
     }
   }
 
@@ -130,6 +137,11 @@ class DatabaseService {
         shoeSize TEXT,
         shoeSizeGender TEXT,
         shoeWidth TEXT,
+        sameSizeForBothFeet INTEGER DEFAULT 1,
+        shoeSizeLeft TEXT,
+        shoeWidthLeft TEXT,
+        shoeSizeRight TEXT,
+        shoeWidthRight TEXT,
         createdAt TEXT NOT NULL,
         dateOfService TEXT,
         expectedDeliveryDate TEXT,
@@ -300,6 +312,11 @@ class DatabaseService {
       'shoeSize': wo.shoeSize,
       'shoeSizeGender': wo.shoeSizeGender,
       'shoeWidth': wo.shoeWidth,
+      'sameSizeForBothFeet': wo.sameSizeForBothFeet ? 1 : 0,
+      'shoeSizeLeft': wo.shoeSizeLeft,
+      'shoeWidthLeft': wo.shoeWidthLeft,
+      'shoeSizeRight': wo.shoeSizeRight,
+      'shoeWidthRight': wo.shoeWidthRight,
       'createdAt': wo.createdAt.toIso8601String(),
       'dateOfService': wo.dateOfService?.toIso8601String(),
       'expectedDeliveryDate': wo.expectedDeliveryDate?.toIso8601String(),
@@ -356,6 +373,11 @@ class DatabaseService {
       shoeSize: map['shoeSize'] as String? ?? '',
       shoeSizeGender: map['shoeSizeGender'] as String? ?? 'Male',
       shoeWidth: map['shoeWidth'] as String? ?? 'M',
+      sameSizeForBothFeet: (map['sameSizeForBothFeet'] as int? ?? 1) == 1,
+      shoeSizeLeft: map['shoeSizeLeft'] as String? ?? '',
+      shoeWidthLeft: map['shoeWidthLeft'] as String? ?? 'M',
+      shoeSizeRight: map['shoeSizeRight'] as String? ?? '',
+      shoeWidthRight: map['shoeWidthRight'] as String? ?? 'M',
       createdAt: DateTime.parse(map['createdAt'] as String),
       dateOfService: map['dateOfService'] != null
           ? DateTime.parse(map['dateOfService'] as String) : null,

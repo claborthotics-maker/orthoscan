@@ -70,9 +70,16 @@ class WorkOrder {
   String heelCup;
 
   // ─── Shoe Size ────────────────────────────────────────────────────────────
+  // Shared fields (used when sameSizeForBothFeet = true)
   String shoeSize;
   String shoeSizeGender;
   String shoeWidth;
+  // Per-foot fields (used when sameSizeForBothFeet = false)
+  bool sameSizeForBothFeet;
+  String shoeSizeLeft;
+  String shoeWidthLeft;
+  String shoeSizeRight;
+  String shoeWidthRight;
 
   // Dates
   DateTime createdAt;
@@ -128,6 +135,11 @@ class WorkOrder {
     this.shoeSize = '',
     this.shoeSizeGender = 'Male',
     this.shoeWidth = 'M',
+    this.sameSizeForBothFeet = true,
+    this.shoeSizeLeft = '',
+    this.shoeWidthLeft = 'M',
+    this.shoeSizeRight = '',
+    this.shoeWidthRight = 'M',
     required this.createdAt,
     this.dateOfService,
     this.expectedDeliveryDate,
@@ -222,6 +234,11 @@ class WorkOrder {
       shoeSize: shoeSize,
       shoeSizeGender: shoeSizeGender,
       shoeWidth: shoeWidth,
+      sameSizeForBothFeet: sameSizeForBothFeet,
+      shoeSizeLeft: shoeSizeLeft,
+      shoeWidthLeft: shoeWidthLeft,
+      shoeSizeRight: shoeSizeRight,
+      shoeWidthRight: shoeWidthRight,
       createdAt: DateTime.now(),
       dateOfService: dateOfService,
       expectedDeliveryDate: expectedDeliveryDate,
@@ -275,6 +292,11 @@ class WorkOrder {
       'shoeSize': shoeSize,
       'shoeSizeGender': shoeSizeGender,
       'shoeWidth': shoeWidth,
+      'sameSizeForBothFeet': sameSizeForBothFeet ? 1 : 0,
+      'shoeSizeLeft': shoeSizeLeft,
+      'shoeWidthLeft': shoeWidthLeft,
+      'shoeSizeRight': shoeSizeRight,
+      'shoeWidthRight': shoeWidthRight,
       'createdAt': createdAt.toIso8601String(),
       'dateOfService': dateOfService?.toIso8601String(),
       'expectedDeliveryDate': expectedDeliveryDate?.toIso8601String(),
@@ -290,8 +312,7 @@ class WorkOrder {
       patientId: map['patientId'],
       name: map['name'] ?? '',
       templateType: map['templateType'] != null
-          ? TemplateType.values[map['templateType']]
-          : null,
+          ? TemplateType.values[map['templateType']] : null,
       status: WorkOrderStatus.values[map['status'] ?? 0],
       footSide: FootSide.values[map['footSide'] ?? 2],
       productType: map['productType'] ?? '',
@@ -332,19 +353,20 @@ class WorkOrder {
       shoeSize: map['shoeSize'] as String? ?? '',
       shoeSizeGender: map['shoeSizeGender'] as String? ?? 'Male',
       shoeWidth: map['shoeWidth'] as String? ?? 'M',
+      sameSizeForBothFeet: (map['sameSizeForBothFeet'] as int? ?? 1) == 1,
+      shoeSizeLeft: map['shoeSizeLeft'] as String? ?? '',
+      shoeWidthLeft: map['shoeWidthLeft'] as String? ?? 'M',
+      shoeSizeRight: map['shoeSizeRight'] as String? ?? '',
+      shoeWidthRight: map['shoeWidthRight'] as String? ?? 'M',
       createdAt: DateTime.parse(map['createdAt']),
       dateOfService: map['dateOfService'] != null
-          ? DateTime.parse(map['dateOfService'])
-          : null,
+          ? DateTime.parse(map['dateOfService']) : null,
       expectedDeliveryDate: map['expectedDeliveryDate'] != null
-          ? DateTime.parse(map['expectedDeliveryDate'])
-          : null,
+          ? DateTime.parse(map['expectedDeliveryDate']) : null,
       submittedAt: map['submittedAt'] != null
-          ? DateTime.parse(map['submittedAt'])
-          : null,
+          ? DateTime.parse(map['submittedAt']) : null,
       completedAt: map['completedAt'] != null
-          ? DateTime.parse(map['completedAt'])
-          : null,
+          ? DateTime.parse(map['completedAt']) : null,
       scanFiles: List<String>.from(map['scanFiles'] ?? []),
     );
   }
