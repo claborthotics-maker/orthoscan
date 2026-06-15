@@ -39,24 +39,24 @@ class WorkOrder {
   int toeFillerCountLeft;
   int toeFillerCountRight;
 
-  // ─── Rebound Specs ───────────────────────────────────────────
+  // ─── Rebound Specs ───────────────────────────────────────────────────────
   String baseThickness;
   String baseGrind;
   String topCoverType;
   String topCoverThickness;
   String topCoverColor;
 
-  // ─── Poly Shell Specs ─────────────────────────────────────────
+  // ─── Poly Shell Specs ─────────────────────────────────────────────────────
   double? patientWeight;
   String shellThickness;
   String baseShellLength;
   String midLayerType;
   String midLayerThickness;
 
-  // ─── Arch Modification ───────────────────────────────────────
+  // ─── Arch Modification ────────────────────────────────────────────────────
   int archModification;
 
-  // ─── Accommodations ──────────────────────────────────────────
+  // ─── Accommodations ───────────────────────────────────────────────────────
   String heelPost;
   String forefootPost;
   String heelWedge;
@@ -68,6 +68,11 @@ class WorkOrder {
   String heelLiftFoot;
   String heelLiftHeight;
   String heelCup;
+
+  // ─── Shoe Size ────────────────────────────────────────────────────────────
+  String shoeSize;
+  String shoeSizeGender;
+  String shoeWidth;
 
   // Dates
   DateTime createdAt;
@@ -120,6 +125,9 @@ class WorkOrder {
     this.heelLiftFoot = 'None',
     this.heelLiftHeight = '',
     this.heelCup = 'Standard',
+    this.shoeSize = '',
+    this.shoeSizeGender = 'Male',
+    this.shoeWidth = 'M',
     required this.createdAt,
     this.dateOfService,
     this.expectedDeliveryDate,
@@ -133,7 +141,6 @@ class WorkOrder {
   String get displayName =>
       name.isNotEmpty ? name : (productType.isNotEmpty ? productType : 'Work Order');
 
-  // Auto-suggest shell thickness based on weight
   String get suggestedShellThickness {
     if (patientWeight == null) return '1/8"';
     if (patientWeight! <= 170) return '1/8"';
@@ -144,27 +151,19 @@ class WorkOrder {
 
   String get statusLabel {
     switch (status) {
-      case WorkOrderStatus.draft:
-        return 'Draft';
-      case WorkOrderStatus.submitted:
-        return 'Submitted';
-      case WorkOrderStatus.inProgress:
-        return 'In Progress';
-      case WorkOrderStatus.completed:
-        return 'Completed';
-      case WorkOrderStatus.shipped:
-        return 'Shipped';
+      case WorkOrderStatus.draft: return 'Draft';
+      case WorkOrderStatus.submitted: return 'Submitted';
+      case WorkOrderStatus.inProgress: return 'In Progress';
+      case WorkOrderStatus.completed: return 'Completed';
+      case WorkOrderStatus.shipped: return 'Shipped';
     }
   }
 
   String get footSideLabel {
     switch (footSide) {
-      case FootSide.left:
-        return 'Left';
-      case FootSide.right:
-        return 'Right';
-      case FootSide.bilateral:
-        return 'Bilateral';
+      case FootSide.left: return 'Left';
+      case FootSide.right: return 'Right';
+      case FootSide.bilateral: return 'Bilateral';
     }
   }
 
@@ -172,9 +171,8 @@ class WorkOrder {
     if (quantityLeft == 0 && quantityRight == 0) return 'None';
     if (quantityLeft == 0) return '$quantityRight Right';
     if (quantityRight == 0) return '$quantityLeft Left';
-    if (quantityLeft == quantityRight) {
+    if (quantityLeft == quantityRight)
       return '$quantityLeft Pair${quantityLeft > 1 ? 's' : ''}';
-    }
     return '$quantityLeft L / $quantityRight R';
   }
 
@@ -221,6 +219,9 @@ class WorkOrder {
       heelLiftFoot: heelLiftFoot,
       heelLiftHeight: heelLiftHeight,
       heelCup: heelCup,
+      shoeSize: shoeSize,
+      shoeSizeGender: shoeSizeGender,
+      shoeWidth: shoeWidth,
       createdAt: DateTime.now(),
       dateOfService: dateOfService,
       expectedDeliveryDate: expectedDeliveryDate,
@@ -271,6 +272,9 @@ class WorkOrder {
       'heelLiftFoot': heelLiftFoot,
       'heelLiftHeight': heelLiftHeight,
       'heelCup': heelCup,
+      'shoeSize': shoeSize,
+      'shoeSizeGender': shoeSizeGender,
+      'shoeWidth': shoeWidth,
       'createdAt': createdAt.toIso8601String(),
       'dateOfService': dateOfService?.toIso8601String(),
       'expectedDeliveryDate': expectedDeliveryDate?.toIso8601String(),
@@ -325,6 +329,9 @@ class WorkOrder {
       heelLiftFoot: map['heelLiftFoot'] ?? 'None',
       heelLiftHeight: map['heelLiftHeight'] ?? '',
       heelCup: map['heelCup'] ?? 'Standard',
+      shoeSize: map['shoeSize'] as String? ?? '',
+      shoeSizeGender: map['shoeSizeGender'] as String? ?? 'Male',
+      shoeWidth: map['shoeWidth'] as String? ?? 'M',
       createdAt: DateTime.parse(map['createdAt']),
       dateOfService: map['dateOfService'] != null
           ? DateTime.parse(map['dateOfService'])

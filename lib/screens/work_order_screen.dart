@@ -30,6 +30,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   final _instructionsController = TextEditingController();
   final _weightController = TextEditingController();
   final _heelLiftHeightController = TextEditingController();
+  final _customShoeWidthController = TextEditingController();
 
   late WorkOrderStatus _status;
   late FootSide _footSide;
@@ -40,23 +41,19 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   late int _toeFillerCountLeft;
   late int _toeFillerCountRight;
 
-  // Rebound specs
   late String _baseThickness;
   late String _baseGrind;
   late String _topCoverType;
   late String _topCoverThickness;
   late String _topCoverColor;
 
-  // Poly specs
   late String _shellThickness;
   late String _baseShellLength;
   late String _midLayerType;
   late String _midLayerThickness;
 
-  // Arch mod
   late int _archModification;
 
-  // Accommodations
   late String _heelPost;
   late String _forefootPost;
   late String _heelWedge;
@@ -68,10 +65,34 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   late String _heelLiftFoot;
   late String _heelCup;
 
+  late String _shoeSize;
+  late String _shoeSizeGender;
+  late String _shoeWidth;
+
   DateTime? _dateOfService;
   DateTime? _expectedDeliveryDate;
   Clinician? _selectedClinician;
-bool _isDrawMode = false;
+  bool _isDrawMode = false;
+
+  // Shoe size lists
+  static const _maleSizes = [
+    '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5',
+    '10', '10.5', '11', '11.5', '12', '12.5', '13',
+    '13.5', '14', '15', '16', '17',
+  ];
+  static const _femaleSizes = [
+    '4', '4.5', '5', '5.5', '6', '6.5', '7', '7.5',
+    '8', '8.5', '9', '9.5', '10', '10.5', '11',
+    '11.5', '12', '13', '14', '15',
+  ];
+
+  List<String> _shoeSizes(String gender) =>
+      gender == 'Female' ? _femaleSizes : _maleSizes;
+
+  String get _shoeSizeDropdownValue {
+    final sizes = _shoeSizes(_shoeSizeGender);
+    return sizes.contains(_shoeSize) ? _shoeSize : sizes.first;
+  }
 
   bool get _isPolyShell =>
       widget.workOrder.templateType == TemplateType.polyShell;
@@ -79,7 +100,6 @@ bool _isDrawMode = false;
       widget.workOrder.templateType == TemplateType.rebound;
   bool get _isPartialFoot =>
       widget.workOrder.templateType == TemplateType.partialFoot;
-
   bool get _showLeftFoot =>
       _footSide == FootSide.left || _footSide == FootSide.bilateral;
   bool get _showRightFoot =>
@@ -121,6 +141,15 @@ bool _isDrawMode = false;
     _metBarSize = wo.metBarSize;
     _heelLiftFoot = wo.heelLiftFoot;
     _heelCup = wo.heelCup;
+    _shoeSizeGender = wo.shoeSizeGender.isEmpty ? 'Male' : wo.shoeSizeGender;
+    final sizes = _shoeSizes(_shoeSizeGender);
+    _shoeSize = sizes.contains(wo.shoeSize) ? wo.shoeSize : sizes.first;
+    _shoeWidth = wo.shoeWidth.isEmpty ? 'M' : wo.shoeWidth;
+    if (_shoeWidth != 'M' && _shoeWidth != 'L' &&
+        _shoeWidth != 'XL') {
+      _customShoeWidthController.text = _shoeWidth;
+      _shoeWidth = 'Custom';
+    }
     _dateOfService = wo.dateOfService;
     _expectedDeliveryDate = wo.expectedDeliveryDate;
 
@@ -142,6 +171,7 @@ bool _isDrawMode = false;
     _instructionsController.dispose();
     _weightController.dispose();
     _heelLiftHeightController.dispose();
+    _customShoeWidthController.dispose();
     super.dispose();
   }
 
@@ -149,9 +179,8 @@ bool _isDrawMode = false;
     if (_quantityLeft == 0 && _quantityRight == 0) return 'None';
     if (_quantityLeft == 0) return '$_quantityRight Right';
     if (_quantityRight == 0) return '$_quantityLeft Left';
-    if (_quantityLeft == _quantityRight) {
+    if (_quantityLeft == _quantityRight)
       return '$_quantityLeft Pair${_quantityLeft > 1 ? 's' : ''}';
-    }
     return '$_quantityLeft L / $_quantityRight R';
   }
 
@@ -200,6 +229,11 @@ bool _isDrawMode = false;
     wo.heelLiftFoot = _heelLiftFoot;
     wo.heelLiftHeight = _heelLiftHeightController.text.trim();
     wo.heelCup = _heelCup;
+    wo.shoeSize = _shoeSize;
+    wo.shoeSizeGender = _shoeSizeGender;
+    wo.shoeWidth = _shoeWidth == 'Custom'
+        ? _customShoeWidthController.text.trim()
+        : _shoeWidth;
     wo.dateOfService = _dateOfService;
     wo.expectedDeliveryDate = _expectedDeliveryDate;
 
@@ -213,8 +247,7 @@ bool _isDrawMode = false;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Work order saved')),
     );
-   int count = 0;
-Navigator.pop(context);
+    Navigator.pop(context);
   }
 
   void _submit() {
@@ -275,42 +308,40 @@ Navigator.pop(context);
         ],
       ),
       body: SingleChildScrollView(
-  physics: _isDrawMode
-      ? const NeverScrollableScrollPhysics()
-      : const ClampingScrollPhysics(),
-  padding: const EdgeInsets.all(16),
+        physics: _isDrawMode
+            ? const NeverScrollableScrollPhysics()
+            : const ClampingScrollPhysics(),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ─── Status ───────────────────────────────────────────────────
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _statusColor(_status).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _statusColor(_status)),
-                  ),
-                  child: Text(widget.workOrder.statusLabel,
-                      style: TextStyle(
-                          color: _statusColor(_status),
-                          fontWeight: FontWeight.bold)),
+            // ─── Status ───────────────────────────────────────────────
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: _statusColor(_status).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: _statusColor(_status)),
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  'Created ${_formatDate(widget.workOrder.createdAt)}',
-                  style: const TextStyle(
-                      color: Colors.white38, fontSize: 12),
-                ),
-              ],
-            ),
+                child: Text(widget.workOrder.statusLabel,
+                    style: TextStyle(
+                        color: _statusColor(_status),
+                        fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Created ${_formatDate(widget.workOrder.createdAt)}',
+                style: const TextStyle(
+                    color: Colors.white38, fontSize: 12),
+              ),
+            ]),
 
             const SizedBox(height: 16),
 
-            // ─── Name ─────────────────────────────────────────────────────
+            // ─── Name ─────────────────────────────────────────────────
             _buildSection(
               title: 'Work Order Name',
               icon: Icons.label,
@@ -320,7 +351,7 @@ Navigator.pop(context);
 
             const SizedBox(height: 16),
 
-            // ─── Patient ──────────────────────────────────────────────────
+            // ─── Patient ──────────────────────────────────────────────
             _buildSection(
               title: 'Patient',
               icon: Icons.person,
@@ -335,8 +366,7 @@ Navigator.pop(context);
                   if (widget.patient.patientId.isNotEmpty)
                     Text('ID: ${widget.patient.patientId}',
                         style: const TextStyle(
-                            color: Color(0xFF4FC3F7),
-                            fontSize: 13)),
+                            color: Color(0xFF4FC3F7), fontSize: 13)),
                   if (widget.patient.dateOfBirth.isNotEmpty)
                     Text('DOB: ${widget.patient.dateOfBirth}',
                         style: const TextStyle(
@@ -347,7 +377,7 @@ Navigator.pop(context);
 
             const SizedBox(height: 16),
 
-            // ─── Clinician ────────────────────────────────────────────────
+            // ─── Clinician ────────────────────────────────────────────
             _buildSection(
               title: 'Clinician',
               icon: Icons.medical_services,
@@ -361,8 +391,8 @@ Navigator.pop(context);
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                                color: Colors.white24)),
+                            borderSide:
+                                BorderSide(color: Colors.white24)),
                         focusedBorder: OutlineInputBorder(
                             borderSide: BorderSide(
                                 color: Color(0xFF4FC3F7))),
@@ -381,7 +411,7 @@ Navigator.pop(context);
 
             const SizedBox(height: 16),
 
-            // ─── Dates ────────────────────────────────────────────────────
+            // ─── Dates ────────────────────────────────────────────────
             _buildSection(
               title: 'Dates',
               icon: Icons.calendar_today,
@@ -400,8 +430,83 @@ Navigator.pop(context);
               ]),
             ),
 
+            const SizedBox(height: 16),
 
-            // ─── Quantity ─────────────────────────────────────────────────
+            // ─── Shoe Size ────────────────────────────────────────────
+            _buildSection(
+              title: 'Shoe Size',
+              icon: Icons.straighten,
+              child: Column(children: [
+                OptionRow(
+                  label: 'Gender',
+                  options: const ['Male', 'Female'],
+                  selected: _shoeSizeGender,
+                  onChanged: (v) => setState(() {
+                    _shoeSizeGender = v;
+                    _shoeSize = _shoeSizes(v).first;
+                  }),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _shoeSizeDropdownValue,
+                  dropdownColor: const Color(0xFF16213E),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Shoe Size',
+                    labelStyle: TextStyle(color: Colors.white54),
+                    enabledBorder: OutlineInputBorder(
+                        borderSide:
+                            BorderSide(color: Colors.white24)),
+                    focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Color(0xFF4FC3F7))),
+                  ),
+                  items: _shoeSizes(_shoeSizeGender)
+                      .map((s) => DropdownMenuItem(
+                            value: s,
+                            child: Text(s,
+                                style: const TextStyle(
+                                    color: Colors.white)),
+                          ))
+                      .toList(),
+                  onChanged: (v) =>
+                      setState(() => _shoeSize = v ?? _shoeSize),
+                ),
+                const SizedBox(height: 12),
+                OptionRow(
+                  label: 'Width',
+                  options: const ['M', 'L', 'XL', 'Custom'],
+                  selected: _shoeWidth,
+                  onChanged: (v) => setState(() {
+                    _shoeWidth = v;
+                    if (v != 'Custom')
+                      _customShoeWidthController.clear();
+                  }),
+                ),
+                if (_shoeWidth == 'Custom') ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _customShoeWidthController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Custom Width',
+                      labelStyle:
+                          TextStyle(color: Colors.white54),
+                      enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                              color: Colors.white24)),
+                      focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                              color: Color(0xFF4FC3F7))),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ─── Quantity ─────────────────────────────────────────────
             _buildSection(
               title: 'Quantity',
               icon: Icons.numbers,
@@ -413,8 +518,8 @@ Navigator.pop(context);
                             label: 'Left',
                             value: _quantityLeft,
                             color: Colors.blue,
-                            onChanged: (v) => setState(
-                                () => _quantityLeft = v))),
+                            onChanged: (v) =>
+                                setState(() => _quantityLeft = v))),
                   if (_showLeftFoot && _showRightFoot)
                     const SizedBox(width: 16),
                   if (_showRightFoot)
@@ -423,8 +528,8 @@ Navigator.pop(context);
                             label: 'Right',
                             value: _quantityRight,
                             color: Colors.orange,
-                            onChanged: (v) => setState(
-                                () => _quantityRight = v))),
+                            onChanged: (v) =>
+                                setState(() => _quantityRight = v))),
                 ]),
                 const SizedBox(height: 12),
                 Container(
@@ -438,8 +543,7 @@ Navigator.pop(context);
                         MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Total',
-                          style:
-                              TextStyle(color: Colors.white54)),
+                          style: TextStyle(color: Colors.white54)),
                       Text(_quantityLabel,
                           style: const TextStyle(
                               color: Colors.white,
@@ -452,7 +556,7 @@ Navigator.pop(context);
 
             const SizedBox(height: 16),
 
-            // ─── Partial Foot (not for Poly) ──────────────────────────────
+            // ─── Partial Foot ─────────────────────────────────────────
             if (!_isPolyShell && (_showLeftFoot || _showRightFoot))
               _buildSection(
                 title: 'Partial Foot',
@@ -465,8 +569,8 @@ Navigator.pop(context);
                       toeCount: _toeFillerCountLeft,
                       onChanged: (v) =>
                           setState(() => _isPartialFootLeft = v),
-                      onToeCountChanged: (v) => setState(
-                          () => _toeFillerCountLeft = v),
+                      onToeCountChanged: (v) =>
+                          setState(() => _toeFillerCountLeft = v),
                     ),
                   if (_showLeftFoot && _showRightFoot)
                     const SizedBox(height: 8),
@@ -477,22 +581,20 @@ Navigator.pop(context);
                       toeCount: _toeFillerCountRight,
                       onChanged: (v) =>
                           setState(() => _isPartialFootRight = v),
-                      onToeCountChanged: (v) => setState(
-                          () => _toeFillerCountRight = v),
+                      onToeCountChanged: (v) =>
+                          setState(() => _toeFillerCountRight = v),
                     ),
                 ]),
               ),
 
             const SizedBox(height: 16),
 
-            // ─── Rebound Product Specs ────────────────────────────────────
+            // ─── Rebound Product Specs ────────────────────────────────
             if (_isRebound || _isPartialFoot)
               _buildSection(
                 title: 'Product Specs',
                 icon: Icons.layers,
                 child: Column(children: [
-
-                  // Base Thickness
                   OptionRow(
                     label: 'Base Thickness',
                     options: const ['3/16"', '1/4"'],
@@ -500,10 +602,7 @@ Navigator.pop(context);
                     onChanged: (v) =>
                         setState(() => _baseThickness = v),
                   ),
-
                   const SizedBox(height: 12),
-
-                  // Base Grind
                   OptionRow(
                     label: 'Base Grind',
                     options: const [
@@ -513,50 +612,40 @@ Navigator.pop(context);
                     onChanged: (v) =>
                         setState(() => _baseGrind = v),
                   ),
-
                   const SizedBox(height: 12),
-
-                  // Top Cover Type
                   OptionRow(
-  label: 'Top Cover',
-  options: const [
-    'Microcel Puff', 'P-Cell'
-  ],
+                    label: 'Top Cover',
+                    options: const ['Microcel Puff', 'P-Cell'],
                     selected: _topCoverType,
                     onChanged: (v) {
-  setState(() {
-    _topCoverType = v;
-    if (v == 'P-Cell') {
-      _topCoverThickness = '1/8"';
-      _topCoverColor = 'Solid Black';
-    } else {
-      _topCoverThickness = '1/16"';
-      _topCoverColor = 'Solid Blue';
-    }
-  });
-},
+                      setState(() {
+                        _topCoverType = v;
+                        if (v == 'P-Cell') {
+                          _topCoverThickness = '1/8"';
+                          _topCoverColor = 'Solid Black';
+                        } else {
+                          _topCoverThickness = '1/16"';
+                          _topCoverColor = 'Solid Blue';
+                        }
+                      });
+                    },
                   ),
-
-                  // Top Cover Thickness (only for Microcel Puff)
                   if (_topCoverType == 'Microcel Puff') ...[
                     const SizedBox(height: 12),
                     OptionRow(
                       label: 'Cover Thickness',
                       options: const ['1/16"', '1/8"'],
                       selected: _topCoverThickness,
-                      onChanged: (v) => setState(
-                          () => _topCoverThickness = v),
+                      onChanged: (v) =>
+                          setState(() => _topCoverThickness = v),
                     ),
                     const SizedBox(height: 12),
                     OptionRow(
                       label: 'Cover Color',
                       options: const [
-                        'Solid Blue',
-                        'Solid Black',
-                        'Swirl Blue',
-                        'Swirl Black',
-                        'Swirl Purple',
-                        'Swirl Pink',
+                        'Solid Blue', 'Solid Black',
+                        'Swirl Blue', 'Swirl Black',
+                        'Swirl Purple', 'Swirl Pink',
                       ],
                       selected: _topCoverColor,
                       onChanged: (v) =>
@@ -564,8 +653,6 @@ Navigator.pop(context);
                       wrap: true,
                     ),
                   ],
-
-                  // P-Cell info (read only)
                   if (_topCoverType == 'P-Cell') ...[
                     const SizedBox(height: 8),
                     Container(
@@ -588,14 +675,12 @@ Navigator.pop(context);
                 ]),
               ),
 
-            // ─── Poly Shell Product Specs ─────────────────────────────────
+            // ─── Poly Shell Product Specs ─────────────────────────────
             if (_isPolyShell) ...[
               _buildSection(
                 title: 'Product Specs',
                 icon: Icons.view_in_ar,
                 child: Column(children: [
-
-                  // Patient Weight
                   TextField(
                     controller: _weightController,
                     style: const TextStyle(color: Colors.white),
@@ -620,10 +705,7 @@ Navigator.pop(context);
                     ),
                     onChanged: _updateShellThicknessFromWeight,
                   ),
-
                   const SizedBox(height: 12),
-
-                  // Shell Thickness
                   OptionRow(
                     label: 'Shell Thickness',
                     options: const [
@@ -636,10 +718,7 @@ Navigator.pop(context);
                         ? 'Auto-suggested from weight'
                         : null,
                   ),
-
                   const SizedBox(height: 12),
-
-                  // Base Shell Length
                   OptionRow(
                     label: 'Base Shell Length',
                     options: const [
@@ -649,10 +728,7 @@ Navigator.pop(context);
                     onChanged: (v) =>
                         setState(() => _baseShellLength = v),
                   ),
-
                   const SizedBox(height: 12),
-
-                  // Mid Layer
                   OptionRow(
                     label: 'Mid Layer',
                     options: const [
@@ -662,36 +738,27 @@ Navigator.pop(context);
                     onChanged: (v) {
                       setState(() {
                         _midLayerType = v;
-                        if (v == 'None') {
-                          _midLayerThickness = 'None';
-                        } else {
-                          _midLayerThickness = '1/16"';
-                        }
+                        _midLayerThickness =
+                            v == 'None' ? 'None' : '1/16"';
                       });
                     },
                   ),
-
                   if (_midLayerType != 'None') ...[
                     const SizedBox(height: 12),
                     OptionRow(
                       label: 'Mid Layer Thickness',
                       options: const ['1/16"', '1/8"'],
                       selected: _midLayerThickness,
-                      onChanged: (v) => setState(
-                          () => _midLayerThickness = v),
+                      onChanged: (v) =>
+                          setState(() => _midLayerThickness = v),
                     ),
                   ],
-
                   const SizedBox(height: 12),
-
-                  // Top Cover
                   OptionRow(
                     label: 'Top Cover',
                     options: const [
-                      'None',
-                      'Microcel Puff',
-                      'Neoprene w/Nylon',
-                      'Microfiber Suede',
+                      'None', 'Microcel Puff',
+                      'Neoprene w/Nylon', 'Microfiber Suede',
                       'Vinyl',
                     ],
                     selected: _topCoverType,
@@ -712,27 +779,22 @@ Navigator.pop(context);
                     },
                     wrap: true,
                   ),
-
-                  // Microcel Puff options
                   if (_topCoverType == 'Microcel Puff') ...[
                     const SizedBox(height: 12),
                     OptionRow(
                       label: 'Cover Thickness',
                       options: const ['1/16"', '1/8"'],
                       selected: _topCoverThickness,
-                      onChanged: (v) => setState(
-                          () => _topCoverThickness = v),
+                      onChanged: (v) =>
+                          setState(() => _topCoverThickness = v),
                     ),
                     const SizedBox(height: 12),
                     OptionRow(
                       label: 'Cover Color',
                       options: const [
-                        'Solid Blue',
-                        'Solid Black',
-                        'Swirl Blue',
-                        'Swirl Black',
-                        'Swirl Purple',
-                        'Swirl Pink',
+                        'Solid Blue', 'Solid Black',
+                        'Swirl Blue', 'Swirl Black',
+                        'Swirl Purple', 'Swirl Pink',
                       ],
                       selected: _topCoverColor,
                       onChanged: (v) =>
@@ -740,16 +802,14 @@ Navigator.pop(context);
                       wrap: true,
                     ),
                   ],
-
-                  // Neoprene thickness
                   if (_topCoverType == 'Neoprene w/Nylon') ...[
                     const SizedBox(height: 12),
                     OptionRow(
                       label: 'Cover Thickness',
                       options: const ['1/16"', '1/8"'],
                       selected: _topCoverThickness,
-                      onChanged: (v) => setState(
-                          () => _topCoverThickness = v),
+                      onChanged: (v) =>
+                          setState(() => _topCoverThickness = v),
                     ),
                   ],
                 ]),
@@ -758,19 +818,17 @@ Navigator.pop(context);
 
             const SizedBox(height: 16),
 
-            // ─── Arch Modification ────────────────────────────────────────
+            // ─── Arch Modification ────────────────────────────────────
             _buildSection(
               title: 'Arch Modification',
               icon: Icons.architecture,
               child: Column(children: [
                 Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Decrease',
                         style: TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12)),
+                            color: Colors.white54, fontSize: 12)),
                     Text(
                       _archModification == 0
                           ? 'As Cast (0)'
@@ -783,26 +841,21 @@ Navigator.pop(context);
                     ),
                     const Text('Increase',
                         style: TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12)),
+                            color: Colors.white54, fontSize: 12)),
                   ],
                 ),
                 Slider(
                   value: _archModification.toDouble(),
-                  min: -3,
-                  max: 3,
-                  divisions: 6,
+                  min: -3, max: 3, divisions: 6,
                   activeColor: const Color(0xFF4FC3F7),
                   inactiveColor: Colors.white24,
                   label: _archModification == 0
-                      ? 'As Cast'
-                      : '$_archModification',
-                  onChanged: (v) => setState(
-                      () => _archModification = v.round()),
+                      ? 'As Cast' : '$_archModification',
+                  onChanged: (v) =>
+                      setState(() => _archModification = v.round()),
                 ),
                 Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: List.generate(7, (i) {
                     final val = i - 3;
                     return Text('$val',
@@ -821,27 +874,20 @@ Navigator.pop(context);
 
             const SizedBox(height: 16),
 
-            // ─── Accommodations ───────────────────────────────────────────
+            // ─── Accommodations ───────────────────────────────────────
             _buildSection(
               title: 'Accommodations',
               icon: Icons.tune,
               child: Column(children: [
-
-                // Heel Post (Poly only)
                 if (_isPolyShell) ...[
                   OptionRow(
                     label: 'Heel Post',
-                    options: const [
-                      'None', 'Intrinsic', 'Extrinsic'
-                    ],
+                    options: const ['None', 'Intrinsic', 'Extrinsic'],
                     selected: _heelPost,
-                    onChanged: (v) =>
-                        setState(() => _heelPost = v),
+                    onChanged: (v) => setState(() => _heelPost = v),
                   ),
                   const SizedBox(height: 12),
                 ],
-
-                // Forefoot Post
                 OptionRow(
                   label: 'Forefoot Post',
                   options: const ['None', 'Lateral', 'Medial'],
@@ -849,21 +895,14 @@ Navigator.pop(context);
                   onChanged: (v) =>
                       setState(() => _forefootPost = v),
                 ),
-
                 const SizedBox(height: 12),
-
-                // Heel Wedge
                 OptionRow(
                   label: 'Heel Wedge',
                   options: const ['None', 'Lateral', 'Medial'],
                   selected: _heelWedge,
-                  onChanged: (v) =>
-                      setState(() => _heelWedge = v),
+                  onChanged: (v) => setState(() => _heelWedge = v),
                 ),
-
                 const SizedBox(height: 12),
-
-                // Forefoot Wedge
                 OptionRow(
                   label: 'Forefoot Wedge',
                   options: const ['None', 'Lateral', 'Medial'],
@@ -871,10 +910,7 @@ Navigator.pop(context);
                   onChanged: (v) =>
                       setState(() => _forefootWedge = v),
                 ),
-
                 const SizedBox(height: 12),
-
-                // Met Pad
                 FootAccommodationRow(
                   label: 'Met Pad',
                   footValue: _metPadFoot,
@@ -884,10 +920,7 @@ Navigator.pop(context);
                   onSizeChanged: (v) =>
                       setState(() => _metPadSize = v),
                 ),
-
                 const SizedBox(height: 12),
-
-                // Met Bar
                 FootAccommodationRow(
                   label: 'Met Bar',
                   footValue: _metBarFoot,
@@ -897,46 +930,38 @@ Navigator.pop(context);
                   onSizeChanged: (v) =>
                       setState(() => _metBarSize = v),
                 ),
-
                 const SizedBox(height: 12),
-
-                // Heel Lift
                 HeelLiftRow(
                   footValue: _heelLiftFoot,
                   heightController: _heelLiftHeightController,
                   onFootChanged: (v) =>
                       setState(() => _heelLiftFoot = v),
                 ),
-
                 const SizedBox(height: 12),
-
-                // Heel Cup
                 OptionRow(
                   label: 'Heel Cup',
                   options: const ['None', 'Standard', 'Deep'],
                   selected: _heelCup,
-                  onChanged: (v) =>
-                      setState(() => _heelCup = v),
+                  onChanged: (v) => setState(() => _heelCup = v),
                 ),
               ]),
             ),
 
             const SizedBox(height: 16),
-const SizedBox(height: 16),
 
-// ─── Foot Diagram ─────────────────────────────────────────────────────────────
-_buildSection(
-  title: 'Foot Diagram',
-  icon: Icons.draw,
-  child: FootDiagramWidget(
-  onDrawModeChanged: (isDrawing) {
-    setState(() => _isDrawMode = isDrawing);
-  },
-),
-),
+            // ─── Foot Diagram ─────────────────────────────────────────
+            _buildSection(
+              title: 'Foot Diagram',
+              icon: Icons.draw,
+              child: FootDiagramWidget(
+                onDrawModeChanged: (isDrawing) =>
+                    setState(() => _isDrawMode = isDrawing),
+              ),
+            ),
 
+            const SizedBox(height: 16),
 
-            // ─── Special Instructions ─────────────────────────────────────
+            // ─── Special Instructions ─────────────────────────────────
             _buildSection(
               title: 'Special Instructions',
               icon: Icons.note_alt,
@@ -949,25 +974,23 @@ _buildSection(
                       'Enter any special instructions for the lab...',
                   hintStyle: TextStyle(color: Colors.white24),
                   enabledBorder: OutlineInputBorder(
-                      borderSide:
-                          BorderSide(color: Colors.white24)),
+                      borderSide: BorderSide(color: Colors.white24)),
                   focusedBorder: OutlineInputBorder(
-                      borderSide: BorderSide(
-                          color: Color(0xFF4FC3F7))),
+                      borderSide:
+                          BorderSide(color: Color(0xFF4FC3F7))),
                 ),
               ),
             ),
 
             const SizedBox(height: 24),
 
-            // ─── Submit ───────────────────────────────────────────────────
+            // ─── Submit ───────────────────────────────────────────────
             if (_status == WorkOrderStatus.draft)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _submit,
-                  icon: const Icon(Icons.send,
-                      color: Colors.white),
+                  icon: const Icon(Icons.send, color: Colors.white),
                   label: const Text('Submit to Lab',
                       style: TextStyle(
                           color: Colors.white,
@@ -1039,17 +1062,11 @@ _buildSection(
 
   Color _statusColor(WorkOrderStatus status) {
     switch (status) {
-      case WorkOrderStatus.draft:
-        return Colors.orange;
-      case WorkOrderStatus.submitted:
-        return Colors.blue;
-      case WorkOrderStatus.inProgress:
-        return Colors.purple;
-      case WorkOrderStatus.completed:
-        return Colors.green;
-      case WorkOrderStatus.shipped:
-        return const Color(0xFF4FC3F7);
+      case WorkOrderStatus.draft: return Colors.orange;
+      case WorkOrderStatus.submitted: return Colors.blue;
+      case WorkOrderStatus.inProgress: return Colors.purple;
+      case WorkOrderStatus.completed: return Colors.green;
+      case WorkOrderStatus.shipped: return const Color(0xFF4FC3F7);
     }
   }
 }
-
