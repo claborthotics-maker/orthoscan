@@ -112,7 +112,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   String _widthOption(String width) =>
-      (width == 'M' || width == 'L' || width == 'XL') ? width : 'Custom';
+      (width == 'M' || width == 'L' || width == 'XL') ? width : 'Cust.';
 
   bool get _isPolyShell => _orthoticType == TemplateType.polyShell;
   bool get _isRebound => _orthoticType == TemplateType.rebound;
@@ -167,11 +167,11 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     _shoeWidthLeft = wo.shoeWidthLeft.isEmpty ? 'M' : wo.shoeWidthLeft;
     _shoeSizeRight = _validSize(wo.shoeSizeRight, _shoeSizeGender);
     _shoeWidthRight = wo.shoeWidthRight.isEmpty ? 'M' : wo.shoeWidthRight;
-    if (_widthOption(_shoeWidth) == 'Custom')
+    if (_widthOption(_shoeWidth) == 'Cust.')
       _customShoeWidthController.text = _shoeWidth;
-    if (_widthOption(_shoeWidthLeft) == 'Custom')
+    if (_widthOption(_shoeWidthLeft) == 'Cust.')
       _customShoeWidthLeftController.text = _shoeWidthLeft;
-    if (_widthOption(_shoeWidthRight) == 'Custom')
+    if (_widthOption(_shoeWidthRight) == 'Cust.')
       _customShoeWidthRightController.text = _shoeWidthRight;
     _dateOfService = wo.dateOfService;
     _expectedDeliveryDate = wo.expectedDeliveryDate;
@@ -220,7 +220,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   String _resolveWidth(String widthOption, TextEditingController custom) {
-    if (widthOption == 'Custom') return custom.text.trim();
+    if (widthOption == 'Cust.') return custom.text.trim();
     return widthOption;
   }
 
@@ -491,14 +491,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         const SizedBox(height: 8),
         OptionRow(
           label: 'Width',
-          options: const ['M', 'L', 'XL', 'Custom'],
+          options: const ['M', 'L', 'XL', 'Cust.'],
           selected: _widthOption(widthOption),
           onChanged: (v) {
             onWidthChanged(v);
-            if (v != 'Custom') customWidthController.clear();
+            if (v != 'Cust.') customWidthController.clear();
           },
         ),
-        if (_widthOption(widthOption) == 'Custom') ...[
+        if (_widthOption(widthOption) == 'Cust.') ...[
           const SizedBox(height: 8),
           TextField(
             controller: customWidthController,
@@ -744,14 +744,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   const SizedBox(height: 12),
                   OptionRow(
                     label: 'Width',
-                    options: const ['M', 'L', 'XL', 'Custom'],
+                    options: const ['M', 'L', 'XL', 'Cust.'],
                     selected: _widthOption(_shoeWidth),
                     onChanged: (v) => setState(() {
                       _shoeWidth = v;
-                      if (v != 'Custom') _customShoeWidthController.clear();
+                      if (v != 'Cust.') _customShoeWidthController.clear();
                     }),
                   ),
-                  if (_widthOption(_shoeWidth) == 'Custom') ...[
+                  if (_widthOption(_shoeWidth) == 'Cust.') ...[
                     const SizedBox(height: 12),
                     TextField(
                       controller: _customShoeWidthController,
@@ -1373,3 +1373,4 @@ class _CollapsibleSection extends StatelessWidget {
     );
   }
 }
+
