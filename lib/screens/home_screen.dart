@@ -1,11 +1,13 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
+import '../models/work_order.dart';
 import '../models/clinician.dart';
 import '../models/clinic.dart';
 import '../utils/input_formatters.dart';
 import 'patient_screen.dart';
 import 'settings_screen.dart';
+import 'work_order_screen.dart';
 import '../services/database_service.dart';
 import '../services/clinician_service.dart';
 
@@ -18,10 +20,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final List<Patient> _patients = [];
+  final List<_WOWithPatient> _allWorkOrders = [];
   final _db = DatabaseService();
   int _selectedIndex = 0;
   String _searchQuery = '';
   bool _isSearching = false;
+  bool _woLoading = false;
   final _searchController = TextEditingController();
   final _clinicianService = ClinicianService();
 
@@ -37,6 +41,26 @@ class _HomeScreenState extends State<HomeScreen> {
       _patients.clear();
       _patients.addAll(patients);
     });
+  }
+
+  Future<void> _loadAllWorkOrders() async {
+    setState(() => _woLoading = true);
+    final wos = await _db.getAllWorkOrders();
+    final patients = await _db.getAllPatients();
+    final patientMap = {for (final p in patients) p.id: p};
+    setState(() {
+      _allWorkOrders.clear();
+      for (final wo in wos) {
+        final p = patientMap[wo.patientId];
+        if (p != null) _allWorkOrders.add(_WOWithPatient(wo, p));
+      }
+      _woLoading = false;
+    });
+  }
+
+  void _onTabChanged(int index) {
+    setState(() => _selectedIndex = index);
+    if (index == 1) _loadAllWorkOrders();
   }
 
   @override
@@ -111,8 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   _patients.removeWhere((p) => p.id == patient.id));
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                      content: Text('${patient.fullName} deleted')),
+                  SnackBar(content: Text('${patient.fullName} deleted')),
                 );
               }
             },
@@ -131,12 +154,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (clinicians.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content:
-                Text('No clinicians set up. Go to Settings first.')),
+            content: Text('No clinicians set up. Go to Settings first.')),
       );
       return;
     }
-
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF16213E),
@@ -173,8 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 const Text('Clinician',
-                    style: TextStyle(
-                        color: Colors.white54, fontSize: 13)),
+                    style: TextStyle(color: Colors.white54, fontSize: 13)),
                 const SizedBox(height: 8),
                 ...clinicians.map((c) => GestureDetector(
                       onTap: () =>
@@ -202,21 +222,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                   color: selectedClinician.id == c.id
                                       ? Colors.white
                                       : Colors.white54,
-                                  fontWeight:
-                                      selectedClinician.id == c.id
-                                          ? FontWeight.bold
-                                          : FontWeight.normal)),
+                                  fontWeight: selectedClinician.id == c.id
+                                      ? FontWeight.bold
+                                      : FontWeight.normal)),
                         ]),
                       ),
                     )),
                 const SizedBox(height: 16),
                 const Text('Clinic',
-                    style: TextStyle(
-                        color: Colors.white54, fontSize: 13)),
+                    style: TextStyle(color: Colors.white54, fontSize: 13)),
                 const SizedBox(height: 8),
                 if (clinics.isEmpty)
-                  const Text(
-                      'No clinics added for this clinician',
+                  const Text('No clinics added for this clinician',
                       style: TextStyle(color: Colors.white38))
                 else
                   ...clinics.map((c) {
@@ -226,8 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 _clinicianService.activeClinician?.id;
                     return GestureDetector(
                       onTap: () {
-                        _clinicianService.setActive(
-                            selectedClinician, c);
+                        _clinicianService.setActive(selectedClinician, c);
                         setState(() {});
                         Navigator.pop(context);
                       },
@@ -251,8 +267,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(c.name,
                                     style: TextStyle(
@@ -314,8 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF16213E),
         indicatorColor: const Color(0xFF0F3460),
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _selectedIndex = index),
+        onDestinationSelected: _onTabChanged,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.people_outline, color: Colors.white54),
@@ -340,6 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
           : null,
     );
   }
+
   Widget _buildPatientList() {
     return CustomScrollView(
       slivers: [
@@ -387,8 +402,7 @@ class _HomeScreenState extends State<HomeScreen> {
             else ...[
               IconButton(
                 icon: const Icon(Icons.search, color: Colors.white),
-                onPressed: () =>
-                    setState(() => _isSearching = true),
+                onPressed: () => setState(() => _isSearching = true),
               ),
               GestureDetector(
                 onTap: _showSessionSwitcher,
@@ -401,8 +415,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: const Color(0xFF0F3460),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                        color: const Color(0xFF4FC3F7)
-                            .withOpacity(0.4)),
+                        color: const Color(0xFF4FC3F7).withOpacity(0.4)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -439,9 +452,8 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Text(
-                '${_patients.length} patient${_patients.length == 1 ? '' : 's'}',
-                style: const TextStyle(
-                    color: Colors.white54, fontSize: 13),
+                '${_patients.length} patient${_patients.length == 1 ? "" : "s"}',
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
               ),
             ),
           ),
@@ -450,9 +462,8 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Text(
-                '${_filteredPatients.length} result${_filteredPatients.length == 1 ? '' : 's'}',
-                style: const TextStyle(
-                    color: Colors.white54, fontSize: 13),
+                '${_filteredPatients.length} result${_filteredPatients.length == 1 ? "" : "s"}',
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
               ),
             ),
           ),
@@ -463,17 +474,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    _isSearching
-                        ? Icons.search_off
-                        : Icons.people_outline,
+                    _isSearching ? Icons.search_off : Icons.people_outline,
                     size: 80,
                     color: Colors.white24,
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    _isSearching
-                        ? 'No patients found'
-                        : 'No patients yet',
+                    _isSearching ? 'No patients found' : 'No patients yet',
                     style: const TextStyle(
                         color: Colors.white54, fontSize: 18),
                   ),
@@ -500,8 +507,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) =>
-                              PatientScreen(patient: patient)),
+                          builder: (_) => PatientScreen(patient: patient)),
                     ).then((_) => setState(() {})),
                     onDelete: () => _confirmDeletePatient(patient),
                   );
@@ -524,8 +530,7 @@ class _HomeScreenState extends State<HomeScreen> {
           flexibleSpace: FlexibleSpaceBar(
             title: const Text('Work Orders',
                 style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold)),
+                    color: Colors.white, fontWeight: FontWeight.bold)),
             background: Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
@@ -538,36 +543,84 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           actions: [
             IconButton(
+              icon: const Icon(Icons.search, color: Colors.white),
+              onPressed: () {
+                showSearch(
+                  context: context,
+                  delegate: _WOSearchDelegate(_allWorkOrders, _db),
+                );
+              },
+            ),
+            IconButton(
               icon: const Icon(Icons.settings, color: Colors.white),
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                    builder: (_) => const SettingsScreen()),
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
               ),
             ),
           ],
         ),
-        SliverFillRemaining(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Icon(Icons.assignment_outlined,
-                    size: 80, color: Colors.white24),
-                SizedBox(height: 16),
-                Text('No work orders yet',
-                    style: TextStyle(
-                        color: Colors.white54, fontSize: 18)),
-                SizedBox(height: 8),
-                Text('Work orders appear here after scanning',
-                    style: TextStyle(color: Colors.white38)),
-              ],
+        if (_woLoading)
+          const SliverFillRemaining(
+            child: Center(
+                child: CircularProgressIndicator(
+                    color: Color(0xFF4FC3F7))),
+          )
+        else if (_allWorkOrders.isEmpty)
+          SliverFillRemaining(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.assignment_outlined,
+                      size: 80, color: Colors.white24),
+                  SizedBox(height: 16),
+                  Text('No work orders yet',
+                      style: TextStyle(color: Colors.white54, fontSize: 18)),
+                  SizedBox(height: 8),
+                  Text('Create a work order from a patient profile',
+                      style: TextStyle(color: Colors.white38)),
+                ],
+              ),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final item = _allWorkOrders[index];
+                  return _WorkOrderCard(
+                    wo: item.wo,
+                    patient: item.patient,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => WorkOrderScreen(
+                                workOrder: item.wo,
+                                patient: item.patient,
+                                onSave: (wo) async {
+                                  await _db.updateWorkOrder(wo);
+                                },
+                              )),
+                    ).then((_) => _loadAllWorkOrders()),
+                  );
+                },
+                childCount: _allWorkOrders.length,
+              ),
             ),
           ),
-        ),
       ],
     );
   }
+}
+
+// ─── WO With Patient ──────────────────────────────────────────────────────────
+class _WOWithPatient {
+  final WorkOrder wo;
+  final Patient patient;
+  _WOWithPatient(this.wo, this.patient);
 }
 
 // ─── Patient Card ─────────────────────────────────────────────────────────────
@@ -621,8 +674,7 @@ class _PatientCard extends StatelessWidget {
                       if (patient.patientId.isNotEmpty)
                         Text('ID: ${patient.patientId}',
                             style: const TextStyle(
-                                color: Color(0xFF4FC3F7),
-                                fontSize: 12)),
+                                color: Color(0xFF4FC3F7), fontSize: 12)),
                       Text(
                         patient.dateOfBirth.isEmpty
                             ? 'No DOB'
@@ -631,17 +683,14 @@ class _PatientCard extends StatelessWidget {
                             color: Colors.white54, fontSize: 13),
                       ),
                       if (patient.scanFiles.isNotEmpty)
-                        Text(
-                            '${patient.scanFiles.length} scan(s)',
+                        Text('${patient.scanFiles.length} scan(s)',
                             style: const TextStyle(
-                                color: Color(0xFF4FC3F7),
-                                fontSize: 13)),
+                                color: Color(0xFF4FC3F7), fontSize: 13)),
                     ],
                   ),
                 ),
                 PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert,
-                      color: Colors.white38),
+                  icon: const Icon(Icons.more_vert, color: Colors.white38),
                   color: const Color(0xFF16213E),
                   onSelected: (value) {
                     if (value == 'delete') onDelete();
@@ -650,8 +699,7 @@ class _PatientCard extends StatelessWidget {
                     const PopupMenuItem(
                       value: 'delete',
                       child: Row(children: [
-                        Icon(Icons.delete,
-                            color: Colors.red, size: 18),
+                        Icon(Icons.delete, color: Colors.red, size: 18),
                         SizedBox(width: 8),
                         Text('Delete Patient',
                             style: TextStyle(color: Colors.red)),
@@ -661,6 +709,104 @@ class _PatientCard extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Work Order Card ──────────────────────────────────────────────────────────
+class _WorkOrderCard extends StatelessWidget {
+  final WorkOrder wo;
+  final Patient patient;
+  final VoidCallback onTap;
+
+  const _WorkOrderCard({
+    required this.wo,
+    required this.patient,
+    required this.onTap,
+  });
+
+  Color _statusColor(WorkOrderStatus status) {
+    switch (status) {
+      case WorkOrderStatus.draft: return Colors.orange;
+      case WorkOrderStatus.submitted: return Colors.blue;
+      case WorkOrderStatus.inProgress: return Colors.purple;
+      case WorkOrderStatus.completed: return Colors.green;
+      case WorkOrderStatus.shipped: return const Color(0xFF4FC3F7);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: const Color(0xFF16213E),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _statusColor(wo.status).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: _statusColor(wo.status).withOpacity(0.4)),
+                ),
+                child: Icon(Icons.assignment,
+                    color: _statusColor(wo.status), size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(wo.displayName,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15)),
+                    const SizedBox(height: 2),
+                    Text(patient.fullName,
+                        style: const TextStyle(
+                            color: Color(0xFF4FC3F7), fontSize: 13)),
+                    Text(wo.quantityLabel,
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _statusColor(wo.status).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: _statusColor(wo.status).withOpacity(0.4)),
+                    ),
+                    child: Text(wo.statusLabel,
+                        style: TextStyle(
+                            color: _statusColor(wo.status), fontSize: 11)),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${wo.createdAt.month}/${wo.createdAt.day}/${wo.createdAt.year}',
+                    style: const TextStyle(
+                        color: Colors.white38, fontSize: 11),
+                  ),
+                ],
+              ),
+            ]),
           ),
         ),
       ),
@@ -708,8 +854,7 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
             const SizedBox(height: 12),
             _buildField('Last Name', _lastNameController),
             const SizedBox(height: 12),
-            _buildField('Patient ID', _patientIdController,
-                hint: 'Optional'),
+            _buildField('Patient ID', _patientIdController, hint: 'Optional'),
             const SizedBox(height: 12),
             _buildField('Date of Birth', _dobController,
                 hint: 'MM/DD/YYYY',
@@ -747,8 +892,7 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
           },
           style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF0F3460)),
-          child: const Text('Save',
-              style: TextStyle(color: Colors.white)),
+          child: const Text('Save', style: TextStyle(color: Colors.white)),
         ),
       ],
     );
@@ -775,6 +919,97 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
             borderSide: BorderSide(color: Colors.white24)),
         focusedBorder: const OutlineInputBorder(
             borderSide: BorderSide(color: Color(0xFF4FC3F7))),
+      ),
+    );
+  }
+}
+
+// ─── WO Search Delegate ───────────────────────────────────────────────────────
+class _WOSearchDelegate extends SearchDelegate<String> {
+  final List<_WOWithPatient> allItems;
+  final DatabaseService db;
+
+  _WOSearchDelegate(this.allItems, this.db);
+
+  @override
+  ThemeData appBarTheme(BuildContext context) {
+    return Theme.of(context).copyWith(
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFF16213E),
+        foregroundColor: Colors.white,
+      ),
+      inputDecorationTheme: const InputDecorationTheme(
+        hintStyle: TextStyle(color: Colors.white38),
+        border: InputBorder.none,
+      ),
+    );
+  }
+
+  @override
+  List<Widget> buildActions(BuildContext context) => [
+        IconButton(
+          icon: const Icon(Icons.clear, color: Colors.white),
+          onPressed: () => query = '',
+        ),
+      ];
+
+  @override
+  Widget buildLeading(BuildContext context) => IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        onPressed: () => close(context, ''),
+      );
+
+  @override
+  Widget buildResults(BuildContext context) => _buildList(context);
+
+  @override
+  Widget buildSuggestions(BuildContext context) => _buildList(context);
+
+  Widget _buildList(BuildContext context) {
+    final q = query.toLowerCase();
+    final filtered = q.isEmpty
+        ? allItems
+        : allItems.where((item) =>
+            item.patient.fullName.toLowerCase().contains(q) ||
+            item.wo.displayName.toLowerCase().contains(q) ||
+            item.wo.statusLabel.toLowerCase().contains(q)).toList();
+
+    if (filtered.isEmpty) {
+      return Container(
+        color: const Color(0xFF1A1A2E),
+        child: const Center(
+          child: Text('No work orders found',
+              style: TextStyle(color: Colors.white54)),
+        ),
+      );
+    }
+
+    return Container(
+      color: const Color(0xFF1A1A2E),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: filtered.length,
+        itemBuilder: (context, index) {
+          final item = filtered[index];
+          return _WorkOrderCard(
+            wo: item.wo,
+            patient: item.patient,
+            onTap: () {
+              close(context, '');
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => WorkOrderScreen(
+                          workOrder: item.wo,
+                          patient: item.patient,
+                          onSave: (wo) async {
+                            await db.updateWorkOrder(wo);
+                          },
+                        )),
+              );
+            },
+          );
+        },
       ),
     );
   }

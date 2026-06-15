@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
 import '../models/work_order.dart';
@@ -7,6 +7,7 @@ import '../models/clinician.dart';
 import '../services/clinician_service.dart';
 import 'work_order_widgets.dart';
 import 'foot_diagram_widget.dart';
+import 'work_order_confirmation_screen.dart';
 
 class WorkOrderScreen extends StatefulWidget {
   final WorkOrder workOrder;
@@ -36,6 +37,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
   late WorkOrderStatus _status;
   late FootSide _footSide;
+  late TemplateType? _orthoticType;
   late int _quantityLeft;
   late int _quantityRight;
   late bool _isPartialFootLeft;
@@ -67,7 +69,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   late String _heelLiftFoot;
   late String _heelCup;
 
-  // Shoe size
   late String _shoeSize;
   late String _shoeSizeGender;
   late String _shoeWidth;
@@ -104,12 +105,9 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   String _widthOption(String width) =>
       (width == 'M' || width == 'L' || width == 'XL') ? width : 'Custom';
 
-  bool get _isPolyShell =>
-      widget.workOrder.templateType == TemplateType.polyShell;
-  bool get _isRebound =>
-      widget.workOrder.templateType == TemplateType.rebound;
-  bool get _isPartialFoot =>
-      widget.workOrder.templateType == TemplateType.partialFoot;
+  bool get _isPolyShell => _orthoticType == TemplateType.polyShell;
+  bool get _isRebound => _orthoticType == TemplateType.rebound;
+  bool get _isPartialFoot => _orthoticType == TemplateType.partialFoot;
   bool get _showLeftFoot =>
       _footSide == FootSide.left || _footSide == FootSide.bilateral;
   bool get _showRightFoot =>
@@ -125,6 +123,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     _heelLiftHeightController.text = wo.heelLiftHeight;
     _status = wo.status;
     _footSide = wo.footSide;
+    _orthoticType = wo.templateType;
     _quantityLeft = wo.quantityLeft;
     _quantityRight = wo.quantityRight;
     _isPartialFootLeft = wo.isPartialFootLeft;
@@ -160,7 +159,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     _shoeSizeRight = _validSize(wo.shoeSizeRight, _shoeSizeGender);
     _shoeWidthRight = wo.shoeWidthRight.isEmpty ? 'M' : wo.shoeWidthRight;
 
-    // Set custom width controllers
     if (_widthOption(_shoeWidth) == 'Custom')
       _customShoeWidthController.text = _shoeWidth;
     if (_widthOption(_shoeWidthLeft) == 'Custom')
@@ -220,12 +218,12 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     return widthOption;
   }
 
-  void _save() {
-    final wo = widget.workOrder;
+  void _applyStateToWorkOrder(WorkOrder wo) {
     wo.name = _nameController.text.trim();
     wo.specialInstructions = _instructionsController.text;
     wo.status = _status;
     wo.footSide = _footSide;
+    wo.templateType = _orthoticType;
     wo.quantityLeft = _quantityLeft;
     wo.quantityRight = _quantityRight;
     wo.isPartialFootLeft = _isPartialFootLeft;
@@ -258,33 +256,31 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     wo.sameSizeForBothFeet = _sameSizeForBothFeet;
     if (_sameSizeForBothFeet) {
       wo.shoeSize = _shoeSize;
-      wo.shoeWidth = _resolveWidth(
-          _widthOption(_shoeWidth), _customShoeWidthController);
+      wo.shoeWidth = _resolveWidth(_widthOption(_shoeWidth), _customShoeWidthController);
       wo.shoeSizeLeft = _shoeSize;
       wo.shoeWidthLeft = wo.shoeWidth;
       wo.shoeSizeRight = _shoeSize;
       wo.shoeWidthRight = wo.shoeWidth;
     } else {
       wo.shoeSize = _shoeSizeLeft;
-      wo.shoeWidth = _resolveWidth(
-          _widthOption(_shoeWidthLeft), _customShoeWidthLeftController);
+      wo.shoeWidth = _resolveWidth(_widthOption(_shoeWidthLeft), _customShoeWidthLeftController);
       wo.shoeSizeLeft = _shoeSizeLeft;
-      wo.shoeWidthLeft = _resolveWidth(
-          _widthOption(_shoeWidthLeft), _customShoeWidthLeftController);
+      wo.shoeWidthLeft = wo.shoeWidth;
       wo.shoeSizeRight = _shoeSizeRight;
-      wo.shoeWidthRight = _resolveWidth(
-          _widthOption(_shoeWidthRight), _customShoeWidthRightController);
+      wo.shoeWidthRight = _resolveWidth(_widthOption(_shoeWidthRight), _customShoeWidthRightController);
     }
     wo.dateOfService = _dateOfService;
     wo.expectedDeliveryDate = _expectedDeliveryDate;
-
     if (_selectedClinician != null) {
       wo.clinicianId = _selectedClinician!.id;
       wo.clinicianName = _selectedClinician!.name;
       wo.clinicName = ClinicianService().activeClinic?.name ?? '';
     }
+  }
 
-    widget.onSave(wo);
+  void _save() {
+    _applyStateToWorkOrder(widget.workOrder);
+    widget.onSave(widget.workOrder);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Work order saved')),
     );
@@ -292,19 +288,152 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   void _submit() {
-    setState(() {
-      _status = WorkOrderStatus.submitted;
-      widget.workOrder.submittedAt = DateTime.now();
-    });
-    _save();
+    final wo = widget.workOrder;
+    _applyStateToWorkOrder(wo);
+    widget.onSave(wo);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WorkOrderConfirmationScreen(
+          workOrder: wo,
+          patient: widget.patient,
+          onConfirm: () {
+            wo.status = WorkOrderStatus.submitted;
+            wo.submittedAt = DateTime.now();
+            setState(() => _status = WorkOrderStatus.submitted);
+            widget.onSave(wo);
+            Navigator.pop(context);
+          },
+        ),
+      ),
+    );
+  }
+
+  void _changeOrthoticType(TemplateType newType) {
+    if (newType == _orthoticType) return;
+
+    final oldType = _orthoticType;
+    final lost = <String>[];
+    final transferred = <String>[];
+
+    // Figure out what transfers and what is lost
+    if (oldType == TemplateType.polyShell && newType != TemplateType.polyShell) {
+      lost.addAll(['Patient Weight', 'Shell Thickness', 'Base Shell Length', 'Mid Layer']);
+      transferred.addAll(['Top Cover', 'Arch Modification', 'All Accommodations', 'Shoe Size', 'Quantity', 'Dates', 'Clinician', 'Notes']);
+    } else if (oldType != TemplateType.polyShell && newType == TemplateType.polyShell) {
+      lost.addAll(['Base Thickness', 'Base Grind']);
+      transferred.addAll(['Top Cover', 'Arch Modification', 'All Accommodations', 'Shoe Size', 'Quantity', 'Dates', 'Clinician', 'Notes']);
+    } else {
+      // Rebound <-> Partial Foot
+      transferred.addAll(['Base Thickness', 'Base Grind', 'Top Cover', 'Arch Modification', 'All Accommodations', 'Shoe Size', 'Quantity', 'Dates', 'Clinician', 'Notes']);
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: Text(
+          'Change to ${_typeName(newType)}?',
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (transferred.isNotEmpty) ...[
+                const Text('Will transfer:',
+                    style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13)),
+                const SizedBox(height: 4),
+                ...transferred.map((t) => Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Row(children: [
+                        const Icon(Icons.check, color: Colors.green, size: 14),
+                        const SizedBox(width: 6),
+                        Text(t, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      ]),
+                    )),
+              ],
+              if (lost.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text('Will be lost:',
+                    style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13)),
+                const SizedBox(height: 4),
+                ...lost.map((l) => Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Row(children: [
+                        const Icon(Icons.close, color: Colors.red, size: 14),
+                        const SizedBox(width: 6),
+                        Text(l, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      ]),
+                    )),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel',
+                style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() {
+                // Reset type-specific fields when switching to poly
+                if (newType == TemplateType.polyShell) {
+                  _weightController.clear();
+                  _shellThickness = '1/8"';
+                  _baseShellLength = 'None';
+                  _midLayerType = 'None';
+                  _midLayerThickness = 'None';
+                }
+                // Reset poly-specific fields when switching away
+                if (oldType == TemplateType.polyShell) {
+                  _baseThickness = '3/16"';
+                  _baseGrind = 'Standard';
+                }
+                // Reset heel post if switching away from poly
+                if (oldType == TemplateType.polyShell &&
+                    newType != TemplateType.polyShell) {
+                  _heelPost = 'None';
+                }
+                _orthoticType = newType;
+                widget.workOrder.templateType = newType;
+              });
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F3460)),
+            child: const Text('Confirm Change',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _typeName(TemplateType? type) {
+    switch (type) {
+      case TemplateType.rebound: return 'Rebound';
+      case TemplateType.polyShell: return 'Poly Shell';
+      case TemplateType.partialFoot: return 'Partial Foot';
+      case null: return 'Unknown';
+    }
   }
 
   Future<void> _pickDate({required bool isDelivery}) async {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate:
-          isDelivery ? now.add(const Duration(days: 14)) : now,
+      initialDate: isDelivery ? now.add(const Duration(days: 14)) : now,
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
       builder: (context, child) => Theme(
@@ -358,15 +487,13 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
             enabledBorder: OutlineInputBorder(
                 borderSide: BorderSide(color: Colors.white24)),
             focusedBorder: OutlineInputBorder(
-                borderSide:
-                    BorderSide(color: Color(0xFF4FC3F7))),
+                borderSide: BorderSide(color: Color(0xFF4FC3F7))),
           ),
           items: _shoeSizes(gender)
               .map((s) => DropdownMenuItem(
                     value: s,
                     child: Text(s,
-                        style: const TextStyle(
-                            color: Colors.white)),
+                        style: const TextStyle(color: Colors.white)),
                   ))
               .toList(),
           onChanged: (v) => onSizeChanged(v ?? size),
@@ -392,8 +519,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
               enabledBorder: OutlineInputBorder(
                   borderSide: BorderSide(color: Colors.white24)),
               focusedBorder: OutlineInputBorder(
-                  borderSide:
-                      BorderSide(color: Color(0xFF4FC3F7))),
+                  borderSide: BorderSide(color: Color(0xFF4FC3F7))),
             ),
           ),
         ],
@@ -428,11 +554,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ─── Status ───────────────────────────────────────────────
+            // Status
             Row(children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: _statusColor(_status).withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
@@ -446,14 +571,13 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
               const SizedBox(width: 12),
               Text(
                 'Created ${_formatDate(widget.workOrder.createdAt)}',
-                style: const TextStyle(
-                    color: Colors.white38, fontSize: 12),
+                style: const TextStyle(color: Colors.white38, fontSize: 12),
               ),
             ]),
 
             const SizedBox(height: 16),
 
-            // ─── Name ─────────────────────────────────────────────────
+            // Work Order Name
             _buildSection(
               title: 'Work Order Name',
               icon: Icons.label,
@@ -463,7 +587,46 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Patient ──────────────────────────────────────────────
+            // Orthotic Type
+            _buildSection(
+              title: 'Orthotic Type',
+              icon: Icons.category,
+              child: DropdownButtonFormField<TemplateType>(
+                value: _orthoticType,
+                dropdownColor: const Color(0xFF16213E),
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF4FC3F7))),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: TemplateType.rebound,
+                    child: Text('Rebound',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                  DropdownMenuItem(
+                    value: TemplateType.polyShell,
+                    child: Text('Poly Shell',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                  DropdownMenuItem(
+                    value: TemplateType.partialFoot,
+                    child: Text('Partial Foot',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v != null) _changeOrthoticType(v);
+                },
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Patient
             _buildSection(
               title: 'Patient',
               icon: Icons.person,
@@ -478,8 +641,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   if (widget.patient.patientId.isNotEmpty)
                     Text('ID: ${widget.patient.patientId}',
                         style: const TextStyle(
-                            color: Color(0xFF4FC3F7),
-                            fontSize: 13)),
+                            color: Color(0xFF4FC3F7), fontSize: 13)),
                   if (widget.patient.dateOfBirth.isNotEmpty)
                     Text('DOB: ${widget.patient.dateOfBirth}',
                         style: const TextStyle(
@@ -490,7 +652,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Clinician ────────────────────────────────────────────
+            // Clinician
             _buildSection(
               title: 'Clinician',
               icon: Icons.medical_services,
@@ -504,18 +666,15 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                                color: Colors.white24)),
+                            borderSide: BorderSide(color: Colors.white24)),
                         focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                                color: Color(0xFF4FC3F7))),
+                            borderSide: BorderSide(color: Color(0xFF4FC3F7))),
                       ),
                       items: clinicians
                           .map((c) => DropdownMenuItem(
                               value: c,
                               child: Text(c.fullLabel,
-                                  style: const TextStyle(
-                                      color: Colors.white))))
+                                  style: const TextStyle(color: Colors.white))))
                           .toList(),
                       onChanged: (v) =>
                           setState(() => _selectedClinician = v),
@@ -524,7 +683,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Dates ────────────────────────────────────────────────
+            // Dates
             _buildSection(
               title: 'Dates',
               icon: Icons.calendar_today,
@@ -545,12 +704,11 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Shoe Size ────────────────────────────────────────────
+            // Shoe Size
             _buildSection(
               title: 'Shoe Size',
               icon: Icons.straighten,
               child: Column(children: [
-                // Gender
                 OptionRow(
                   label: 'Gender',
                   options: const ['Male', 'Female'],
@@ -563,13 +721,11 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   }),
                 ),
                 const SizedBox(height: 12),
-                // Same for both feet toggle
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Same size for both feet',
-                        style: TextStyle(
-                            color: Colors.white70, fontSize: 14)),
+                        style: TextStyle(color: Colors.white70, fontSize: 14)),
                     Switch(
                       value: _sameSizeForBothFeet,
                       activeColor: const Color(0xFF4FC3F7),
@@ -580,7 +736,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 ),
                 const SizedBox(height: 12),
                 if (_sameSizeForBothFeet) ...[
-                  // Single size
                   DropdownButtonFormField<String>(
                     value: _validSize(_shoeSize, _shoeSizeGender),
                     dropdownColor: const Color(0xFF16213E),
@@ -589,18 +744,15 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                       labelText: 'Shoe Size',
                       labelStyle: TextStyle(color: Colors.white54),
                       enabledBorder: OutlineInputBorder(
-                          borderSide:
-                              BorderSide(color: Colors.white24)),
+                          borderSide: BorderSide(color: Colors.white24)),
                       focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                              color: Color(0xFF4FC3F7))),
+                          borderSide: BorderSide(color: Color(0xFF4FC3F7))),
                     ),
                     items: _shoeSizes(_shoeSizeGender)
                         .map((s) => DropdownMenuItem(
                               value: s,
                               child: Text(s,
-                                  style: const TextStyle(
-                                      color: Colors.white)),
+                                  style: const TextStyle(color: Colors.white)),
                             ))
                         .toList(),
                     onChanged: (v) =>
@@ -613,8 +765,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     selected: _widthOption(_shoeWidth),
                     onChanged: (v) => setState(() {
                       _shoeWidth = v;
-                      if (v != 'Custom')
-                        _customShoeWidthController.clear();
+                      if (v != 'Custom') _customShoeWidthController.clear();
                     }),
                   ),
                   if (_widthOption(_shoeWidth) == 'Custom') ...[
@@ -624,19 +775,15 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         labelText: 'Custom Width',
-                        labelStyle:
-                            TextStyle(color: Colors.white54),
+                        labelStyle: TextStyle(color: Colors.white54),
                         enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                                color: Colors.white24)),
+                            borderSide: BorderSide(color: Colors.white24)),
                         focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                                color: Color(0xFF4FC3F7))),
+                            borderSide: BorderSide(color: Color(0xFF4FC3F7))),
                       ),
                     ),
                   ],
                 ] else ...[
-                  // Split left/right
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -646,8 +793,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                           size: _shoeSizeLeft,
                           gender: _shoeSizeGender,
                           widthOption: _shoeWidthLeft,
-                          customWidthController:
-                              _customShoeWidthLeftController,
+                          customWidthController: _customShoeWidthLeftController,
                           onSizeChanged: (v) =>
                               setState(() => _shoeSizeLeft = v),
                           onWidthChanged: (v) =>
@@ -661,8 +807,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                           size: _shoeSizeRight,
                           gender: _shoeSizeGender,
                           widthOption: _shoeWidthRight,
-                          customWidthController:
-                              _customShoeWidthRightController,
+                          customWidthController: _customShoeWidthRightController,
                           onSizeChanged: (v) =>
                               setState(() => _shoeSizeRight = v),
                           onWidthChanged: (v) =>
@@ -677,7 +822,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Quantity ─────────────────────────────────────────────
+            // Quantity
             _buildSection(
               title: 'Quantity',
               icon: Icons.numbers,
@@ -726,7 +871,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Partial Foot ─────────────────────────────────────────
+            // Partial Foot
             if (!_isPolyShell && (_showLeftFoot || _showRightFoot))
               _buildSection(
                 title: 'Partial Foot',
@@ -759,7 +904,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Rebound Product Specs ────────────────────────────────
+            // Rebound Product Specs
             if (_isRebound || _isPartialFoot)
               _buildSection(
                 title: 'Product Specs',
@@ -769,18 +914,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     label: 'Base Thickness',
                     options: const ['3/16"', '1/4"'],
                     selected: _baseThickness,
-                    onChanged: (v) =>
-                        setState(() => _baseThickness = v),
+                    onChanged: (v) => setState(() => _baseThickness = v),
                   ),
                   const SizedBox(height: 12),
                   OptionRow(
                     label: 'Base Grind',
-                    options: const [
-                      'None', 'Narrow', 'Standard', 'Wide'
-                    ],
+                    options: const ['None', 'Narrow', 'Standard', 'Wide'],
                     selected: _baseGrind,
-                    onChanged: (v) =>
-                        setState(() => _baseGrind = v),
+                    onChanged: (v) => setState(() => _baseGrind = v),
                   ),
                   const SizedBox(height: 12),
                   OptionRow(
@@ -837,15 +978,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                         SizedBox(width: 8),
                         Text('P-Cell: 1/8" Solid Black only',
                             style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 13)),
+                                color: Colors.white54, fontSize: 13)),
                       ]),
                     ),
                   ],
                 ]),
               ),
 
-            // ─── Poly Shell Product Specs ─────────────────────────────
+            // Poly Shell Product Specs
             if (_isPolyShell) ...[
               _buildSection(
                 title: 'Product Specs',
@@ -856,8 +996,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     style: const TextStyle(color: Colors.white),
                     keyboardType: TextInputType.number,
                     inputFormatters: [
-                      FilteringTextInputFormatter.allow(
-                          RegExp(r'[0-9.]'))
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
                     ],
                     decoration: const InputDecoration(
                       labelText: 'Patient Weight (lbs)',
@@ -865,23 +1004,18 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                       suffixText: 'lbs',
                       suffixStyle: TextStyle(color: Colors.white38),
                       enabledBorder: OutlineInputBorder(
-                          borderSide:
-                              BorderSide(color: Colors.white24)),
+                          borderSide: BorderSide(color: Colors.white24)),
                       focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                              color: Color(0xFF4FC3F7))),
+                          borderSide: BorderSide(color: Color(0xFF4FC3F7))),
                     ),
                     onChanged: _updateShellThicknessFromWeight,
                   ),
                   const SizedBox(height: 12),
                   OptionRow(
                     label: 'Shell Thickness',
-                    options: const [
-                      '1/8"', '5/32"', '3/16"', '1/4"'
-                    ],
+                    options: const ['1/8"', '5/32"', '3/16"', '1/4"'],
                     selected: _shellThickness,
-                    onChanged: (v) =>
-                        setState(() => _shellThickness = v),
+                    onChanged: (v) => setState(() => _shellThickness = v),
                     subtitle: _weightController.text.isNotEmpty
                         ? 'Auto-suggested from weight' : null,
                   ),
@@ -890,8 +1024,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     label: 'Base Shell Length',
                     options: const ['None', 'Mets', 'Sulcus', 'Full'],
                     selected: _baseShellLength,
-                    onChanged: (v) =>
-                        setState(() => _baseShellLength = v),
+                    onChanged: (v) => setState(() => _baseShellLength = v),
                   ),
                   const SizedBox(height: 12),
                   OptionRow(
@@ -901,8 +1034,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     onChanged: (v) {
                       setState(() {
                         _midLayerType = v;
-                        _midLayerThickness =
-                            v == 'None' ? 'None' : '1/16"';
+                        _midLayerThickness = v == 'None' ? 'None' : '1/16"';
                       });
                     },
                   ),
@@ -980,7 +1112,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Arch Modification ────────────────────────────────────
+            // Arch Modification
             _buildSection(
               title: 'Arch Modification',
               icon: Icons.architecture,
@@ -989,8 +1121,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Decrease',
-                        style: TextStyle(
-                            color: Colors.white54, fontSize: 12)),
+                        style: TextStyle(color: Colors.white54, fontSize: 12)),
                     Text(
                       _archModification == 0
                           ? 'As Cast (0)'
@@ -998,12 +1129,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                               ? 'Increase +$_archModification'
                               : 'Decrease $_archModification',
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold),
+                          color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                     const Text('Increase',
-                        style: TextStyle(
-                            color: Colors.white54, fontSize: 12)),
+                        style: TextStyle(color: Colors.white54, fontSize: 12)),
                   ],
                 ),
                 Slider(
@@ -1011,8 +1140,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   min: -3, max: 3, divisions: 6,
                   activeColor: const Color(0xFF4FC3F7),
                   inactiveColor: Colors.white24,
-                  label: _archModification == 0
-                      ? 'As Cast' : '$_archModification',
+                  label: _archModification == 0 ? 'As Cast' : '$_archModification',
                   onChanged: (v) =>
                       setState(() => _archModification = v.round()),
                 ),
@@ -1036,7 +1164,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Accommodations ───────────────────────────────────────
+            // Accommodations
             _buildSection(
               title: 'Accommodations',
               icon: Icons.tune,
@@ -1090,8 +1218,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 HeelLiftRow(
                   footValue: _heelLiftFoot,
                   heightController: _heelLiftHeightController,
-                  onFootChanged: (v) =>
-                      setState(() => _heelLiftFoot = v),
+                  onFootChanged: (v) => setState(() => _heelLiftFoot = v),
                 ),
                 const SizedBox(height: 12),
                 OptionRow(
@@ -1105,7 +1232,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Foot Diagram ─────────────────────────────────────────
+            // Foot Diagram
             _buildSection(
               title: 'Foot Diagram',
               icon: Icons.draw,
@@ -1117,30 +1244,28 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Special Instructions ─────────────────────────────────
+            // Notes (formerly Special Instructions)
             _buildSection(
-              title: 'Special Instructions',
+              title: 'Notes',
               icon: Icons.note_alt,
               child: TextField(
                 controller: _instructionsController,
                 style: const TextStyle(color: Colors.white),
                 maxLines: 4,
                 decoration: const InputDecoration(
-                  hintText:
-                      'Enter any special instructions for the lab...',
+                  hintText: 'Enter any notes or special instructions for the lab...',
                   hintStyle: TextStyle(color: Colors.white24),
                   enabledBorder: OutlineInputBorder(
                       borderSide: BorderSide(color: Colors.white24)),
                   focusedBorder: OutlineInputBorder(
-                      borderSide:
-                          BorderSide(color: Color(0xFF4FC3F7))),
+                      borderSide: BorderSide(color: Color(0xFF4FC3F7))),
                 ),
               ),
             ),
 
             const SizedBox(height: 24),
 
-            // ─── Submit ───────────────────────────────────────────────
+            // Submit
             if (_status == WorkOrderStatus.draft)
               SizedBox(
                 width: double.infinity,
