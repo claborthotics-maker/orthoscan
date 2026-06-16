@@ -1,4 +1,7 @@
 ﻿import 'package:flutter/material.dart';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
 import '../models/work_order.dart';
@@ -313,14 +316,41 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     }
     final wo = widget.workOrder;
     _applyStateToWorkOrder(wo);
-   await widget.onSave(wo);
+    await widget.onSave(wo);
     if (!mounted) return;
+
+    // Capture foot diagram images
+    Uint8List? leftImg;
+    Uint8List? rightImg;
+    try {
+      if (_footDiagramExpanded) {
+        final leftBoundary = _leftDiagramKey.currentContext
+            ?.findRenderObject() as RenderRepaintBoundary?;
+        if (leftBoundary != null) {
+          final img = await leftBoundary.toImage(pixelRatio: 2.0);
+          final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+          leftImg = bytes?.buffer.asUint8List();
+        }
+        final rightBoundary = _rightDiagramKey.currentContext
+            ?.findRenderObject() as RenderRepaintBoundary?;
+        if (rightBoundary != null) {
+          final img = await rightBoundary.toImage(pixelRatio: 2.0);
+          final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+          rightImg = bytes?.buffer.asUint8List();
+        }
+      }
+    } catch (e) {
+      // ignore capture errors
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => WorkOrderConfirmationScreen(
           workOrder: wo,
           patient: widget.patient,
+          leftDiagramImage: leftImg,
+          rightDiagramImage: rightImg,
           onConfirm: () {
             wo.status = WorkOrderStatus.submitted;
             wo.submittedAt = DateTime.now();

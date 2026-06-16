@@ -1,18 +1,24 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import '../models/work_order.dart';
 import '../models/patient.dart';
-import 'foot_diagram_widget.dart';
+import '../services/pdf_service.dart';
+import 'package:printing/printing.dart';
 
 class WorkOrderConfirmationScreen extends StatelessWidget {
   final WorkOrder workOrder;
   final Patient patient;
   final VoidCallback onConfirm;
+  final Uint8List? leftDiagramImage;
+  final Uint8List? rightDiagramImage;
 
   const WorkOrderConfirmationScreen({
     super.key,
     required this.workOrder,
     required this.patient,
     required this.onConfirm,
+    this.leftDiagramImage,
+    this.rightDiagramImage,
   });
 
   @override
@@ -57,8 +63,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
                               fontSize: 18)),
                       Text(patient.fullName,
                           style: const TextStyle(
-                              color: Color(0xFF4FC3F7),
-                              fontSize: 14)),
+                              color: Color(0xFF4FC3F7), fontSize: 14)),
                       if (patient.dateOfBirth.isNotEmpty)
                         Text('DOB: ${patient.dateOfBirth}',
                             style: const TextStyle(
@@ -75,7 +80,6 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // Clinician & Dates
             _buildSection('Clinician & Dates', Icons.medical_services, [
               if (workOrder.clinicianName.isNotEmpty)
                 _row('Clinician', workOrder.clinicianName),
@@ -84,13 +88,11 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
               if (workOrder.dateOfService != null)
                 _row('Date of Service', _fmtDate(workOrder.dateOfService)),
               if (workOrder.expectedDeliveryDate != null)
-                _row('Expected Delivery',
-                    _fmtDate(workOrder.expectedDeliveryDate)),
+                _row('Expected Delivery', _fmtDate(workOrder.expectedDeliveryDate)),
             ]),
 
             const SizedBox(height: 16),
 
-            // Shoe Size
             _buildSection('Shoe Size', Icons.straighten, [
               _row('Gender', workOrder.shoeSizeGender),
               if (workOrder.sameSizeForBothFeet) ...[
@@ -106,20 +108,17 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // Quantity
             _buildSection('Quantity', Icons.numbers, [
               _row('Quantity', workOrder.quantityLabel),
             ]),
 
             const SizedBox(height: 16),
 
-            // Product Specs
-            if (fields.isNotEmpty)
+            if (fields.isNotEmpty) ...[
               _buildSection('Product Specs', Icons.layers, fields),
+              const SizedBox(height: 16),
+            ],
 
-            const SizedBox(height: 16),
-
-            // Arch Modification
             if (workOrder.archModification != 0) ...[
               _buildSection('Arch Modification', Icons.architecture, [
                 _row('Arch Mod',
@@ -130,55 +129,78 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
               const SizedBox(height: 16),
             ],
 
-            // Accommodations
             _buildSection('Accommodations', Icons.tune, accommodations),
 
             const SizedBox(height: 16),
 
-            // Foot Diagram — always shown
+            // Foot Diagram
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: const Color(0xFF16213E),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                    color: const Color(0xFF4FC3F7).withOpacity(0.3)),
               ),
-              child: Row(children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF4FC3F7).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.draw,
-                      color: Color(0xFF4FC3F7), size: 22),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Foot Diagram',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15)),
-                      SizedBox(height: 4),
-                      Text(
-                        'Foot diagram markings and notes will be included with this submission.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(children: [
+                    Icon(Icons.draw, color: Color(0xFF4FC3F7), size: 20),
+                    SizedBox(width: 8),
+                    Text('Foot Diagram',
                         style: TextStyle(
-                            color: Colors.white54, fontSize: 13),
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16)),
+                  ]),
+                  const SizedBox(height: 12),
+                  if (leftDiagramImage != null || rightDiagramImage != null)
+                    Row(children: [
+                      if (leftDiagramImage != null)
+                        Expanded(
+                          child: Column(children: [
+                            const Text('Left Foot',
+                                style: TextStyle(color: Colors.white54, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.memory(leftDiagramImage!,
+                                  fit: BoxFit.contain),
+                            ),
+                          ]),
+                        ),
+                      if (leftDiagramImage != null && rightDiagramImage != null)
+                        const SizedBox(width: 8),
+                      if (rightDiagramImage != null)
+                        Expanded(
+                          child: Column(children: [
+                            const Text('Right Foot',
+                                style: TextStyle(color: Colors.white54, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.memory(rightDiagramImage!,
+                                  fit: BoxFit.contain),
+                            ),
+                          ]),
+                        ),
+                    ])
+                  else
+                    const Row(children: [
+                      Icon(Icons.draw, color: Color(0xFF4FC3F7), size: 20),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'No diagram markings added',
+                          style: TextStyle(color: Colors.white54, fontSize: 13),
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-              ]),
+                    ]),
+                ],
+              ),
             ),
 
             const SizedBox(height: 16),
 
-            // Notes — always shown
             _buildSection('Notes', Icons.note_alt, [
               _row('', workOrder.specialInstructions.isEmpty
                   ? 'None'
@@ -186,6 +208,39 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
             ]),
 
             const SizedBox(height: 24),
+
+            // Share PDF button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final bytes = await PdfService.generateWorkOrderPdf(
+                    wo: workOrder,
+                    patient: patient,
+                    leftDiagramImage: leftDiagramImage,
+                    rightDiagramImage: rightDiagramImage,
+                  );
+                  await Printing.sharePdf(
+                    bytes: bytes,
+                    filename:
+                        '${workOrder.displayName.replaceAll(' ', '_')}_lab_order.pdf',
+                  );
+                },
+                icon: const Icon(Icons.picture_as_pdf,
+                    color: Color(0xFF4FC3F7)),
+                label: const Text('Share Lab Order PDF',
+                    style: TextStyle(
+                        color: Color(0xFF4FC3F7), fontSize: 16)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFF4FC3F7)),
+                  padding: const EdgeInsets.all(16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
 
             // Warning
             Container(
@@ -306,8 +361,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     add('Base Thickness', workOrder.baseThickness);
     add('Base Grind', workOrder.baseGrind);
     add('Top Cover', workOrder.topCoverType);
-    if (workOrder.topCoverType != 'None' &&
-        workOrder.topCoverType != 'P-Cell') {
+    if (workOrder.topCoverType != 'None' && workOrder.topCoverType != 'P-Cell') {
       add('Cover Thickness', workOrder.topCoverThickness);
       add('Cover Color', workOrder.topCoverColor);
     }
@@ -340,30 +394,5 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     add('Heel Cup', workOrder.heelCup);
     if (rows.isEmpty) rows.add(_row('', 'No accommodations selected'));
     return rows;
-  }
-}
-
-// Placeholder showing foot diagram was included
-class _FootDiagramPlaceholder extends StatelessWidget {
-  const _FootDiagramPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: const Row(children: [
-        Icon(Icons.draw, color: Color(0xFF4FC3F7), size: 20),
-        SizedBox(width: 12),
-        Text(
-          'Foot diagram and markings included with submission',
-          style: TextStyle(color: Colors.white54, fontSize: 13),
-        ),
-      ]),
-    );
   }
 }
