@@ -24,7 +24,7 @@ class DatabaseService {
     final path = join(dbPath, 'orthoscan.db');
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _createTables,
       onUpgrade: _onUpgrade,
     );
@@ -73,6 +73,9 @@ class DatabaseService {
       try { await db.execute('ALTER TABLE work_orders ADD COLUMN shoeWidthLeft TEXT'); } catch (e) {}
       try { await db.execute('ALTER TABLE work_orders ADD COLUMN shoeSizeRight TEXT'); } catch (e) {}
       try { await db.execute('ALTER TABLE work_orders ADD COLUMN shoeWidthRight TEXT'); } catch (e) {}
+    }
+    if (oldVersion < 7) {
+      try { await db.execute('ALTER TABLE work_orders ADD COLUMN diagramData TEXT DEFAULT ""'); } catch (e) {}
     }
   }
 
@@ -142,6 +145,7 @@ class DatabaseService {
         shoeWidthLeft TEXT,
         shoeSizeRight TEXT,
         shoeWidthRight TEXT,
+        diagramData TEXT,
         createdAt TEXT NOT NULL,
         dateOfService TEXT,
         expectedDeliveryDate TEXT,
@@ -317,6 +321,7 @@ class DatabaseService {
       'shoeWidthLeft': wo.shoeWidthLeft,
       'shoeSizeRight': wo.shoeSizeRight,
       'shoeWidthRight': wo.shoeWidthRight,
+      'diagramData': wo.diagramData,
       'createdAt': wo.createdAt.toIso8601String(),
       'dateOfService': wo.dateOfService?.toIso8601String(),
       'expectedDeliveryDate': wo.expectedDeliveryDate?.toIso8601String(),
@@ -370,6 +375,7 @@ class DatabaseService {
       heelLiftFoot: map['heelLiftFoot'] as String? ?? 'None',
       heelLiftHeight: map['heelLiftHeight'] as String? ?? '',
       heelCup: map['heelCup'] as String? ?? 'Standard',
+      diagramData: map['diagramData'] as String? ?? '',
       shoeSize: map['shoeSize'] as String? ?? '',
       shoeSizeGender: map['shoeSizeGender'] as String? ?? 'Male',
       shoeWidth: map['shoeWidth'] as String? ?? 'M',

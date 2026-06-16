@@ -71,6 +71,10 @@ class WorkOrder {
 
   // ─── Shoe Size ────────────────────────────────────────────────────────────
   // Shared fields (used when sameSizeForBothFeet = true)
+  // ─── Diagram Data ─────────────────────────────────────────────────────────────
+  String diagramData;
+
+  // ─── Shoe Size ────────────────────────────────────────────────────────────────
   String shoeSize;
   String shoeSizeGender;
   String shoeWidth;
@@ -132,6 +136,7 @@ class WorkOrder {
     this.heelLiftFoot = 'None',
     this.heelLiftHeight = '',
     this.heelCup = 'Standard',
+    this.diagramData = '',
     this.shoeSize = '',
     this.shoeSizeGender = 'Male',
     this.shoeWidth = 'M',
@@ -231,6 +236,7 @@ class WorkOrder {
       heelLiftFoot: heelLiftFoot,
       heelLiftHeight: heelLiftHeight,
       heelCup: heelCup,
+      diagramData: diagramData,
       shoeSize: shoeSize,
       shoeSizeGender: shoeSizeGender,
       shoeWidth: shoeWidth,
@@ -289,6 +295,7 @@ class WorkOrder {
       'heelLiftFoot': heelLiftFoot,
       'heelLiftHeight': heelLiftHeight,
       'heelCup': heelCup,
+      'diagramData': diagramData,
       'shoeSize': shoeSize,
       'shoeSizeGender': shoeSizeGender,
       'shoeWidth': shoeWidth,
@@ -350,6 +357,7 @@ class WorkOrder {
       heelLiftFoot: map['heelLiftFoot'] ?? 'None',
       heelLiftHeight: map['heelLiftHeight'] ?? '',
       heelCup: map['heelCup'] ?? 'Standard',
+      diagramData: map['diagramData'] as String? ?? '',
       shoeSize: map['shoeSize'] as String? ?? '',
       shoeSizeGender: map['shoeSizeGender'] as String? ?? 'Male',
       shoeWidth: map['shoeWidth'] as String? ?? 'M',
