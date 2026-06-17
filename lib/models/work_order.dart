@@ -1,4 +1,4 @@
-import 'work_order_template.dart';
+﻿import 'work_order_template.dart';
 
 enum WorkOrderStatus {
   draft,
@@ -39,24 +39,24 @@ class WorkOrder {
   int toeFillerCountLeft;
   int toeFillerCountRight;
 
-  // ─── Rebound Specs ───────────────────────────────────────────────────────
+  // â”€â”€â”€ Rebound Specs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   String baseThickness;
   String baseGrind;
   String topCoverType;
   String topCoverThickness;
   String topCoverColor;
 
-  // ─── Poly Shell Specs ─────────────────────────────────────────────────────
+  // â”€â”€â”€ Poly Shell Specs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   double? patientWeight;
   String shellThickness;
   String baseShellLength;
   String midLayerType;
   String midLayerThickness;
 
-  // ─── Arch Modification ────────────────────────────────────────────────────
+  // â”€â”€â”€ Arch Modification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   int archModification;
 
-  // ─── Accommodations ───────────────────────────────────────────────────────
+  // â”€â”€â”€ Accommodations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   String heelPost;
   String forefootPost;
   String heelWedge;
@@ -69,12 +69,12 @@ class WorkOrder {
   String heelLiftHeight;
   String heelCup;
 
-  // ─── Shoe Size ────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Shoe Size â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Shared fields (used when sameSizeForBothFeet = true)
-  // ─── Diagram Data ─────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Diagram Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   String diagramData;
 
-  // ─── Shoe Size ────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Shoe Size â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   String shoeSize;
   String shoeSizeGender;
   String shoeWidth;
@@ -90,6 +90,8 @@ class WorkOrder {
   DateTime? dateOfService;
   DateTime? expectedDeliveryDate;
   DateTime? submittedAt;
+  DateTime? originalSubmittedAt;
+  int submissionCount;
   DateTime? completedAt;
 
   List<String> scanFiles;
@@ -149,6 +151,8 @@ class WorkOrder {
     this.dateOfService,
     this.expectedDeliveryDate,
     this.submittedAt,
+    this.originalSubmittedAt,
+    this.submissionCount = 0,
     this.completedAt,
     this.scanFiles = const [],
   });
@@ -308,6 +312,8 @@ class WorkOrder {
       'dateOfService': dateOfService?.toIso8601String(),
       'expectedDeliveryDate': expectedDeliveryDate?.toIso8601String(),
       'submittedAt': submittedAt?.toIso8601String(),
+      'originalSubmittedAt': originalSubmittedAt?.toIso8601String(),
+      'submissionCount': submissionCount,
       'completedAt': completedAt?.toIso8601String(),
       'scanFiles': scanFiles,
     };
@@ -373,9 +379,13 @@ class WorkOrder {
           ? DateTime.parse(map['expectedDeliveryDate']) : null,
       submittedAt: map['submittedAt'] != null
           ? DateTime.parse(map['submittedAt']) : null,
+      originalSubmittedAt: map['originalSubmittedAt'] != null
+          ? DateTime.parse(map['originalSubmittedAt']) : null,
+      submissionCount: map['submissionCount'] as int? ?? 0,
       completedAt: map['completedAt'] != null
           ? DateTime.parse(map['completedAt']) : null,
       scanFiles: List<String>.from(map['scanFiles'] ?? []),
     );
   }
 }
+

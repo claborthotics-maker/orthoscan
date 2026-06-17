@@ -1,4 +1,4 @@
-import 'package:sqflite/sqflite.dart';
+﻿import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/patient.dart';
 import '../models/work_order.dart';
@@ -24,13 +24,13 @@ class DatabaseService {
     final path = join(dbPath, 'orthoscan.db');
     return await openDatabase(
       path,
-      version: 7,
+      version: 9,
       onCreate: _createTables,
       onUpgrade: _onUpgrade,
     );
   }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('DROP TABLE IF EXISTS clinicians');
       await db.execute('''
@@ -77,8 +77,11 @@ class DatabaseService {
     if (oldVersion < 7) {
       try { await db.execute('ALTER TABLE work_orders ADD COLUMN diagramData TEXT DEFAULT ""'); } catch (e) {}
     }
+    if (oldVersion < 8) {
+      try { await db.execute('ALTER TABLE work_orders ADD COLUMN originalSubmittedAt TEXT'); } catch (e) {}
+      try { await db.execute('ALTER TABLE work_orders ADD COLUMN submissionCount INTEGER DEFAULT 0'); } catch (e) {}
+    }
   }
-
   Future<void> _createTables(Database db, int version) async {
     await db.execute('''
       CREATE TABLE patients (
@@ -146,6 +149,8 @@ class DatabaseService {
         shoeSizeRight TEXT,
         shoeWidthRight TEXT,
         diagramData TEXT,
+        originalSubmittedAt TEXT,
+        submissionCount INTEGER DEFAULT 0,
         createdAt TEXT NOT NULL,
         dateOfService TEXT,
         expectedDeliveryDate TEXT,
@@ -179,7 +184,7 @@ class DatabaseService {
     ''');
   }
 
-  // ─── Patient CRUD ──────────────────────────────────────────────────────────
+  // â”€â”€â”€ Patient CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<void> insertPatient(Patient patient) async {
     final db = await database;
@@ -236,7 +241,7 @@ class DatabaseService {
     )).toList();
   }
 
-  // ─── Work Order CRUD ───────────────────────────────────────────────────────
+  // â”€â”€â”€ Work Order CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<void> insertWorkOrder(WorkOrder wo) async {
     final db = await database;
@@ -322,6 +327,8 @@ class DatabaseService {
       'shoeSizeRight': wo.shoeSizeRight,
       'shoeWidthRight': wo.shoeWidthRight,
       'diagramData': wo.diagramData,
+      'originalSubmittedAt': wo.originalSubmittedAt?.toIso8601String(),
+      'submissionCount': wo.submissionCount,
       'createdAt': wo.createdAt.toIso8601String(),
       'dateOfService': wo.dateOfService?.toIso8601String(),
       'expectedDeliveryDate': wo.expectedDeliveryDate?.toIso8601String(),
@@ -376,6 +383,9 @@ class DatabaseService {
       heelLiftHeight: map['heelLiftHeight'] as String? ?? '',
       heelCup: map['heelCup'] as String? ?? 'Standard',
       diagramData: map['diagramData'] as String? ?? '',
+      originalSubmittedAt: map['originalSubmittedAt'] != null
+          ? DateTime.parse(map['originalSubmittedAt']) : null,
+      submissionCount: map['submissionCount'] as int? ?? 0,
       shoeSize: map['shoeSize'] as String? ?? '',
       shoeSizeGender: map['shoeSizeGender'] as String? ?? 'Male',
       shoeWidth: map['shoeWidth'] as String? ?? 'M',
@@ -398,7 +408,7 @@ class DatabaseService {
     );
   }
 
-  // ─── Clinician CRUD ────────────────────────────────────────────────────────
+  // â”€â”€â”€ Clinician CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<void> insertClinician(Clinician clinician) async {
     final db = await database;
@@ -443,7 +453,7 @@ class DatabaseService {
         where: 'id = ?', whereArgs: [id]);
   }
 
-  // ─── Clinic CRUD ───────────────────────────────────────────────────────────
+  // â”€â”€â”€ Clinic CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<void> insertClinic(Clinic clinic) async {
     final db = await database;
@@ -519,3 +529,7 @@ class DatabaseService {
     )).toList();
   }
 }
+
+
+
+

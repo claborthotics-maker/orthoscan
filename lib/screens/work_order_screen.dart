@@ -1,7 +1,7 @@
-﻿import 'package:flutter/material.dart';
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
 import '../models/work_order.dart';
@@ -205,8 +205,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     super.dispose();
   }
 
-
-
   String get _quantityLabel {
     if (_quantityLeft == 0 && _quantityRight == 0) return 'None';
     if (_quantityLeft == 0) return '$_quantityRight Right';
@@ -293,7 +291,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     }
   }
 
-   Future<void> _save() async {
+  Future<void> _save() async {
     _applyStateToWorkOrder(widget.workOrder);
     await widget.onSave(widget.workOrder);
     if (mounted) {
@@ -305,6 +303,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   Future<void> _submit() async {
+    print('DEBUG: _submit called, status: $_status, name: ${_nameController.text}');
     if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -314,12 +313,16 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       );
       return;
     }
+
     final wo = widget.workOrder;
     _applyStateToWorkOrder(wo);
     await widget.onSave(wo);
-    if (!mounted) return;
+    if (!mounted) {
+      print('DEBUG: not mounted after save');
+      return;
+    }
 
- // Capture foot diagram images — expand if needed, wait for render
+    // Capture foot diagram
     Uint8List? leftImg;
     Uint8List? rightImg;
     try {
@@ -342,9 +345,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         rightImg = bytes?.buffer.asUint8List();
       }
     } catch (e) {
-      // ignore capture errors
+      print('DEBUG: diagram capture error: $e');
     }
 
+    print('DEBUG: pushing confirmation screen');
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -354,8 +358,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           leftDiagramImage: leftImg,
           rightDiagramImage: rightImg,
           onConfirm: () {
+            print('DEBUG: onConfirm called');
+            final now = DateTime.now();
+            if (wo.submissionCount == 0) {
+              wo.originalSubmittedAt = now;
+            }
+            wo.submissionCount += 1;
             wo.status = WorkOrderStatus.submitted;
-            wo.submittedAt = DateTime.now();
+            wo.submittedAt = now;
             setState(() => _status = WorkOrderStatus.submitted);
             widget.onSave(wo);
             Navigator.pop(context);
@@ -563,7 +573,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       canPop: false,
       onPopInvoked: (didPop) async {
         if (didPop) return;
-         _applyStateToWorkOrder(widget.workOrder);
+        _applyStateToWorkOrder(widget.workOrder);
         await widget.onSave(widget.workOrder);
         if (mounted) Navigator.pop(context);
       },
@@ -576,15 +586,16 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
             onPressed: () async {
-    _applyStateToWorkOrder(widget.workOrder);
-                   await widget.onSave(widget.workOrder);
-                if (mounted) Navigator.pop(context);
-              },
+              _applyStateToWorkOrder(widget.workOrder);
+              await widget.onSave(widget.workOrder);
+              if (mounted) Navigator.pop(context);
+            },
           ),
           actions: [
             TextButton(
               onPressed: _save,
-              child: const Text('Save', style: TextStyle(color: Color(0xFF4FC3F7))),
+              child: const Text('Save',
+                  style: TextStyle(color: Color(0xFF4FC3F7))),
             ),
           ],
         ),
@@ -597,7 +608,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
-              // Status
               Row(children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -616,7 +626,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Clinician
               _CollapsibleSection(
                 title: 'Clinician',
                 icon: Icons.medical_services,
@@ -648,7 +657,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Patient
               _CollapsibleSection(
                 title: 'Patient',
                 icon: Icons.person,
@@ -673,7 +681,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Work Order Name / Number
               _buildSection(
                 title: 'Work Order Name / Number',
                 icon: Icons.label,
@@ -683,7 +690,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Orthotic Type
               _CollapsibleSection(
                 title: 'Orthotic Type',
                 icon: Icons.category,
@@ -720,7 +726,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Dates
               _CollapsibleSection(
                 title: 'Dates',
                 icon: Icons.calendar_today,
@@ -746,7 +751,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Shoe Size
               _CollapsibleSection(
                 title: 'Shoe Size',
                 icon: Icons.straighten,
@@ -856,7 +860,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Quantity
               _CollapsibleSection(
                 title: 'Quantity',
                 icon: Icons.numbers,
@@ -900,7 +903,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Partial Foot
               if (!_isPolyShell && (_showLeftFoot || _showRightFoot)) ...[
                 _CollapsibleSection(
                   title: 'Partial Foot',
@@ -931,7 +933,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 const SizedBox(height: 16),
               ],
 
-              // Product Specs - Rebound/Partial
               if (_isRebound || _isPartialFoot)
                 _CollapsibleSection(
                   title: 'Product Specs',
@@ -1008,7 +1009,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   ]),
                 ),
 
-              // Product Specs - Poly Shell
               if (_isPolyShell)
                 _CollapsibleSection(
                   title: 'Product Specs',
@@ -1124,7 +1124,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Arch Modification
               _CollapsibleSection(
                 title: 'Arch Modification',
                 icon: Icons.architecture,
@@ -1167,7 +1166,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Accommodations
               _CollapsibleSection(
                 title: 'Accommodations',
                 icon: Icons.tune,
@@ -1250,7 +1248,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Foot Diagram
               _CollapsibleSection(
                 title: 'Foot Diagram',
                 icon: Icons.draw,
@@ -1270,7 +1267,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
               const SizedBox(height: 16),
 
-              // Notes
               _CollapsibleSection(
                 title: 'Notes',
                 icon: Icons.note_alt,
@@ -1278,39 +1274,43 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 onToggle: () => setState(() => _notesExpanded = !_notesExpanded),
                 summary: _instructionsController.text.isEmpty ? 'No notes' : _instructionsController.text,
                 child: TextField(
-                controller: _instructionsController,
-                style: const TextStyle(color: Colors.white),
-                maxLines: 4,
-                onChanged: (_) => setState(() {}),
-                textInputAction: TextInputAction.done,
-                onEditingComplete: () => FocusScope.of(context).unfocus(),
-                decoration: const InputDecoration(
-                  hintText: 'Enter any notes or special instructions for the lab...',
-                  hintStyle: TextStyle(color: Colors.white24),
-                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF4FC3F7))),
+                  controller: _instructionsController,
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 4,
+                  onChanged: (_) => setState(() {}),
+                  textInputAction: TextInputAction.done,
+                  onEditingComplete: () => FocusScope.of(context).unfocus(),
+                  decoration: const InputDecoration(
+                    hintText: 'Enter any notes or special instructions for the lab...',
+                    hintStyle: TextStyle(color: Colors.white24),
+                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF4FC3F7))),
+                  ),
                 ),
-              ),
               ),
 
               const SizedBox(height: 24),
 
-              // Submit
-              if (_status == WorkOrderStatus.draft)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _submit,
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    label: const Text('Submit to Lab',
-                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F3460),
-                      padding: const EdgeInsets.all(16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _submit,
+                  icon: const Icon(Icons.send, color: Colors.white),
+                  label: Text(
+                      _status == WorkOrderStatus.submitted
+                          ? 'Re-Submit to Lab' : 'Submit to Lab',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F3460),
+                    padding: const EdgeInsets.all(16),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
+              ),
 
               const SizedBox(height: 80),
             ],
@@ -1439,6 +1439,3 @@ class _CollapsibleSection extends StatelessWidget {
     );
   }
 }
-
-
-

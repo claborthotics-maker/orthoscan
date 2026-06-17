@@ -43,8 +43,22 @@ class PdfService {
                     pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text('LAB ORDER',
-                            style: pw.TextStyle(font: fontBold, fontSize: 16, color: PdfColors.white)),
+                       pw.Row(children: [
+                          pw.Text('LAB ORDER',
+                              style: pw.TextStyle(font: fontBold, fontSize: 16, color: PdfColors.white)),
+                          if (wo.submissionCount > 1) ...[
+                            pw.SizedBox(width: 8),
+                            pw.Container(
+                              padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: pw.BoxDecoration(
+                                color: PdfColors.orange,
+                                borderRadius: pw.BorderRadius.circular(4),
+                              ),
+                              child: pw.Text('RESUBMISSION #${wo.submissionCount - 1}',
+                                  style: pw.TextStyle(font: fontBold, fontSize: 8, color: PdfColors.white)),
+                            ),
+                          ],
+                        ]),
                         if (wo.clinicName.isNotEmpty)
                           pw.Text(wo.clinicName,
                               style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.blueGrey200)),
@@ -56,14 +70,21 @@ class PdfService {
                     pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
-                        if (wo.dateOfService != null)
+                          if (wo.dateOfService != null)
                           pw.Text('Service: ${_fmtDate(wo.dateOfService)}',
                               style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white)),
                         if (wo.expectedDeliveryDate != null)
                           pw.Text('Delivery: ${_fmtDate(wo.expectedDeliveryDate)}',
                               style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white)),
-                        pw.Text('Submitted: ${_fmtDate(wo.submittedAt ?? DateTime.now())}',
-                            style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white)),
+                        if (wo.submissionCount <= 1)
+                          pw.Text('Submitted: ${_fmtDateTime(wo.submittedAt ?? DateTime.now())}',
+                              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white))
+                        else ...[
+                          pw.Text('Originally: ${_fmtDateTime(wo.originalSubmittedAt ?? wo.submittedAt ?? DateTime.now())}',
+                              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white)),
+                          pw.Text('Resubmitted: ${_fmtDateTime(wo.submittedAt ?? DateTime.now())}',
+                              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white)),
+                        ],
                       ],
                     ),
                   ],
@@ -314,9 +335,17 @@ class PdfService {
         _rd('Heel Cup', wo.heelCup),
       ];
 
-  static String _fmtDate(DateTime? d) {
+ static String _fmtDate(DateTime? d) {
     if (d == null) return '';
     return '${d.month}/${d.day}/${d.year}';
+  }
+
+  static String _fmtDateTime(DateTime? d) {
+    if (d == null) return '';
+    final hour = d.hour > 12 ? d.hour - 12 : (d.hour == 0 ? 12 : d.hour);
+    final min = d.minute.toString().padLeft(2, '0');
+    final ampm = d.hour >= 12 ? 'PM' : 'AM';
+    return '${d.month}/${d.day}/${d.year} $hour:$min $ampm';
   }
 
   static String _typeName(TemplateType? type) {
