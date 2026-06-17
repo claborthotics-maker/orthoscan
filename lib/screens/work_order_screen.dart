@@ -319,25 +319,27 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     await widget.onSave(wo);
     if (!mounted) return;
 
-    // Capture foot diagram images
+ // Capture foot diagram images — expand if needed, wait for render
     Uint8List? leftImg;
     Uint8List? rightImg;
     try {
-      if (_footDiagramExpanded) {
-        final leftBoundary = _leftDiagramKey.currentContext
-            ?.findRenderObject() as RenderRepaintBoundary?;
-        if (leftBoundary != null) {
-          final img = await leftBoundary.toImage(pixelRatio: 2.0);
-          final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-          leftImg = bytes?.buffer.asUint8List();
-        }
-        final rightBoundary = _rightDiagramKey.currentContext
-            ?.findRenderObject() as RenderRepaintBoundary?;
-        if (rightBoundary != null) {
-          final img = await rightBoundary.toImage(pixelRatio: 2.0);
-          final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-          rightImg = bytes?.buffer.asUint8List();
-        }
+      if (!_footDiagramExpanded) {
+        setState(() => _footDiagramExpanded = true);
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      final leftBoundary = _leftDiagramKey.currentContext
+          ?.findRenderObject() as RenderRepaintBoundary?;
+      if (leftBoundary != null) {
+        final img = await leftBoundary.toImage(pixelRatio: 2.0);
+        final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+        leftImg = bytes?.buffer.asUint8List();
+      }
+      final rightBoundary = _rightDiagramKey.currentContext
+          ?.findRenderObject() as RenderRepaintBoundary?;
+      if (rightBoundary != null) {
+        final img = await rightBoundary.toImage(pixelRatio: 2.0);
+        final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+        rightImg = bytes?.buffer.asUint8List();
       }
     } catch (e) {
       // ignore capture errors

@@ -307,19 +307,15 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
       children: [
         Row(children: [
           _ModeButton(
-            label: 'Mark',
-            icon: Icons.location_on,
+            label: 'Mark', icon: Icons.location_on,
             isSelected: _mode == DiagramMode.mark,
-            onTap: () => _setMode(
-                _mode == DiagramMode.mark ? DiagramMode.none : DiagramMode.mark),
+            onTap: () => _setMode(_mode == DiagramMode.mark ? DiagramMode.none : DiagramMode.mark),
           ),
           const SizedBox(width: 8),
           _ModeButton(
-            label: 'Draw',
-            icon: Icons.draw,
+            label: 'Draw', icon: Icons.draw,
             isSelected: _mode == DiagramMode.draw,
-            onTap: () => _setMode(
-                _mode == DiagramMode.draw ? DiagramMode.none : DiagramMode.draw),
+            onTap: () => _setMode(_mode == DiagramMode.draw ? DiagramMode.none : DiagramMode.draw),
           ),
           const SizedBox(width: 8),
           GestureDetector(
@@ -329,13 +325,11 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
               decoration: BoxDecoration(
                 color: !isActive ? const Color(0xFF0F3460).withOpacity(0.3) : Colors.transparent,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: !isActive ? const Color(0xFF4FC3F7) : Colors.white24),
+                border: Border.all(color: !isActive ? const Color(0xFF4FC3F7) : Colors.white24),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(!isActive ? Icons.lock_open : Icons.lock,
-                    color: !isActive ? const Color(0xFF4FC3F7) : Colors.white38,
-                    size: 16),
+                    color: !isActive ? const Color(0xFF4FC3F7) : Colors.white38, size: 16),
                 const SizedBox(width: 4),
                 Text(!isActive ? 'Scroll' : 'Locked',
                     style: TextStyle(
@@ -369,8 +363,7 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
                     const SizedBox(width: 6),
                     Text(mark.label,
                         style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.white54,
-                            fontSize: 12)),
+                            color: isSelected ? Colors.white : Colors.white54, fontSize: 12)),
                   ]),
                 ),
               );
@@ -403,86 +396,82 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: RepaintBoundary(
-              key: widget.leftRepaintKey,
-              child: _FootCanvas(
-                label: 'Left',
-                imagePath: 'assets/images/left_foot.png',
-                isLeft: true,
-                mode: _mode,
-                selectedMarkType: _selectedMarkType,
-                drawColor: _drawColor,
-                marks: _leftMarks,
-                paths: _leftPaths,
-                currentPath: _currentLeftPath,
-                canUndo: _leftHistory.isNotEmpty,
-                canRedo: _leftRedoStack.isNotEmpty,
-                onMarkAdded: (mark) {
-                  setState(() {
-                    _leftMarks.add(mark);
-                    _leftHistory.add(mark);
-                    _leftRedoStack.clear();
-                  });
-                  _notifyDataChanged();
-                },
-                onNoteRequested: (pos) => _showNoteDialog(pos, true),
-                onPathStarted: (p) => setState(() => _currentLeftPath = p),
-                onPathUpdated: (p) => setState(() => _currentLeftPath = p),
-                onPathCompleted: (p) {
-                  final dp = DrawPath(points: List.from(p), color: _drawColor);
-                  setState(() {
-                    _leftPaths.add(dp);
-                    _leftHistory.add(dp);
-                    _leftRedoStack.clear();
-                    _currentLeftPath = null;
-                  });
-                  _notifyDataChanged();
-                },
-                onUndo: _undoLeft,
-                onRedo: _redoLeft,
-                onClear: _clearLeft,
-              ),
+            Expanded(child: _FootCanvas(
+              label: 'Left',
+              imagePath: 'assets/images/left_foot.png',
+              isLeft: true,
+              mode: _mode,
+              selectedMarkType: _selectedMarkType,
+              drawColor: _drawColor,
+              marks: _leftMarks,
+              paths: _leftPaths,
+              currentPath: _currentLeftPath,
+              canUndo: _leftHistory.isNotEmpty,
+              canRedo: _leftRedoStack.isNotEmpty,
+              repaintKey: widget.leftRepaintKey,
+              onMarkAdded: (mark) {
+                setState(() {
+                  _leftMarks.add(mark);
+                  _leftHistory.add(mark);
+                  _leftRedoStack.clear();
+                });
+                _notifyDataChanged();
+              },
+              onNoteRequested: (pos) => _showNoteDialog(pos, true),
+              onPathStarted: (p) => setState(() => _currentLeftPath = p),
+              onPathUpdated: (p) => setState(() => _currentLeftPath = p),
+              onPathCompleted: (p) {
+                final dp = DrawPath(points: List.from(p), color: _drawColor);
+                setState(() {
+                  _leftPaths.add(dp);
+                  _leftHistory.add(dp);
+                  _leftRedoStack.clear();
+                  _currentLeftPath = null;
+                });
+                _notifyDataChanged();
+              },
+              onUndo: _undoLeft,
+              onRedo: _redoLeft,
+              onClear: _clearLeft,
             )),
             const SizedBox(width: 12),
-            Expanded(child: RepaintBoundary(
-              key: widget.rightRepaintKey,
-              child: _FootCanvas(
-                label: 'Right',
-                imagePath: 'assets/images/right_foot.png',
-                isLeft: false,
-                mode: _mode,
-                selectedMarkType: _selectedMarkType,
-                drawColor: _drawColor,
-                marks: _rightMarks,
-                paths: _rightPaths,
-                currentPath: _currentRightPath,
-                canUndo: _rightHistory.isNotEmpty,
-                canRedo: _rightRedoStack.isNotEmpty,
-                onMarkAdded: (mark) {
-                  setState(() {
-                    _rightMarks.add(mark);
-                    _rightHistory.add(mark);
-                    _rightRedoStack.clear();
-                  });
-                  _notifyDataChanged();
-                },
-                onNoteRequested: (pos) => _showNoteDialog(pos, false),
-                onPathStarted: (p) => setState(() => _currentRightPath = p),
-                onPathUpdated: (p) => setState(() => _currentRightPath = p),
-                onPathCompleted: (p) {
-                  final dp = DrawPath(points: List.from(p), color: _drawColor);
-                  setState(() {
-                    _rightPaths.add(dp);
-                    _rightHistory.add(dp);
-                    _rightRedoStack.clear();
-                    _currentRightPath = null;
-                  });
-                  _notifyDataChanged();
-                },
-                onUndo: _undoRight,
-                onRedo: _redoRight,
-                onClear: _clearRight,
-              ),
+            Expanded(child: _FootCanvas(
+              label: 'Right',
+              imagePath: 'assets/images/right_foot.png',
+              isLeft: false,
+              mode: _mode,
+              selectedMarkType: _selectedMarkType,
+              drawColor: _drawColor,
+              marks: _rightMarks,
+              paths: _rightPaths,
+              currentPath: _currentRightPath,
+              canUndo: _rightHistory.isNotEmpty,
+              canRedo: _rightRedoStack.isNotEmpty,
+              repaintKey: widget.rightRepaintKey,
+              onMarkAdded: (mark) {
+                setState(() {
+                  _rightMarks.add(mark);
+                  _rightHistory.add(mark);
+                  _rightRedoStack.clear();
+                });
+                _notifyDataChanged();
+              },
+              onNoteRequested: (pos) => _showNoteDialog(pos, false),
+              onPathStarted: (p) => setState(() => _currentRightPath = p),
+              onPathUpdated: (p) => setState(() => _currentRightPath = p),
+              onPathCompleted: (p) {
+                final dp = DrawPath(points: List.from(p), color: _drawColor);
+                setState(() {
+                  _rightPaths.add(dp);
+                  _rightHistory.add(dp);
+                  _rightRedoStack.clear();
+                  _currentRightPath = null;
+                });
+                _notifyDataChanged();
+              },
+              onUndo: _undoRight,
+              onRedo: _redoRight,
+              onClear: _clearRight,
             )),
           ],
         ),
@@ -519,6 +508,7 @@ class _FootCanvas extends StatefulWidget {
   final List<Offset>? currentPath;
   final bool canUndo;
   final bool canRedo;
+  final GlobalKey? repaintKey;
   final Function(FootMark) onMarkAdded;
   final Function(Offset) onNoteRequested;
   final Function(List<Offset>) onPathStarted;
@@ -548,6 +538,7 @@ class _FootCanvas extends StatefulWidget {
     required this.onUndo,
     required this.onRedo,
     required this.onClear,
+    this.repaintKey,
   });
 
   @override
@@ -580,65 +571,68 @@ class _FootCanvasState extends State<_FootCanvas> {
         ],
       ),
       const SizedBox(height: 6),
-      Container(
-        height: 320,
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: isActive ? const Color(0xFF4FC3F7).withOpacity(0.4) : Colors.white12),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Listener(
-            onPointerDown: isActive ? (event) {
-              final local = _getLocalPosition(event.position);
-              if (widget.mode == DiagramMode.mark) {
-                if (widget.selectedMarkType == MarkType.general) {
-                  widget.onNoteRequested(local);
-                } else {
-                  widget.onMarkAdded(FootMark(position: local, type: widget.selectedMarkType));
+      RepaintBoundary(
+        key: widget.repaintKey,
+        child: Container(
+          height: 320,
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: isActive ? const Color(0xFF4FC3F7).withOpacity(0.4) : Colors.white12),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Listener(
+              onPointerDown: isActive ? (event) {
+                final local = _getLocalPosition(event.position);
+                if (widget.mode == DiagramMode.mark) {
+                  if (widget.selectedMarkType == MarkType.general) {
+                    widget.onNoteRequested(local);
+                  } else {
+                    widget.onMarkAdded(FootMark(position: local, type: widget.selectedMarkType));
+                  }
+                } else if (widget.mode == DiagramMode.draw) {
+                  widget.onPathStarted([local]);
                 }
-              } else if (widget.mode == DiagramMode.draw) {
-                widget.onPathStarted([local]);
-              }
-            } : null,
-            onPointerMove: (widget.mode == DiagramMode.draw) ? (event) {
-              final local = _getLocalPosition(event.position);
-              if (widget.currentPath != null) {
-                widget.onPathUpdated([...widget.currentPath!, local]);
-              }
-            } : null,
-            onPointerUp: (widget.mode == DiagramMode.draw) ? (event) {
-              if (widget.currentPath != null) {
-                widget.onPathCompleted(widget.currentPath!);
-              }
-            } : null,
-            child: Stack(
-              key: _canvasKey,
-              children: [
-                Positioned.fill(
-                  child: ColorFiltered(
-                    colorFilter: const ColorFilter.matrix([
-                      -1, 0, 0, 0, 255,
-                       0,-1, 0, 0, 255,
-                       0, 0,-1, 0, 255,
-                       0, 0, 0, 1,   0,
-                    ]),
-                    child: Image.asset(widget.imagePath, fit: BoxFit.contain),
-                  ),
-                ),
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _OverlayPainter(
-                      marks: widget.marks,
-                      paths: widget.paths,
-                      currentPath: widget.currentPath,
-                      drawColor: widget.drawColor,
+              } : null,
+              onPointerMove: (widget.mode == DiagramMode.draw) ? (event) {
+                final local = _getLocalPosition(event.position);
+                if (widget.currentPath != null) {
+                  widget.onPathUpdated([...widget.currentPath!, local]);
+                }
+              } : null,
+              onPointerUp: (widget.mode == DiagramMode.draw) ? (event) {
+                if (widget.currentPath != null) {
+                  widget.onPathCompleted(widget.currentPath!);
+                }
+              } : null,
+              child: Stack(
+                key: _canvasKey,
+                children: [
+                  Positioned.fill(
+                    child: ColorFiltered(
+                      colorFilter: const ColorFilter.matrix([
+                        -1, 0, 0, 0, 255,
+                         0,-1, 0, 0, 255,
+                         0, 0,-1, 0, 255,
+                         0, 0, 0, 1,   0,
+                      ]),
+                      child: Image.asset(widget.imagePath, fit: BoxFit.contain),
                     ),
                   ),
-                ),
-              ],
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _OverlayPainter(
+                        marks: widget.marks,
+                        paths: widget.paths,
+                        currentPath: widget.currentPath,
+                        drawColor: widget.drawColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -744,13 +738,10 @@ class _ModeButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF0F3460) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-              color: isSelected ? const Color(0xFF4FC3F7) : Colors.white24),
+          border: Border.all(color: isSelected ? const Color(0xFF4FC3F7) : Colors.white24),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon,
-              color: isSelected ? const Color(0xFF4FC3F7) : Colors.white54,
-              size: 18),
+          Icon(icon, color: isSelected ? const Color(0xFF4FC3F7) : Colors.white54, size: 18),
           const SizedBox(width: 6),
           Text(label,
               style: TextStyle(
@@ -796,7 +787,6 @@ class _UndoRedoButton extends StatelessWidget {
   }
 }
 
-// Helper to capture a RepaintBoundary as PNG bytes
 Future<ui.Image?> captureRepaintBoundary(GlobalKey key) async {
   try {
     final boundary = key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
