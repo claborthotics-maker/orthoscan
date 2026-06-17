@@ -117,7 +117,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   String _widthOption(String width) =>
-      (width == 'M' || width == 'L' || width == 'XL') ? width : 'Cust.';
+      (width == 'M' || width == 'W' || width == 'XW') ? width : 'Custom';
 
   bool get _isPolyShell => _orthoticType == TemplateType.polyShell;
   bool get _isRebound => _orthoticType == TemplateType.rebound;
@@ -172,11 +172,11 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     _shoeWidthLeft = wo.shoeWidthLeft.isEmpty ? 'M' : wo.shoeWidthLeft;
     _shoeSizeRight = _validSize(wo.shoeSizeRight, _shoeSizeGender);
     _shoeWidthRight = wo.shoeWidthRight.isEmpty ? 'M' : wo.shoeWidthRight;
-    if (_widthOption(_shoeWidth) == 'Cust.')
+    if (_widthOption(_shoeWidth) == 'Custom')
       _customShoeWidthController.text = _shoeWidth;
-    if (_widthOption(_shoeWidthLeft) == 'Cust.')
+    if (_widthOption(_shoeWidthLeft) == 'Custom')
       _customShoeWidthLeftController.text = _shoeWidthLeft;
-    if (_widthOption(_shoeWidthRight) == 'Cust.')
+    if (_widthOption(_shoeWidthRight) == 'Custom')
       _customShoeWidthRightController.text = _shoeWidthRight;
     _dateOfService = wo.dateOfService;
     _expectedDeliveryDate = wo.expectedDeliveryDate;
@@ -228,7 +228,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   String _resolveWidth(String widthOption, TextEditingController custom) {
-    if (widthOption == 'Cust.') return custom.text.trim();
+    if (widthOption == 'Custom') return custom.text.trim();
     return widthOption;
   }
 
@@ -530,14 +530,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         const SizedBox(height: 8),
         OptionRow(
           label: 'Width',
-          options: const ['M', 'L', 'XL', 'Cust.'],
+          options: const ['M', 'W', 'XW', 'Custom'],
           selected: _widthOption(widthOption),
           onChanged: (v) {
             onWidthChanged(v);
-            if (v != 'Cust.') customWidthController.clear();
+            if (v != 'Custom') customWidthController.clear();
           },
         ),
-        if (_widthOption(widthOption) == 'Cust.') ...[
+        if (_widthOption(widthOption) == 'Custom') ...[
           const SizedBox(height: 8),
           TextField(
             controller: customWidthController,
@@ -799,14 +799,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     const SizedBox(height: 12),
                     OptionRow(
                       label: 'Width',
-                      options: const ['M', 'L', 'XL', 'Cust.'],
+                      options: const ['M', 'W', 'XW', 'Custom'],
                       selected: _widthOption(_shoeWidth),
                       onChanged: (v) => setState(() {
                         _shoeWidth = v;
-                        if (v != 'Cust.') _customShoeWidthController.clear();
+                        if (v != 'Custom') _customShoeWidthController.clear();
                       }),
                     ),
-                    if (_widthOption(_shoeWidth) == 'Cust.') ...[
+                    if (_widthOption(_shoeWidth) == 'Custom') ...[
                       const SizedBox(height: 12),
                       TextField(
                         controller: _customShoeWidthController,
@@ -1276,17 +1276,19 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 onToggle: () => setState(() => _notesExpanded = !_notesExpanded),
                 summary: _instructionsController.text.isEmpty ? 'No notes' : _instructionsController.text,
                 child: TextField(
-                  controller: _instructionsController,
-                  style: const TextStyle(color: Colors.white),
-                  maxLines: 4,
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    hintText: 'Enter any notes or special instructions for the lab...',
-                    hintStyle: TextStyle(color: Colors.white24),
-                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF4FC3F7))),
-                  ),
+                controller: _instructionsController,
+                style: const TextStyle(color: Colors.white),
+                maxLines: 4,
+                onChanged: (_) => setState(() {}),
+                textInputAction: TextInputAction.done,
+                onEditingComplete: () => FocusScope.of(context).unfocus(),
+                decoration: const InputDecoration(
+                  hintText: 'Enter any notes or special instructions for the lab...',
+                  hintStyle: TextStyle(color: Colors.white24),
+                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF4FC3F7))),
                 ),
+              ),
               ),
 
               const SizedBox(height: 24),
@@ -1435,3 +1437,6 @@ class _CollapsibleSection extends StatelessWidget {
     );
   }
 }
+
+
+
