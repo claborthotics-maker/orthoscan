@@ -209,39 +209,6 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
 
             const SizedBox(height: 24),
 
-            // Share PDF button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  final bytes = await PdfService.generateWorkOrderPdf(
-                    wo: workOrder,
-                    patient: patient,
-                    leftDiagramImage: leftDiagramImage,
-                    rightDiagramImage: rightDiagramImage,
-                  );
-                  await Printing.sharePdf(
-                    bytes: bytes,
-                    filename:
-                        '${workOrder.displayName.replaceAll(' ', '_')}_lab_order.pdf',
-                  );
-                },
-                icon: const Icon(Icons.picture_as_pdf,
-                    color: Color(0xFF4FC3F7)),
-                label: const Text('Share Lab Order PDF',
-                    style: TextStyle(
-                        color: Color(0xFF4FC3F7), fontSize: 16)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFF4FC3F7)),
-                  padding: const EdgeInsets.all(16),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
             // Warning
             Container(
               padding: const EdgeInsets.all(12),
@@ -263,14 +230,25 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
             ),
 
             const SizedBox(height: 24),
-
-            // Confirm button
+ // Confirm & Submit button — marks as submitted AND opens share sheet
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
+                onPressed: () async {
+                  // First confirm/submit
                   onConfirm();
+                  // Then generate and share PDF
+                  final bytes = await PdfService.generateWorkOrderPdf(
+                    wo: workOrder,
+                    patient: patient,
+                    leftDiagramImage: leftDiagramImage,
+                    rightDiagramImage: rightDiagramImage,
+                  );
+                  await Printing.sharePdf(
+                    bytes: bytes,
+                    filename:
+                        '${workOrder.displayName.replaceAll(' ', '_')}_lab_order.pdf',
+                  );
                 },
                 icon: const Icon(Icons.send, color: Colors.white),
                 label: const Text('Confirm & Submit to Lab',
