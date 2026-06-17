@@ -302,9 +302,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     }
   }
 
-  Future<void> _submit() async {
-    print('DEBUG: _submit called, status: $_status, name: ${_nameController.text}');
-    if (_nameController.text.trim().isEmpty) {
+  Future<void> _submit() async {    if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter a work order name before submitting.'),
@@ -317,9 +315,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     final wo = widget.workOrder;
     _applyStateToWorkOrder(wo);
     await widget.onSave(wo);
-    if (!mounted) {
-      print('DEBUG: not mounted after save');
-      return;
+    if (!mounted) {      return;
     }
 
     // Capture foot diagram
@@ -344,12 +340,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
         rightImg = bytes?.buffer.asUint8List();
       }
-    } catch (e) {
-      print('DEBUG: diagram capture error: $e');
-    }
-
-    print('DEBUG: pushing confirmation screen');
-    Navigator.push(
+    } catch (e) {    }    Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => WorkOrderConfirmationScreen(
@@ -357,9 +348,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           patient: widget.patient,
           leftDiagramImage: leftImg,
           rightDiagramImage: rightImg,
-          onConfirm: () {
-            print('DEBUG: onConfirm called');
-            final now = DateTime.now();
+          onConfirm: () {            final now = DateTime.now();
             if (wo.submissionCount == 0) {
               wo.originalSubmittedAt = now;
             }
@@ -1439,3 +1428,4 @@ class _CollapsibleSection extends StatelessWidget {
     );
   }
 }
+
