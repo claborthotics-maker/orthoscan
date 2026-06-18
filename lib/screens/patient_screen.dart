@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
 import '../models/work_order.dart';
 import '../models/work_order_template.dart';
+import '../services/database_service.dart';
 import '../utils/input_formatters.dart';
 import '../services/database_service.dart';
 import 'scan_selection_screen.dart';
@@ -400,7 +401,7 @@ class _PatientScreenState extends State<PatientScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ─── Patient Info ────────────────────────────────────────────
+            // â”€â”€â”€ Patient Info â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _SectionCard(
               title: 'Patient Info',
               icon: Icons.person,
@@ -427,7 +428,7 @@ class _PatientScreenState extends State<PatientScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Scans ───────────────────────────────────────────────────
+            // â”€â”€â”€ Scans â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _SectionCard(
               title: 'Scans',
               icon: Icons.radar,
@@ -470,7 +471,7 @@ class _PatientScreenState extends State<PatientScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Clinical Notes ──────────────────────────────────────────
+            // â”€â”€â”€ Clinical Notes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _SectionCard(
               title: 'Clinical Notes',
               icon: Icons.note_alt,
@@ -510,7 +511,7 @@ class _PatientScreenState extends State<PatientScreen> {
 
             const SizedBox(height: 16),
 
-            // ─── Work Orders ─────────────────────────────────────────────
+            // â”€â”€â”€ Work Orders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _SectionCard(
               title: 'Work Orders',
               icon: Icons.assignment,
@@ -539,7 +540,7 @@ class _PatientScreenState extends State<PatientScreen> {
                                   color: Colors.white,
                                   fontWeight: FontWeight.w500)),
                           subtitle: Text(
-                            '${wo.statusLabel} · ${wo.quantityLabel}',
+                            '${wo.statusLabel} Â· ${wo.quantityLabel}',
                             style: const TextStyle(
                                 color: Colors.white54, fontSize: 12),
                           ),
@@ -677,7 +678,7 @@ class _PatientScreenState extends State<PatientScreen> {
   }
 }
 
-// ─── Section Card ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Section Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class _SectionCard extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -717,7 +718,7 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-// ─── Info Row ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Info Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
@@ -748,7 +749,7 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-// ─── Template Sheet Content ───────────────────────────────────────────────────
+// â”€â”€â”€ Template Sheet Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class _TemplateSheetContent extends StatefulWidget {
   final Function(WorkOrderTemplate) onTemplateSelected;
 
@@ -763,11 +764,51 @@ class _TemplateSheetContentState extends State<_TemplateSheetContent>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final List<WorkOrderTemplate> _templates = DefaultTemplates.getAll();
+  final _db = DatabaseService();
+  bool _loadingCustom = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadCustomTemplates();
+  }
+
+Future<void> _loadCustomTemplates() async {
+    final custom = await _db.getCustomTemplates();    for (final t in custom) {    }
+    if (mounted) {
+      setState(() {
+        _templates.addAll(custom);
+        _loadingCustom = false;
+      });
+    }
+  }
+
+  Future<void> _deleteCustomTemplate(WorkOrderTemplate template) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Delete Template', style: TextStyle(color: Colors.white)),
+        content: Text('Delete "${template.name}"? This cannot be undone.',
+            style: const TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade800),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _db.deleteTemplate(template.id);
+      setState(() => _templates.removeWhere((t) => t.id == template.id));
+    }
   }
 
   @override
@@ -835,11 +876,25 @@ class _TemplateSheetContentState extends State<_TemplateSheetContent>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(t.name,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15)),
+                       Row(children: [
+                            Text(t.name,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15)),
+                            if (t.isCustom) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF4FC3F7).withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text('Custom',
+                                    style: TextStyle(color: Color(0xFF4FC3F7), fontSize: 10)),
+                              ),
+                            ],
+                          ]),
                         const SizedBox(height: 4),
                         Text(t.description,
                             style: const TextStyle(
@@ -848,9 +903,16 @@ class _TemplateSheetContentState extends State<_TemplateSheetContent>
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right,
-                      color: Colors.white38),
-                ]),
+                if (t.isCustom)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline,
+                            color: Colors.red, size: 20),
+                        onPressed: () => _deleteCustomTemplate(t),
+                      )
+                    else
+                      const Icon(Icons.chevron_right,
+                          color: Colors.white38),
+                  ]),
               ),
             ),
           ),

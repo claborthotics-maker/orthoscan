@@ -24,7 +24,7 @@ class DatabaseService {
     final path = join(dbPath, 'orthoscan.db');
     return await openDatabase(
       path,
-      version: 9,
+      version: 10,
       onCreate: _createTables,
       onUpgrade: _onUpgrade,
     );
@@ -81,8 +81,70 @@ class DatabaseService {
       try { await db.execute('ALTER TABLE work_orders ADD COLUMN originalSubmittedAt TEXT'); } catch (e) {}
       try { await db.execute('ALTER TABLE work_orders ADD COLUMN submissionCount INTEGER DEFAULT 0'); } catch (e) {}
     }
+    if (oldVersion < 9) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS templates (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            templateType INTEGER NOT NULL,
+            isCustom INTEGER DEFAULT 1,
+            clinicName TEXT,
+            baseThickness TEXT,
+            topCover TEXT,
+            topCoverThickness TEXT,
+            topCoverColor TEXT,
+            shellThickness TEXT,
+            archModification INTEGER DEFAULT 0,
+            heelPost TEXT,
+            forefootPost TEXT,
+            heelWedge TEXT,
+            forefootWedge TEXT,
+            metPad TEXT,
+            metBar TEXT,
+            heelLift TEXT,
+            heelCup TEXT,
+            isPartialFootLeft INTEGER DEFAULT 0,
+            isPartialFootRight INTEGER DEFAULT 0,
+            toeFillerCountLeft INTEGER DEFAULT 1,
+            toeFillerCountRight INTEGER DEFAULT 1,
+            specialInstructions TEXT,
+            description TEXT
+          )
+        ''');
+      } catch (e) {}
+    }
   }
   Future<void> _createTables(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        templateType INTEGER NOT NULL,
+        isCustom INTEGER DEFAULT 1,
+        clinicName TEXT,
+        baseThickness TEXT,
+        topCover TEXT,
+        topCoverThickness TEXT,
+        topCoverColor TEXT,
+        shellThickness TEXT,
+        archModification INTEGER DEFAULT 0,
+        heelPost TEXT,
+        forefootPost TEXT,
+        heelWedge TEXT,
+        forefootWedge TEXT,
+        metPad TEXT,
+        metBar TEXT,
+        heelLift TEXT,
+        heelCup TEXT,
+        isPartialFootLeft INTEGER DEFAULT 0,
+        isPartialFootRight INTEGER DEFAULT 0,
+        toeFillerCountLeft INTEGER DEFAULT 1,
+        toeFillerCountRight INTEGER DEFAULT 1,
+        specialInstructions TEXT,
+        description TEXT
+      )
+    ''');
     await db.execute('''
       CREATE TABLE patients (
         id TEXT PRIMARY KEY,
@@ -528,8 +590,88 @@ class DatabaseService {
       isDefault: (map['isDefault'] as int? ?? 0) == 1,
     )).toList();
   }
+
+  // === Custom Templates ===
+  Future<void> insertTemplate(WorkOrderTemplate template) async {
+    final db = await database;
+    await db.insert('templates', _templateToMap(template));
+  }
+
+  Future<void> updateTemplate(WorkOrderTemplate template) async {
+    final db = await database;
+    await db.update('templates', _templateToMap(template),
+        where: 'id = ?', whereArgs: [template.id]);
+  }
+
+  Future<void> deleteTemplate(String id) async {
+    final db = await database;
+    await db.delete('templates', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<WorkOrderTemplate>> getCustomTemplates() async {
+    final db = await database;
+    final maps = await db.query('templates', where: 'isCustom = ?', whereArgs: [1]);
+    return maps.map((map) => _templateFromMap(map)).toList();
+  }
+
+  Map<String, dynamic> _templateToMap(WorkOrderTemplate t) {
+    return {
+      'id': t.id,
+      'name': t.name,
+      'templateType': t.templateType.index,
+      'isCustom': t.isCustom ? 1 : 0,
+      'clinicName': t.clinicName,
+      'baseThickness': t.baseThickness,
+      'topCover': t.topCover,
+      'topCoverThickness': t.topCoverThickness,
+      'topCoverColor': t.topCoverColor,
+      'shellThickness': t.shellThickness,
+      'archModification': t.archModification,
+      'heelPost': t.heelPost,
+      'forefootPost': t.forefootPost,
+      'heelWedge': t.heelWedge,
+      'forefootWedge': t.forefootWedge,
+      'metPad': t.metPad,
+      'metBar': t.metBar,
+      'heelLift': t.heelLift,
+      'heelCup': t.heelCup,
+      'isPartialFootLeft': t.isPartialFootLeft ? 1 : 0,
+      'isPartialFootRight': t.isPartialFootRight ? 1 : 0,
+      'toeFillerCountLeft': t.toeFillerCountLeft,
+      'toeFillerCountRight': t.toeFillerCountRight,
+      'specialInstructions': t.specialInstructions,
+      'description': t.description,
+    };
+  }
+
+  WorkOrderTemplate _templateFromMap(Map<String, dynamic> map) {
+    return WorkOrderTemplate(
+      id: map['id'] as String,
+      name: map['name'] as String,
+      templateType: TemplateType.values[map['templateType'] as int],
+      isCustom: (map['isCustom'] as int? ?? 1) == 1,
+      clinicName: map['clinicName'] as String? ?? '',
+      baseThickness: map['baseThickness'] as String? ?? '3/16"',
+      topCover: map['topCover'] as String? ?? 'Microcel Puff',
+      topCoverThickness: map['topCoverThickness'] as String? ?? '1/16"',
+      topCoverColor: map['topCoverColor'] as String? ?? 'Blue',
+      shellThickness: map['shellThickness'] as String? ?? '1/8"',
+      archModification: map['archModification'] as int? ?? 0,
+      heelPost: map['heelPost'] as String? ?? 'None',
+      forefootPost: map['forefootPost'] as String? ?? '',
+      heelWedge: map['heelWedge'] as String? ?? '',
+      forefootWedge: map['forefootWedge'] as String? ?? '',
+      metPad: map['metPad'] as String? ?? '',
+      metBar: map['metBar'] as String? ?? '',
+      heelLift: map['heelLift'] as String? ?? '',
+      heelCup: map['heelCup'] as String? ?? 'Standard',
+      isPartialFootLeft: (map['isPartialFootLeft'] as int? ?? 0) == 1,
+      isPartialFootRight: (map['isPartialFootRight'] as int? ?? 0) == 1,
+      toeFillerCountLeft: map['toeFillerCountLeft'] as int? ?? 1,
+      toeFillerCountRight: map['toeFillerCountRight'] as int? ?? 1,
+      specialInstructions: map['specialInstructions'] as String? ?? '',
+      description: map['description'] as String? ?? '',
+    );
+  }
 }
-
-
-
 

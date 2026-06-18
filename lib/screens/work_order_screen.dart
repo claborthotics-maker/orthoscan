@@ -8,6 +8,7 @@ import '../models/work_order.dart';
 import '../models/work_order_template.dart';
 import '../models/clinician.dart';
 import '../services/clinician_service.dart';
+import '../services/database_service.dart';
 import 'work_order_widgets.dart';
 import 'foot_diagram_widget.dart';
 import 'work_order_confirmation_screen.dart';
@@ -291,7 +292,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     }
   }
 
-  Future<void> _save() async {
+   Future<void> _save() async {
     _applyStateToWorkOrder(widget.workOrder);
     await widget.onSave(widget.workOrder);
     if (mounted) {
@@ -299,6 +300,104 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         const SnackBar(content: Text('Work order saved')),
       );
       Navigator.pop(context);
+    }
+  }
+
+  Future<void> _saveAsTemplate() async {
+    if (_orthoticType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select an orthotic type before saving as a template.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final nameController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Save as Template',
+            style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This will save the current product specs, arch modification, and accommodations as a reusable template.',
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Template Name',
+                hintText: 'e.g. My Custom Diabetic Rebound',
+                labelStyle: TextStyle(color: Colors.white54),
+                hintStyle: TextStyle(color: Colors.white24),
+                enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFF4FC3F7))),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty) return;
+              Navigator.pop(context, true);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F3460)),
+            child: const Text('Save Template', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final template = WorkOrderTemplate(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: nameController.text.trim(),
+      templateType: _orthoticType!,
+      isCustom: true,
+      baseThickness: _baseThickness,
+      topCover: _topCoverType,
+      topCoverThickness: _topCoverThickness,
+      topCoverColor: _topCoverColor,
+      shellThickness: _shellThickness,
+      archModification: _archModification,
+      heelPost: _heelPost,
+      forefootPost: _forefootPost,
+      heelWedge: _heelWedge,
+      forefootWedge: _forefootWedge,
+      metPad: _metPadFoot,
+      metBar: _metBarFoot,
+      heelLift: _heelLiftFoot,
+      heelCup: _heelCup,
+      isPartialFootLeft: _isPartialFootLeft,
+      isPartialFootRight: _isPartialFootRight,
+      toeFillerCountLeft: _toeFillerCountLeft,
+      toeFillerCountRight: _toeFillerCountRight,
+      description: 'Custom template',
+    );
+
+    await DatabaseService().insertTemplate(template);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Template "${template.name}" saved')),
+      );
     }
   }
 
@@ -581,6 +680,11 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
             },
           ),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.bookmark_add_outlined, color: Color(0xFF4FC3F7)),
+              tooltip: 'Save as Template',
+              onPressed: _saveAsTemplate,
+            ),
             TextButton(
               onPressed: _save,
               child: const Text('Save',
