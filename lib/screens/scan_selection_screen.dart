@@ -63,30 +63,30 @@ class ScanSelectionScreen extends StatelessWidget {
 
             const SizedBox(height: 40),
 
-            // ─── Impression Box ───────────────────────────────────────────
+           // ─── Impression Box (Coming Soon) ───────────────────────
             _ScanOptionCard(
               icon: Icons.inventory_2,
               title: 'Scan Impression Box',
-              description:
-                  'Scan a foam impression box casting of the patient\'s foot. '
-                  'Recommended for most orthotic prescriptions.',
-              color: const Color(0xFF4FC3F7),
-              tags: ['Most Common', 'High Accuracy'],
-              onTap: () => _startScan(context, ScanType.impressionBox),
+              description: 'Coming soon — scan a foam impression box '
+                  'casting of the patient\'s foot.',
+              color: Colors.white24,
+              tags: ['Coming Soon'],
+              onTap: null,
+              disabled: true,
             ),
 
             const SizedBox(height: 16),
 
-            // ─── Direct Foot ──────────────────────────────────────────────
+            // ─── Direct Foot (Coming Soon) ───────────────────────────
             _ScanOptionCard(
               icon: Icons.accessibility_new,
               title: 'Scan Foot Directly',
-              description:
-                  'Scan the patient\'s foot directly using the device camera. '
-                  'Quick option for follow-up appointments.',
-              color: Colors.green,
-              tags: ['Quick Scan', 'No Casting Required'],
-              onTap: () => _startScan(context, ScanType.directFoot),
+              description: 'Coming soon — scan the patient\'s foot '
+                  'directly using the device camera.',
+              color: Colors.white24,
+              tags: ['Coming Soon'],
+              onTap: null,
+              disabled: true,
             ),
 
             const SizedBox(height: 16),

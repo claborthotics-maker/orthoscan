@@ -428,46 +428,53 @@ class _PatientScreenState extends State<PatientScreen> {
 
             const SizedBox(height: 16),
 
-            // â”€â”€â”€ Scans â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            _SectionCard(
-              title: 'Scans',
-              icon: Icons.radar,
-              child: Column(
-                children: [
-                  if (widget.patient.scanFiles.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Text('No scans yet',
-                          style: TextStyle(color: Colors.white54)),
-                    )
-                  else
-                    ...widget.patient.scanFiles.map(
-                      (f) => ListTile(
-                        leading: const Icon(Icons.threed_rotation,
-                            color: Color(0xFF4FC3F7)),
-                        title: Text(f.split('/').last,
-                            style:
-                                const TextStyle(color: Colors.white)),
-                      ),
-                    ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _startScan,
-                      icon: const Icon(Icons.camera_alt,
-                          color: Colors.white),
-                      label: const Text('Start New Scan',
-                          style: TextStyle(color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F3460),
-                        padding: const EdgeInsets.all(14),
+         // ─── Scans (Coming Soon) ─────────────────────────────
+              Opacity(
+                opacity: 0.5,
+                child: IgnorePointer(
+                  child: _SectionCard(
+                    title: 'Scans',
+                    icon: Icons.radar,
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white10,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text('Coming Soon',
+                              style: TextStyle(
+                                  color: Colors.white38, fontSize: 11)),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Text('No scans yet',
+                              style: TextStyle(color: Colors.white54)),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                        child: ElevatedButton.icon(
+                              onPressed: null,
+                              icon: const Icon(Icons.camera_alt,
+                                  color: Colors.white),
+                              label: const Text('Start New Scan',
+                                  style: TextStyle(color: Colors.white)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0F3460),
+                                padding: const EdgeInsets.all(14),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
+            
 
             const SizedBox(height: 16),
 
@@ -948,3 +955,4 @@ Future<void> _loadCustomTemplates() async {
     ]);
   }
 }
+
