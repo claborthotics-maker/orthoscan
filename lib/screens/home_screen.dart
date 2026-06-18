@@ -365,7 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
           flexibleSpace: _isSearching
               ? null
               : FlexibleSpaceBar(
-                  title: const Text('OrthoScan',
+                  title: const Text('CL@B',
                       style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold)),
@@ -1014,3 +1014,4 @@ class _WOSearchDelegate extends SearchDelegate<String> {
     );
   }
 }
+
