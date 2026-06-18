@@ -1,17 +1,18 @@
 ﻿import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'services/database_service.dart';
 import 'services/clinician_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize database
   await DatabaseService().database;
-  
+
   // Load clinicians
   await ClinicianService().load();
-  
+
   runApp(const OrthoScanApp());
 }
 
@@ -31,7 +32,9 @@ class OrthoScanApp extends StatelessWidget {
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFF1A1A2E),
       ),
-      home: const HomeScreen(),
+      home: ClinicianService().isEmpty
+          ? const OnboardingScreen()
+          : const HomeScreen(),
     );
   }
 }
