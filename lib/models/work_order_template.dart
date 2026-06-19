@@ -1,4 +1,4 @@
-import 'work_order.dart';
+﻿import 'work_order.dart';
 enum TemplateType {
   rebound,
   polyShell,
@@ -70,7 +70,6 @@ class WorkOrderTemplate {
     this.description = '',
   });
 
-  // Import FootSide from work_order.dart
   WorkOrder toWorkOrder({
     required String patientId,
     required String clinicianName,
@@ -79,12 +78,12 @@ class WorkOrderTemplate {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       patientId: patientId,
       name: name,
-        lastTemplateName: name,
-        templateType: templateType,
+      lastTemplateName: name,
+      templateType: templateType,
       createdAt: DateTime.now(),
       productType: name,
       materials: topCover,
-       specialInstructions: '',
+      specialInstructions: '',
       clinicianName: clinicianName,
       clinicName: clinicName,
       isPartialFootLeft: isPartialFootLeft,
@@ -155,15 +154,50 @@ class WorkOrderTemplate {
   }
 }
 
-// Need to import WorkOrder after defining TemplateType
-
-// ─── Default Templates ────────────────────────────────────────────────────────
+// ─── Default Templates ─────────────────────────────────────────────────────
 class DefaultTemplates {
- static List<WorkOrderTemplate> getAll() {
+  static List<WorkOrderTemplate> getAll() {
     return [
-      ..._reboundTemplates(),
-      ..._polyShellTemplates(),
-      ..._partialFootTemplates(),
+      WorkOrderTemplate(
+        id: 'default_rebound',
+        name: 'Rebound',
+        templateType: TemplateType.rebound,
+        description: 'Standard rebound orthotic',
+        baseThickness: '3/16"',
+        topCover: 'Microcel Puff',
+        topCoverThickness: '1/16"',
+        topCoverColor: 'Blue',
+        archModification: 0,
+        heelCup: 'Standard',
+      ),
+      WorkOrderTemplate(
+        id: 'default_poly_shell',
+        name: 'Poly Shell',
+        templateType: TemplateType.polyShell,
+        description: 'Standard poly shell orthotic',
+        shellThickness: '1/8"',
+        topCover: 'Microcel Puff',
+        topCoverThickness: '1/16"',
+        topCoverColor: 'Blue',
+        archModification: 0,
+        heelCup: 'Standard',
+      ),
+      WorkOrderTemplate(
+        id: 'default_partial_foot',
+        name: 'Partial Foot',
+        templateType: TemplateType.partialFoot,
+        description: 'Standard partial foot rebound with toe filler',
+        baseThickness: '3/16"',
+        topCover: 'Microcel Puff',
+        topCoverThickness: '1/8"',
+        topCoverColor: 'Blue',
+        archModification: 0,
+        heelCup: 'Standard',
+        isPartialFootLeft: true,
+        isPartialFootRight: true,
+        toeFillerCountLeft: 1,
+        toeFillerCountRight: 1,
+      ),
     ];
   }
 
@@ -175,181 +209,5 @@ class DefaultTemplates {
       return '';
     }
   }
-
-  static List<WorkOrderTemplate> _reboundTemplates() {
-    return [
-      WorkOrderTemplate(
-        id: 'default_rebound_running',
-        name: 'Running Rebound',
-        templateType: TemplateType.rebound,
-        description: 'Athletic full length rebound for running shoes',
-        baseThickness: '3/16"',
-        topCover: 'Microcel Puff',
-        topCoverThickness: '1/16"',
-        topCoverColor: 'Blue',
-        archModification: 1,
-        heelCup: 'Deep',
-        specialInstructions: 'Athletic use — running shoes',
-      ),
-      WorkOrderTemplate(
-        id: 'default_rebound_dress',
-        name: 'Dress Shoe Rebound',
-        templateType: TemplateType.rebound,
-        description: 'Low profile rebound for dress shoes',
-        baseThickness: '3/16"',
-        topCover: 'Microfiber Suede',
-        topCoverThickness: '1/16"',
-        topCoverColor: 'Blue',
-        archModification: 0,
-        heelCup: 'Standard',
-        specialInstructions: 'Low profile for dress shoe fit',
-      ),
-      WorkOrderTemplate(
-        id: 'default_rebound_casual',
-        name: 'Casual/Walking Rebound',
-        templateType: TemplateType.rebound,
-        description: 'Everyday walking rebound',
-        baseThickness: '3/16"',
-        topCover: 'Microcel Puff',
-        topCoverThickness: '1/8"',
-        topCoverColor: 'Blue',
-        archModification: 0,
-        heelCup: 'Standard',
-        specialInstructions: 'General everyday use',
-      ),
-      WorkOrderTemplate(
-        id: 'default_rebound_diabetic',
-        name: 'Diabetic Rebound',
-        templateType: TemplateType.rebound,
-        description: 'Pressure relieving rebound for diabetic patients',
-        baseThickness: '1/4"',
-        topCover: 'Microcel Puff',
-        topCoverThickness: '1/8"',
-        topCoverColor: 'Blue',
-        archModification: 0,
-        heelCup: 'None',
-        heelPost: 'None',
-        specialInstructions:
-            'Diabetic — pressure relief priority. No sharp edges.',
-      ),
-    ];
-  }
-
-  static List<WorkOrderTemplate> _polyShellTemplates() {
-    return [
-      WorkOrderTemplate(
-        id: 'default_poly_athletic',
-        name: 'Athletic Poly Shell',
-        templateType: TemplateType.polyShell,
-        description: '3D printed shell for athletic footwear',
-        shellThickness: '1/8"',
-        topCover: 'Microcel Puff',
-        topCoverThickness: '1/16"',
-        topCoverColor: 'Blue',
-        archModification: 1,
-        heelCup: 'Deep',
-        specialInstructions: 'Athletic use — firm shell',
-      ),
-      WorkOrderTemplate(
-        id: 'default_poly_dress',
-        name: 'Dress Shoe Poly Shell',
-        templateType: TemplateType.polyShell,
-        description: 'Slim 3D printed shell for dress shoes',
-        shellThickness: '1/8"',
-        topCover: 'Microfiber Suede',
-        topCoverThickness: '1/16"',
-        topCoverColor: 'Blue',
-        archModification: 0,
-        heelCup: 'Standard',
-        specialInstructions: 'Slim profile for dress shoe fit',
-      ),
-      WorkOrderTemplate(
-        id: 'default_poly_casual',
-        name: 'Casual/Walking Poly Shell',
-        templateType: TemplateType.polyShell,
-        description: 'Everyday 3D printed shell',
-        shellThickness: '3/32"',
-        topCover: 'Microcel Puff',
-        topCoverThickness: '1/8"',
-        topCoverColor: 'Blue',
-        archModification: 0,
-        heelCup: 'Standard',
-        specialInstructions: 'General everyday use',
-      ),
-      WorkOrderTemplate(
-        id: 'default_poly_diabetic',
-        name: 'Diabetic Poly Shell',
-        templateType: TemplateType.polyShell,
-        description: 'Pressure relieving shell for diabetic patients',
-        shellThickness: '1/8"',
-        topCover: 'Microcel Puff',
-        topCoverThickness: '1/8"',
-        topCoverColor: 'Blue',
-        archModification: 0,
-        heelCup: 'None',
-        heelPost: 'None',
-        specialInstructions:
-            'Diabetic — pressure relief priority. No sharp edges.',
-      ),
-    ];
-  }
-
-  static List<WorkOrderTemplate> _partialFootTemplates() {
-    return [
-      WorkOrderTemplate(
-        id: 'default_partial_standard',
-        name: 'Standard Partial Foot',
-        templateType: TemplateType.partialFoot,
-        description: 'Rebound with toe filler for partial foot',
-        baseThickness: '3/16"',
-        topCover: 'Microcel Puff',
-        topCoverThickness: '1/8"',
-        topCoverColor: 'Blue',
-        archModification: 0,
-        heelCup: 'Standard',
-        isPartialFootLeft: true,
-        isPartialFootRight: true,
-        toeFillerCountLeft: 1,
-        toeFillerCountRight: 1,
-        specialInstructions: 'Partial foot — include toe filler',
-      ),
-      WorkOrderTemplate(
-        id: 'default_partial_diabetic',
-        name: 'Diabetic Partial Foot',
-        templateType: TemplateType.partialFoot,
-        description: 'Diabetic rebound with toe filler',
-        baseThickness: '1/4"',
-        topCover: 'Microcel Puff',
-        topCoverThickness: '1/8"',
-        topCoverColor: 'Blue',
-        archModification: 0,
-        heelCup: 'None',
-        heelPost: 'None',
-        isPartialFootLeft: true,
-        isPartialFootRight: true,
-        toeFillerCountLeft: 1,
-        toeFillerCountRight: 1,
-        specialInstructions:
-            'Diabetic partial foot — pressure relief priority. No sharp edges.',
-      ),
-      WorkOrderTemplate(
-        id: 'default_partial_athletic',
-        name: 'Athletic Partial Foot',
-        templateType: TemplateType.partialFoot,
-        description: 'Athletic rebound with toe filler',
-        baseThickness: '3/16"',
-        topCover: 'Microcel Puff',
-        topCoverThickness: '1/16"',
-        topCoverColor: 'Blue',
-        archModification: 1,
-        heelCup: 'Deep',
-        isPartialFootLeft: true,
-        isPartialFootRight: true,
-        toeFillerCountLeft: 1,
-        toeFillerCountRight: 1,
-        specialInstructions:
-            'Athletic partial foot — include toe filler',
-      ),
-    ];
-  }
 }
+
