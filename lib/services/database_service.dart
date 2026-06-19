@@ -24,7 +24,7 @@ class DatabaseService {
     final path = join(dbPath, 'orthoscan.db');
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: _createTables,
       onUpgrade: _onUpgrade,
     );
@@ -112,10 +112,13 @@ class DatabaseService {
             description TEXT
           )
         ''');
-      } catch (e) {}
+    } catch (e) {}
+      }
+    if (oldVersion < 11) {
+      try { await db.execute('ALTER TABLE work_orders ADD COLUMN lastTemplateName TEXT DEFAULT ""'); } catch (e) {}
     }
-  }
-  Future<void> _createTables(Database db, int version) async {
+    }
+    Future<void> _createTables(Database db, int version) async {
     await db.execute('''
       CREATE TABLE templates (
         id TEXT PRIMARY KEY,
@@ -160,10 +163,11 @@ class DatabaseService {
       )
     ''');
     await db.execute('''
-      CREATE TABLE work_orders (
-        id TEXT PRIMARY KEY,
-        patientId TEXT NOT NULL,
-        name TEXT,
+        CREATE TABLE work_orders (
+          id TEXT PRIMARY KEY,
+          patientId TEXT NOT NULL,
+          name TEXT,
+          lastTemplateName TEXT,
         templateType INTEGER,
         status INTEGER DEFAULT 0,
         footSide INTEGER DEFAULT 2,
@@ -341,7 +345,8 @@ class DatabaseService {
     return {
       'id': wo.id,
       'patientId': wo.patientId,
-      'name': wo.name,
+       'name': wo.name,
+      'lastTemplateName': wo.lastTemplateName,
       'templateType': wo.templateType?.index,
       'status': wo.status.index,
       'footSide': wo.footSide.index,
@@ -404,7 +409,8 @@ class DatabaseService {
     return WorkOrder(
       id: map['id'] as String,
       patientId: map['patientId'] as String,
-      name: map['name'] as String? ?? '',
+     name: map['name'] as String? ?? '',
+      lastTemplateName: map['lastTemplateName'] as String? ?? '',
       templateType: map['templateType'] != null
           ? TemplateType.values[map['templateType'] as int] : null,
       status: WorkOrderStatus.values[map['status'] as int? ?? 0],

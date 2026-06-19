@@ -538,13 +538,20 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   _baseThickness = '3/16"';
                   _baseGrind = 'Standard';
                 }
-                if (oldType == TemplateType.polyShell && newType != TemplateType.polyShell) {
-                  _heelPost = 'None';
-                }
-                _orthoticType = newType;
-                widget.workOrder.templateType = newType;
-                _productSpecsExpanded = true;
-              });
+                 if (oldType == TemplateType.polyShell && newType != TemplateType.polyShell) {
+                    _heelPost = 'None';
+                  }
+                  // Sync name only if it still matches the last applied template name
+                  if (_nameController.text.trim() == widget.workOrder.lastTemplateName.trim() &&
+                      widget.workOrder.lastTemplateName.isNotEmpty) {
+                    final newDefaultName = DefaultTemplates.defaultNameForType(newType);
+                    _nameController.text = newDefaultName;
+                    widget.workOrder.lastTemplateName = newDefaultName;
+                  }
+                  _orthoticType = newType;
+                  widget.workOrder.templateType = newType;
+                  _productSpecsExpanded = true;
+                });
             },
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F3460)),
             child: const Text('Confirm Change', style: TextStyle(color: Colors.white)),

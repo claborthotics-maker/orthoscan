@@ -18,6 +18,7 @@ class WorkOrder {
   final String id;
   final String patientId;
   String name;
+  String lastTemplateName;
   TemplateType? templateType;
   WorkOrderStatus status;
   FootSide footSide;
@@ -100,6 +101,7 @@ class WorkOrder {
     required this.id,
     required this.patientId,
     this.name = '',
+    this.lastTemplateName = '',
     this.templateType,
     this.status = WorkOrderStatus.draft,
     this.footSide = FootSide.bilateral,
@@ -160,7 +162,7 @@ class WorkOrder {
   int get totalQuantity => quantityLeft + quantityRight;
 
   String get displayName =>
-      name.isNotEmpty ? name : (productType.isNotEmpty ? productType : 'Work Order');
+      name.trim().isNotEmpty ? name.trim() : 'Untitled Work Order';
 
   String get suggestedShellThickness {
     if (patientWeight == null) return '1/8"';
@@ -260,7 +262,8 @@ class WorkOrder {
     return {
       'id': id,
       'patientId': patientId,
-      'name': name,
+       'name': name,
+      'lastTemplateName': lastTemplateName,
       'templateType': templateType?.index,
       'status': status.index,
       'footSide': footSide.index,
@@ -323,7 +326,8 @@ class WorkOrder {
     return WorkOrder(
       id: map['id'],
       patientId: map['patientId'],
-      name: map['name'] ?? '',
+     name: map['name'] ?? '',
+      lastTemplateName: map['lastTemplateName'] ?? '',
       templateType: map['templateType'] != null
           ? TemplateType.values[map['templateType']] : null,
       status: WorkOrderStatus.values[map['status'] ?? 0],

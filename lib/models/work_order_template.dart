@@ -79,7 +79,8 @@ class WorkOrderTemplate {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       patientId: patientId,
       name: name,
-      templateType: templateType,
+        lastTemplateName: name,
+        templateType: templateType,
       createdAt: DateTime.now(),
       productType: name,
       materials: topCover,
@@ -158,12 +159,21 @@ class WorkOrderTemplate {
 
 // ─── Default Templates ────────────────────────────────────────────────────────
 class DefaultTemplates {
-  static List<WorkOrderTemplate> getAll() {
+ static List<WorkOrderTemplate> getAll() {
     return [
       ..._reboundTemplates(),
       ..._polyShellTemplates(),
       ..._partialFootTemplates(),
     ];
+  }
+
+  static String defaultNameForType(TemplateType type) {
+    final all = getAll();
+    try {
+      return all.firstWhere((t) => t.templateType == type).name;
+    } catch (_) {
+      return '';
+    }
   }
 
   static List<WorkOrderTemplate> _reboundTemplates() {

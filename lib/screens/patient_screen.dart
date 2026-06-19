@@ -108,7 +108,7 @@ class _PatientScreenState extends State<PatientScreen> {
                     patientId: widget.patient.id,
                     clinicianName: '',
                   );
-                  workOrder.name = '';
+                  // name comes from template.toWorkOrder() — don't blank it
                   await _db.insertWorkOrder(workOrder);
                   await Future.delayed(
                       const Duration(milliseconds: 300));
@@ -457,25 +457,24 @@ class _PatientScreenState extends State<PatientScreen> {
                         const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
-                        child: ElevatedButton.icon(
-                              onPressed: null,
-                              icon: const Icon(Icons.camera_alt,
-                                  color: Colors.white),
-                              label: const Text('Start New Scan',
-                                  style: TextStyle(color: Colors.white)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0F3460),
-                                padding: const EdgeInsets.all(14),
-                              ),
+                          child: ElevatedButton.icon(
+                            onPressed: null,
+                            icon: const Icon(Icons.camera_alt,
+                                color: Colors.white),
+                            label: const Text('Start New Scan',
+                                style: TextStyle(color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0F3460),
+                              padding: const EdgeInsets.all(14),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-            
-
+              ),
+              
             const SizedBox(height: 16),
 
             // â”€â”€â”€ Clinical Notes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -547,10 +546,10 @@ class _PatientScreenState extends State<PatientScreen> {
                                   color: Colors.white,
                                   fontWeight: FontWeight.w500)),
                           subtitle: Text(
-                            '${wo.statusLabel} Â· ${wo.quantityLabel}',
-                            style: const TextStyle(
-                                color: Colors.white54, fontSize: 12),
-                          ),
+                              '${_typeName(wo.templateType)} · ${wo.quantityLabel}',
+                              style: const TextStyle(
+                                  color: Colors.white54, fontSize: 12),
+                            ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -651,6 +650,15 @@ class _PatientScreenState extends State<PatientScreen> {
         ),
       ),
     );
+  }
+
+  String _typeName(TemplateType? type) {
+    switch (type) {
+      case TemplateType.rebound: return 'Rebound';
+      case TemplateType.polyShell: return 'Poly Shell';
+      case TemplateType.partialFoot: return 'Partial Foot';
+      case null: return 'No Type Set';
+    }
   }
 
   Widget _statusChip(WorkOrderStatus status) {
