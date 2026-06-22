@@ -439,7 +439,11 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
         rightImg = bytes?.buffer.asUint8List();
       }
-    } catch (e) {    }    Navigator.push(
+    } catch (e) {
+        print('DEBUG diagram capture error: $e');
+      }
+      print('DEBUG leftImg: ${leftImg?.length} bytes, rightImg: ${rightImg?.length} bytes');
+      Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => WorkOrderConfirmationScreen(

@@ -23,11 +23,11 @@ class PdfService {
     if (rightDiagramImage != null) rightImg = pw.MemoryImage(rightDiagramImage);
 
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         pageFormat: PdfPageFormat.letter,
-        margin: const pw.EdgeInsets.all(24),
-        build: (context) {
-          return pw.Column(
+        margin: const pw.EdgeInsets.all(20),
+        build: (context) => [
+          pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               // Header
@@ -43,9 +43,9 @@ class PdfService {
                     pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                       pw.Row(children: [
+                        pw.Row(children: [
                           pw.Text('LAB ORDER',
-                              style: pw.TextStyle(font: fontBold, fontSize: 16, color: PdfColors.white)),
+                              style: pw.TextStyle(font: fontBold, fontSize: 18, color: PdfColors.white)),
                           if (wo.submissionCount > 1) ...[
                             pw.SizedBox(width: 8),
                             pw.Container(
@@ -55,48 +55,47 @@ class PdfService {
                                 borderRadius: pw.BorderRadius.circular(4),
                               ),
                               child: pw.Text('RESUBMISSION #${wo.submissionCount - 1}',
-                                  style: pw.TextStyle(font: fontBold, fontSize: 8, color: PdfColors.white)),
+                                  style: pw.TextStyle(font: fontBold, fontSize: 9, color: PdfColors.white)),
                             ),
                           ],
                         ]),
                         if (wo.clinicName.isNotEmpty)
                           pw.Text(wo.clinicName,
-                              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.blueGrey200)),
+                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.blueGrey200)),
                         if (wo.clinicianName.isNotEmpty)
                           pw.Text('Clinician: ${wo.clinicianName}',
-                              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.blueGrey200)),
+                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.blueGrey200)),
                       ],
                     ),
                     pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
-                          if (wo.dateOfService != null)
+                        if (wo.dateOfService != null)
                           pw.Text('Service: ${_fmtDate(wo.dateOfService)}',
-                              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white)),
+                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
                         if (wo.expectedDeliveryDate != null)
                           pw.Text('Delivery: ${_fmtDate(wo.expectedDeliveryDate)}',
-                              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white)),
+                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
                         if (wo.submissionCount <= 1)
                           pw.Text('Submitted: ${_fmtDateTime(wo.submittedAt ?? DateTime.now())}',
-                              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white))
+                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white))
                         else ...[
                           pw.Text('Originally: ${_fmtDateTime(wo.originalSubmittedAt ?? wo.submittedAt ?? DateTime.now())}',
-                              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white)),
+                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
                           pw.Text('Resubmitted: ${_fmtDateTime(wo.submittedAt ?? DateTime.now())}',
-                              style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.white)),
+                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
                         ],
                       ],
                     ),
                   ],
                 ),
               ),
-              pw.SizedBox(height: 6),
+              pw.SizedBox(height: 5),
 
               // Two column layout
               pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  // Left column
                   pw.Expanded(
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -106,13 +105,13 @@ class PdfService {
                           if (patient.dateOfBirth.isNotEmpty) _rd('DOB', patient.dateOfBirth),
                           if (patient.patientId.isNotEmpty) _rd('ID', patient.patientId),
                         ]),
-                        pw.SizedBox(height: 5),
+                        pw.SizedBox(height: 4),
                         _sec('ORDER', fontBold, font, [
                           _rd('Work Order', wo.displayName),
                           _rd('Type', _typeName(wo.templateType)),
                           _rd('Quantity', wo.quantityLabel),
                         ]),
-                        pw.SizedBox(height: 5),
+                        pw.SizedBox(height: 4),
                         _sec('SHOE SIZE', fontBold, font, [
                           _rd('Gender', wo.shoeSizeGender),
                           if (wo.sameSizeForBothFeet) ...[
@@ -125,81 +124,83 @@ class PdfService {
                             _rd('R Width', wo.shoeWidthRight),
                           ],
                         ]),
-                        pw.SizedBox(height: 5),
-                        _sec('NOTES', fontBold, font, [
-                          _rd('', wo.specialInstructions.isEmpty
-                              ? 'None' : wo.specialInstructions),
-                        ]),
                       ],
                     ),
                   ),
-                  pw.SizedBox(width: 8),
-                  // Right column
+                  pw.SizedBox(width: 6),
                   pw.Expanded(
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
                         if (_hasProductSpecs(wo)) ...[
                           _sec('PRODUCT SPECS', fontBold, font, _productSpecRows(wo)),
-                          pw.SizedBox(height: 5),
+                          pw.SizedBox(height: 4),
                         ],
                         if (wo.archModification != 0) ...[
                           _sec('ARCH MOD', fontBold, font, [
                             _rd('', wo.archModification > 0
                                 ? '+${wo.archModification}' : '${wo.archModification}'),
                           ]),
-                          pw.SizedBox(height: 5),
+                          pw.SizedBox(height: 4),
                         ],
-                        if (_hasAccommodations(wo))
-                          _sec('ACCOMMODATIONS', fontBold, font, _accommodationRows(wo)),
+                        _sec('ACCOMMODATIONS', fontBold, font,
+                            _hasAccommodations(wo) ? _accommodationRows(wo) : [_rd('', 'None')]),
                       ],
                     ),
                   ),
                 ],
               ),
-              pw.SizedBox(height: 6),
+              pw.SizedBox(height: 4),
 
-              // Foot Diagram - full width
+              // Notes - always shown
+              _sec('NOTES', fontBold, font, [
+                _rd('', wo.specialInstructions.trim().isEmpty
+                    ? 'None' : wo.specialInstructions),
+              ]),
+              pw.SizedBox(height: 4),
+
+              // Foot Diagram - full width, always shown
               pw.Container(
                 padding: const pw.EdgeInsets.all(8),
                 decoration: pw.BoxDecoration(
                   border: pw.Border.all(color: PdfColors.blueGrey200),
-                  borderRadius: pw.BorderRadius.circular(4),
+                  borderRadius: pw.BorderRadius.circular(5),
                 ),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text('FOOT DIAGRAM',
-                        style: pw.TextStyle(font: fontBold, fontSize: 8,
+                        style: pw.TextStyle(font: fontBold, fontSize: 9,
                             color: PdfColors.blueGrey700, letterSpacing: 0.5)),
                     pw.Divider(color: PdfColors.blueGrey200, thickness: 0.5),
                     pw.SizedBox(height: 4),
                     if (leftImg != null || rightImg != null)
                       pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.center,
                         children: [
                           if (leftImg != null)
                             pw.Column(
                               crossAxisAlignment: pw.CrossAxisAlignment.center,
                               children: [
                                 pw.Text('Left Foot',
-                                    style: pw.TextStyle(font: fontBold, fontSize: 8,
+                                    style: pw.TextStyle(font: fontBold, fontSize: 9,
                                         color: PdfColors.blueGrey600)),
-                                pw.SizedBox(height: 2),
-                                pw.Image(leftImg, height: 90, width: 100,
+                                pw.SizedBox(height: 3),
+                                pw.Image(leftImg, height: 130, width: 140,
                                     fit: pw.BoxFit.contain),
                               ],
                             ),
                           if (leftImg != null && rightImg != null)
-                            pw.SizedBox(width: 12),
+                            pw.SizedBox(width: 16),
                           if (rightImg != null)
                             pw.Column(
                               crossAxisAlignment: pw.CrossAxisAlignment.center,
                               children: [
                                 pw.Text('Right Foot',
-                                    style: pw.TextStyle(font: fontBold, fontSize: 8,
+                                    style: pw.TextStyle(font: fontBold, fontSize: 9,
                                         color: PdfColors.blueGrey600)),
-                                pw.SizedBox(height: 2),
-                                pw.Image(rightImg, height: 90, width: 100,
+                                pw.SizedBox(height: 3),
+                                pw.Image(rightImg, height: 130, width: 140,
                                     fit: pw.BoxFit.contain),
                               ],
                             ),
@@ -207,24 +208,24 @@ class PdfService {
                       )
                     else
                       pw.Text('No diagram markings added',
-                          style: pw.TextStyle(font: font, fontSize: 9,
+                          style: pw.TextStyle(font: font, fontSize: 10,
                               color: PdfColors.blueGrey400)),
                     pw.SizedBox(height: 4),
                     pw.Row(children: [
                       _legendDot(PdfColors.red, 'Pressure', font),
-                      pw.SizedBox(width: 8),
+                      pw.SizedBox(width: 10),
                       _legendDot(PdfColors.green, 'Relief', font),
-                      pw.SizedBox(width: 8),
+                      pw.SizedBox(width: 10),
                       _legendDot(PdfColors.orange, 'Missing Toe', font),
-                      pw.SizedBox(width: 8),
+                      pw.SizedBox(width: 10),
                       _legendDot(PdfColors.grey, 'Note', font),
                     ]),
                   ],
                 ),
               ),
             ],
-          );
-        },
+          ),
+        ],
       ),
     );
 
@@ -235,7 +236,7 @@ class PdfService {
     final valid = rows.whereType<_RD>().toList();
     if (valid.isEmpty) return pw.SizedBox.shrink();
     return pw.Container(
-      padding: const pw.EdgeInsets.all(7),
+      padding: const pw.EdgeInsets.all(6),
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: PdfColors.blueGrey200),
         borderRadius: pw.BorderRadius.circular(4),
@@ -244,7 +245,7 @@ class PdfService {
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text(title,
-              style: pw.TextStyle(font: fontBold, fontSize: 7,
+              style: pw.TextStyle(font: fontBold, fontSize: 9,
                   color: PdfColors.blueGrey700, letterSpacing: 0.5)),
           pw.Divider(color: PdfColors.blueGrey200, thickness: 0.5),
           pw.SizedBox(height: 2),
@@ -252,19 +253,19 @@ class PdfService {
                 padding: const pw.EdgeInsets.only(bottom: 2),
                 child: r.label.isEmpty
                     ? pw.Text(r.value,
-                        style: pw.TextStyle(font: font, fontSize: 8))
+                        style: pw.TextStyle(font: font, fontSize: 10))
                     : pw.Row(
                         children: [
                           pw.SizedBox(
-                            width: 65,
+                            width: 72,
                             child: pw.Text(r.label,
-                                style: pw.TextStyle(font: fontBold, fontSize: 8,
+                                style: pw.TextStyle(font: fontBold, fontSize: 10,
                                     color: PdfColors.blueGrey600)),
                           ),
-                          pw.SizedBox(width: 6),
+                          pw.SizedBox(width: 4),
                           pw.Expanded(
                             child: pw.Text(r.value,
-                                style: pw.TextStyle(font: font, fontSize: 8)),
+                                style: pw.TextStyle(font: font, fontSize: 10)),
                           ),
                         ],
                       ),
@@ -277,11 +278,11 @@ class PdfService {
   static pw.Widget _legendDot(PdfColor color, String label, pw.Font font) {
     return pw.Row(children: [
       pw.Container(
-        width: 6, height: 6,
+        width: 7, height: 7,
         decoration: pw.BoxDecoration(color: color, shape: pw.BoxShape.circle),
       ),
       pw.SizedBox(width: 3),
-      pw.Text(label, style: pw.TextStyle(font: font, fontSize: 7,
+      pw.Text(label, style: pw.TextStyle(font: font, fontSize: 9,
           color: PdfColors.blueGrey700)),
     ]);
   }
@@ -335,7 +336,7 @@ class PdfService {
         _rd('Heel Cup', wo.heelCup),
       ];
 
- static String _fmtDate(DateTime? d) {
+  static String _fmtDate(DateTime? d) {
     if (d == null) return '';
     return '${d.month}/${d.day}/${d.year}';
   }
