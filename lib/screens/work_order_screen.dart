@@ -781,12 +781,44 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                           style: const TextStyle(color: Colors.white54, fontSize: 13)),
                   ],
                 ),
-              ),
+           ),
 
-              const SizedBox(height: 16),
+                if (widget.patient.notes.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F3460).withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF4FC3F7).withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.note_alt, color: Color(0xFF4FC3F7), size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Clinical Notes',
+                                  style: TextStyle(color: Color(0xFF4FC3F7),
+                                      fontSize: 11, fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 4),
+                              Text(widget.patient.notes,
+                                  style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
-              _buildSection(
-                title: 'Work Order Name / Number',
+                const SizedBox(height: 16),
+
+                _buildSection(
+                  title: 'Work Order Name / Number',
                 icon: Icons.label,
                 child: _buildField('Name / Number', _nameController,
                     hint: 'e.g. John Doe 1234'),
@@ -1544,6 +1576,7 @@ class _CollapsibleSection extends StatelessWidget {
     );
   }
 }
+
 
 
 

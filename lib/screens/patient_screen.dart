@@ -487,19 +487,19 @@ class _PatientScreenState extends State<PatientScreen> {
                     controller: _notesController,
                     style: const TextStyle(color: Colors.white),
                     maxLines: 5,
-                    decoration: const InputDecoration(
+                    maxLength: 100,
+                    decoration: InputDecoration(
                       hintText: 'Enter clinical notes here...',
-                      hintStyle: TextStyle(color: Colors.white24),
-                      enabledBorder: OutlineInputBorder(
+                      hintStyle: const TextStyle(color: Colors.white24),
+                      counterStyle: const TextStyle(color: Colors.white38),
+                      enabledBorder: const OutlineInputBorder(
                         borderSide: BorderSide(color: Colors.white24),
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide:
-                            BorderSide(color: Color(0xFF4FC3F7)),
+                      focusedBorder: const OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF4FC3F7)),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerRight,
                     child: ElevatedButton(

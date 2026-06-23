@@ -104,6 +104,7 @@ class PdfService {
                           _rd('Name', patient.fullName),
                           if (patient.dateOfBirth.isNotEmpty) _rd('DOB', patient.dateOfBirth),
                           if (patient.patientId.isNotEmpty) _rd('ID', patient.patientId),
+                          if (patient.notes.isNotEmpty) _rd('Clinical Notes', patient.notes),
                         ]),
                         pw.SizedBox(height: 4),
                         _sec('ORDER', fontBold, font, [
@@ -364,3 +365,4 @@ class _RD {
   final String value;
   _RD(this.label, this.value);
 }
+
