@@ -1378,12 +1378,13 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 onToggle: () => setState(() => _notesExpanded = !_notesExpanded),
                 summary: _instructionsController.text.isEmpty ? 'No notes' : _instructionsController.text,
                 child: TextField(
-                  controller: _instructionsController,
-                  style: const TextStyle(color: Colors.white),
-                  maxLines: 4,
-                  onChanged: (_) => setState(() {}),
-                  textInputAction: TextInputAction.done,
-                  onEditingComplete: () => FocusScope.of(context).unfocus(),
+                 controller: _instructionsController,
+                    style: const TextStyle(color: Colors.white),
+                    maxLines: 4,
+                    maxLength: 100,
+                    onChanged: (_) => setState(() {}),
+                    textInputAction: TextInputAction.done,
+                    onEditingComplete: () => FocusScope.of(context).unfocus(),
                   decoration: const InputDecoration(
                     hintText: 'Enter any notes or special instructions for the lab...',
                     hintStyle: TextStyle(color: Colors.white24),
@@ -1543,4 +1544,6 @@ class _CollapsibleSection extends StatelessWidget {
     );
   }
 }
+
+
 
