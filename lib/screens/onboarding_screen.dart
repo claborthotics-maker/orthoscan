@@ -3,6 +3,7 @@ import '../models/clinician.dart';
 import '../models/clinic.dart';
 import '../services/clinician_service.dart';
 import 'home_screen.dart';
+import 'tutorial_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -90,7 +91,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const TutorialScreen()),
       );
     }
   }
@@ -98,7 +99,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _skipClinic() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      MaterialPageRoute(builder: (_) => const TutorialScreen()),
     );
   }
 
@@ -307,3 +308,4 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 }
+

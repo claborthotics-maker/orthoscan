@@ -1,4 +1,4 @@
-name: orthoscan
+﻿name: orthoscan
 description: "A new Flutter project."
 publish_to: 'none'
 
@@ -15,6 +15,7 @@ dependencies:
   path: ^1.9.1
   pdf: ^3.12.0
   printing: ^5.14.3
+  shared_preferences: ^2.2.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -25,3 +26,4 @@ flutter:
   assets:
     - assets/images/left_foot.png
     - assets/images/right_foot.png
+
