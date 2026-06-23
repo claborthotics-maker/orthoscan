@@ -578,7 +578,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: isDelivery ? now.add(const Duration(days: 14)) : now,
+      initialDate: isDelivery ? now.add(const Duration(days: 25)) : now,
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
       builder: (context, child) => Theme(
