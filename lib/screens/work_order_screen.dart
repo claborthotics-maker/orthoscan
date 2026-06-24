@@ -537,7 +537,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 if (newType == TemplateType.polyShell) {
                   _weightController.clear();
                   _shellThickness = '1/8"';
-                  _baseShellLength = 'None';
+                  _baseShellLength = 'Mets';
                   _midLayerType = 'None';
                   _midLayerThickness = 'None';
                 }
@@ -1182,7 +1182,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     const SizedBox(height: 12),
                     OptionRow(
                       label: 'Base Shell Length',
-                      options: const ['None', 'Mets', 'Sulcus', 'Full'],
+                      options: const ['Mets', 'Sulcus', 'Full'],
                       selected: _baseShellLength,
                       onChanged: (v) => setState(() => _baseShellLength = v),
                     ),

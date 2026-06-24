@@ -125,7 +125,7 @@ class WorkOrder {
     this.topCoverColor = 'None',
     this.patientWeight,
     this.shellThickness = '1/8"',
-    this.baseShellLength = 'None',
+    this.baseShellLength = 'Mets',
     this.midLayerType = 'None',
     this.midLayerThickness = 'None',
     this.archModification = 0,
@@ -352,7 +352,7 @@ class WorkOrder {
       topCoverColor: map['topCoverColor'] ?? 'None',
       patientWeight: map['patientWeight']?.toDouble(),
       shellThickness: map['shellThickness'] ?? '1/8"',
-      baseShellLength: map['baseShellLength'] ?? 'None',
+      baseShellLength: map['baseShellLength'] ?? 'Mets',
       midLayerType: map['midLayerType'] ?? 'None',
       midLayerThickness: map['midLayerThickness'] ?? 'None',
       archModification: map['archModification'] ?? 0,
@@ -392,4 +392,5 @@ class WorkOrder {
     );
   }
 }
+
 
