@@ -75,7 +75,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   late String _forefootPost;
   late String _heelWedge;
   late String _forefootWedge;
+
   late String _metPadFoot;
+
+
   late String _metPadSize;
   late String _metBarFoot;
   late String _metBarSize;
@@ -1330,24 +1333,21 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  OptionRow(
+                  WedgePostRow(
                     label: 'Forefoot Post',
-                    options: const ['None', 'Lateral', 'Medial'],
-                    selected: _forefootPost,
+                    value: _forefootPost,
                     onChanged: (v) => setState(() => _forefootPost = v),
                   ),
                   const SizedBox(height: 12),
-                  OptionRow(
+                  WedgePostRow(
                     label: 'Heel Wedge',
-                    options: const ['None', 'Lateral', 'Medial'],
-                    selected: _heelWedge,
+                    value: _heelWedge,
                     onChanged: (v) => setState(() => _heelWedge = v),
                   ),
                   const SizedBox(height: 12),
-                  OptionRow(
+                  WedgePostRow(
                     label: 'Forefoot Wedge',
-                    options: const ['None', 'Lateral', 'Medial'],
-                    selected: _forefootWedge,
+                    value: _forefootWedge,
                     onChanged: (v) => setState(() => _forefootWedge = v),
                   ),
                   const SizedBox(height: 12),

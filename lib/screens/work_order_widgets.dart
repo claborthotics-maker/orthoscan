@@ -488,3 +488,106 @@ class WorkOrderDateRow extends StatelessWidget {
     );
   }
 }
+
+class WedgePostRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Function(String) onChanged;
+
+  const WedgePostRow({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  String get _type {
+    if (value.startsWith('Lateral')) return 'Lateral';
+    if (value.startsWith('Medial')) return 'Medial';
+    return 'None';
+  }
+
+  String get _side {
+    if (value.contains(' - ')) return value.split(' - ').last;
+    return 'B/L';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+        const SizedBox(height: 6),
+        Row(
+          children: ['None', 'Lateral', 'Medial'].map((o) {
+            final isSelected = _type == o;
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: GestureDetector(
+                  onTap: () => onChanged(o == 'None' ? 'None' : '$o - B/L'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFF0F3460)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF4FC3F7)
+                            : Colors.white24,
+                      ),
+                    ),
+                    child: Text(o,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.white54,
+                            fontSize: 13)),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        if (_type != 'None') ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Text('Side: ', style: TextStyle(color: Colors.white54, fontSize: 13)),
+              const SizedBox(width: 8),
+              ...['L', 'R', 'B/L'].map((s) {
+                final isSelected = _side == s;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: GestureDetector(
+                    onTap: () => onChanged('$_type - $s'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF0F3460)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFF4FC3F7)
+                              : Colors.white24,
+                        ),
+                      ),
+                      child: Text(s,
+                          style: TextStyle(
+                              color: isSelected ? Colors.white : Colors.white54,
+                              fontSize: 13)),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
