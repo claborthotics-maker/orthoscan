@@ -397,45 +397,6 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: _FootCanvas(
-              label: 'Left',
-              imagePath: 'assets/images/left_foot.png',
-              isLeft: true,
-              mode: _mode,
-              selectedMarkType: _selectedMarkType,
-              drawColor: _drawColor,
-              marks: _leftMarks,
-              paths: _leftPaths,
-              currentPath: _currentLeftPath,
-              canUndo: _leftHistory.isNotEmpty,
-              canRedo: _leftRedoStack.isNotEmpty,
-              repaintKey: widget.leftRepaintKey,
-              onMarkAdded: (mark) {
-                setState(() {
-                  _leftMarks.add(mark);
-                  _leftHistory.add(mark);
-                  _leftRedoStack.clear();
-                });
-                _notifyDataChanged();
-              },
-              onNoteRequested: (pos) => _showNoteDialog(pos, true),
-              onPathStarted: (p) => setState(() => _currentLeftPath = p),
-              onPathUpdated: (p) => setState(() => _currentLeftPath = p),
-              onPathCompleted: (p) {
-                final dp = DrawPath(points: List.from(p), color: _drawColor);
-                setState(() {
-                  _leftPaths.add(dp);
-                  _leftHistory.add(dp);
-                  _leftRedoStack.clear();
-                  _currentLeftPath = null;
-                });
-                _notifyDataChanged();
-              },
-              onUndo: _undoLeft,
-              onRedo: _redoLeft,
-              onClear: _clearLeft,
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: _FootCanvas(
               label: 'Right',
               imagePath: 'assets/images/right_foot.png',
               isLeft: false,
@@ -472,6 +433,45 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
               onUndo: _undoRight,
               onRedo: _redoRight,
               onClear: _clearRight,
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: _FootCanvas(
+              label: 'Left',
+              imagePath: 'assets/images/left_foot.png',
+              isLeft: true,
+              mode: _mode,
+              selectedMarkType: _selectedMarkType,
+              drawColor: _drawColor,
+              marks: _leftMarks,
+              paths: _leftPaths,
+              currentPath: _currentLeftPath,
+              canUndo: _leftHistory.isNotEmpty,
+              canRedo: _leftRedoStack.isNotEmpty,
+              repaintKey: widget.leftRepaintKey,
+              onMarkAdded: (mark) {
+                setState(() {
+                  _leftMarks.add(mark);
+                  _leftHistory.add(mark);
+                  _leftRedoStack.clear();
+                });
+                _notifyDataChanged();
+              },
+              onNoteRequested: (pos) => _showNoteDialog(pos, true),
+              onPathStarted: (p) => setState(() => _currentLeftPath = p),
+              onPathUpdated: (p) => setState(() => _currentLeftPath = p),
+              onPathCompleted: (p) {
+                final dp = DrawPath(points: List.from(p), color: _drawColor);
+                setState(() {
+                  _leftPaths.add(dp);
+                  _leftHistory.add(dp);
+                  _leftRedoStack.clear();
+                  _currentLeftPath = null;
+                });
+                _notifyDataChanged();
+              },
+              onUndo: _undoLeft,
+              onRedo: _redoLeft,
+              onClear: _clearLeft,
             )),
           ],
         ),

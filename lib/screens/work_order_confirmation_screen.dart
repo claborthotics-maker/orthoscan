@@ -156,21 +156,6 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                   if (leftDiagramImage != null || rightDiagramImage != null)
                     Row(children: [
-                      if (leftDiagramImage != null)
-                        Expanded(
-                          child: Column(children: [
-                            const Text('Left Foot',
-                                style: TextStyle(color: Colors.white54, fontSize: 12)),
-                            const SizedBox(height: 4),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.memory(leftDiagramImage!,
-                                  fit: BoxFit.contain),
-                            ),
-                          ]),
-                        ),
-                      if (leftDiagramImage != null && rightDiagramImage != null)
-                        const SizedBox(width: 8),
                       if (rightDiagramImage != null)
                         Expanded(
                           child: Column(children: [
@@ -180,6 +165,21 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: Image.memory(rightDiagramImage!,
+                                  fit: BoxFit.contain),
+                            ),
+                          ]),
+                        ),
+                      if (leftDiagramImage != null && rightDiagramImage != null)
+                        const SizedBox(width: 8),
+                      if (leftDiagramImage != null)
+                        Expanded(
+                          child: Column(children: [
+                            const Text('Left Foot',
+                                style: TextStyle(color: Colors.white54, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.memory(leftDiagramImage!,
                                   fit: BoxFit.contain),
                             ),
                           ]),
@@ -376,6 +376,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     return rows;
   }
 }
+
 
 
 

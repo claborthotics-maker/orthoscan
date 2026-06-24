@@ -179,20 +179,6 @@ class PdfService {
                       pw.Row(
                         mainAxisAlignment: pw.MainAxisAlignment.center,
                         children: [
-                          if (leftImg != null)
-                            pw.Column(
-                              crossAxisAlignment: pw.CrossAxisAlignment.center,
-                              children: [
-                                pw.Text('Left Foot',
-                                    style: pw.TextStyle(font: fontBold, fontSize: 9,
-                                        color: PdfColors.blueGrey600)),
-                                pw.SizedBox(height: 3),
-                                pw.Image(leftImg, height: 130, width: 140,
-                                    fit: pw.BoxFit.contain),
-                              ],
-                            ),
-                          if (leftImg != null && rightImg != null)
-                            pw.SizedBox(width: 16),
                           if (rightImg != null)
                             pw.Column(
                               crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -202,6 +188,20 @@ class PdfService {
                                         color: PdfColors.blueGrey600)),
                                 pw.SizedBox(height: 3),
                                 pw.Image(rightImg, height: 130, width: 140,
+                                    fit: pw.BoxFit.contain),
+                              ],
+                            ),
+                          if (leftImg != null && rightImg != null)
+                            pw.SizedBox(width: 16),
+                          if (leftImg != null)
+                            pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.center,
+                              children: [
+                                pw.Text('Left Foot',
+                                    style: pw.TextStyle(font: fontBold, fontSize: 9,
+                                        color: PdfColors.blueGrey600)),
+                                pw.SizedBox(height: 3),
+                                pw.Image(leftImg, height: 130, width: 140,
                                     fit: pw.BoxFit.contain),
                               ],
                             ),
@@ -367,6 +367,7 @@ class _RD {
   final String value;
   _RD(this.label, this.value);
 }
+
 
 
 
