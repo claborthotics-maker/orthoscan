@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
-// ─── Option Row ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Option Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class OptionRow extends StatelessWidget {
   final String label;
   final List<String> options;
@@ -88,7 +88,7 @@ class OptionRow extends StatelessWidget {
   }
 }
 
-// ─── Foot Accommodation Row ───────────────────────────────────────────────────
+// â”€â”€â”€ Foot Accommodation Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class FootAccommodationRow extends StatelessWidget {
   final String label;
   final String footValue;
@@ -115,7 +115,7 @@ class FootAccommodationRow extends StatelessWidget {
                 color: Colors.white54, fontSize: 13)),
         const SizedBox(height: 6),
         Row(
-          children: ['None', 'Left', 'Right', 'Both']
+          children: ['None', 'Left', 'Right', 'B/L']
               .map((o) => Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -195,7 +195,7 @@ class FootAccommodationRow extends StatelessWidget {
   }
 }
 
-// ─── Heel Lift Row ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Heel Lift Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class HeelLiftRow extends StatelessWidget {
   final String footValue;
   final TextEditingController heightController;
@@ -217,7 +217,7 @@ class HeelLiftRow extends StatelessWidget {
             style: TextStyle(color: Colors.white54, fontSize: 13)),
         const SizedBox(height: 6),
         Row(
-          children: ['None', 'Left', 'Right', 'Both']
+          children: ['None', 'Left', 'Right', 'B/L']
               .map((o) => Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -272,7 +272,7 @@ class HeelLiftRow extends StatelessWidget {
   }
 }
 
-// ─── Partial Foot Row ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Partial Foot Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class PartialFootRow extends StatelessWidget {
   final String label;
   final bool isChecked;
@@ -366,7 +366,7 @@ class PartialFootRow extends StatelessWidget {
   }
 }
 
-// ─── Quantity Selector ────────────────────────────────────────────────────────
+// â”€â”€â”€ Quantity Selector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class QuantitySelector extends StatelessWidget {
   final String label;
   final int value;
@@ -438,7 +438,7 @@ class QuantitySelector extends StatelessWidget {
   }
 }
 
-// ─── Date Row ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Date Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class WorkOrderDateRow extends StatelessWidget {
   final String label;
   final String value;

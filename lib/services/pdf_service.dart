@@ -293,28 +293,30 @@ class PdfService {
     return _RD(label, value);
   }
 
-  static bool _hasProductSpecs(WorkOrder wo) =>
-      wo.baseThickness.isNotEmpty ||
-      wo.shellThickness.isNotEmpty ||
-      (wo.topCoverType.isNotEmpty && wo.topCoverType != 'None');
+  static bool _hasProductSpecs(WorkOrder wo) {
+    final isPolyShell = wo.templateType == TemplateType.polyShell;
+    if (isPolyShell) return wo.shellThickness.isNotEmpty || (wo.topCoverType.isNotEmpty && wo.topCoverType != 'None');
+    return wo.baseThickness.isNotEmpty || (wo.topCoverType.isNotEmpty && wo.topCoverType != 'None');
+  }
 
-  static List<_RD?> _productSpecRows(WorkOrder wo) => [
-        _rd('Base', wo.baseThickness),
-        _rd('Grind', wo.baseGrind),
-        if (wo.patientWeight != null) _RD('Weight', '${wo.patientWeight} lbs'),
-        _rd('Shell', wo.shellThickness),
-        _rd('Shell Len', wo.baseShellLength),
-        _rd('Mid Layer', wo.midLayerType),
-        if (wo.midLayerType.isNotEmpty && wo.midLayerType != 'None')
-          _rd('Mid Thick', wo.midLayerThickness),
-        _rd('Top Cover', wo.topCoverType),
-        if (wo.topCoverType.isNotEmpty &&
-            wo.topCoverType != 'None' &&
-            wo.topCoverType != 'P-Cell') ...[
-          _rd('Cover Thk', wo.topCoverThickness),
-          _rd('Color', wo.topCoverColor),
-        ],
-      ];
+  static List<_RD?> _productSpecRows(WorkOrder wo) {
+    final isPolyShell = wo.templateType == TemplateType.polyShell;
+    return [
+      if (!isPolyShell) _rd('Base', wo.baseThickness),
+      if (!isPolyShell) _rd('Grind', wo.baseGrind),
+      if (isPolyShell) _rd('Shell Thick', wo.shellThickness),
+      if (isPolyShell) _rd('Shell Len', wo.baseShellLength),
+      if (isPolyShell && wo.patientWeight != null) _RD('Weight', '${wo.patientWeight} lbs'),
+      if (isPolyShell) _rd('Mid Layer', wo.midLayerType),
+      if (isPolyShell && wo.midLayerType.isNotEmpty && wo.midLayerType != 'None')
+        _rd('Mid Thick', wo.midLayerThickness),
+      _rd('Top Cover', wo.topCoverType),
+      if (wo.topCoverType.isNotEmpty && wo.topCoverType != 'None' && wo.topCoverType != 'P-Cell') ...[
+        _rd('Cover Thk', wo.topCoverThickness),
+        _rd('Color', wo.topCoverColor),
+      ],
+    ];
+  }
 
   static bool _hasAccommodations(WorkOrder wo) =>
       wo.heelPost != 'None' || wo.forefootPost != 'None' ||
@@ -365,4 +367,8 @@ class _RD {
   final String value;
   _RD(this.label, this.value);
 }
+
+
+
+
 

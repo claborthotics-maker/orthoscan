@@ -1,6 +1,7 @@
 ﻿import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../models/work_order.dart';
+import '../models/work_order_template.dart';
 import '../models/patient.dart';
 import '../services/pdf_service.dart';
 import 'package:printing/printing.dart';
@@ -336,20 +337,21 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     void add(String label, String value) {
       if (value.isNotEmpty && value != 'None') rows.add(_row(label, value));
     }
-    add('Base Thickness', workOrder.baseThickness);
-    add('Base Grind', workOrder.baseGrind);
+    final isPolyShell = workOrder.templateType == TemplateType.polyShell;
+    if (!isPolyShell) add('Base Thickness', workOrder.baseThickness);
+    if (!isPolyShell) add('Base Grind', workOrder.baseGrind);
+    if (isPolyShell) add('Shell Thickness', workOrder.shellThickness);
+    if (isPolyShell) add('Base Shell Length', workOrder.baseShellLength);
+    if (isPolyShell && workOrder.patientWeight != null)
+      rows.add(_row('Patient Weight', '${workOrder.patientWeight} lbs'));
+    if (isPolyShell) add('Mid Layer', workOrder.midLayerType);
+    if (isPolyShell && workOrder.midLayerType != 'None')
+      add('Mid Layer Thickness', workOrder.midLayerThickness);
     add('Top Cover', workOrder.topCoverType);
     if (workOrder.topCoverType != 'None' && workOrder.topCoverType != 'P-Cell') {
       add('Cover Thickness', workOrder.topCoverThickness);
       add('Cover Color', workOrder.topCoverColor);
     }
-    if (workOrder.patientWeight != null)
-      rows.add(_row('Patient Weight', '${workOrder.patientWeight} lbs'));
-    add('Shell Thickness', workOrder.shellThickness);
-    add('Base Shell Length', workOrder.baseShellLength);
-    add('Mid Layer', workOrder.midLayerType);
-    if (workOrder.midLayerType != 'None')
-      add('Mid Layer Thickness', workOrder.midLayerThickness);
     return rows;
   }
 
@@ -374,4 +376,6 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     return rows;
   }
 }
+
+
 

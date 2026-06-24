@@ -137,7 +137,7 @@ class FootDiagramWidget extends StatefulWidget {
 
 class _FootDiagramWidgetState extends State<FootDiagramWidget> {
   DiagramMode _mode = DiagramMode.none;
-  MarkType _selectedMarkType = MarkType.pressure;
+  MarkType _selectedMarkType = MarkType.relief;
   Color _drawColor = Colors.blue;
 
   List<FootMark> _leftMarks = [];
@@ -345,7 +345,7 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
         if (_mode == DiagramMode.mark)
           Wrap(
             spacing: 6, runSpacing: 6,
-            children: MarkType.values.map((type) {
+            children: MarkType.values.where((type) => type != MarkType.pressure).map((type) {
               final mark = FootMark(position: Offset.zero, type: type);
               final isSelected = _selectedMarkType == type;
               return GestureDetector(
@@ -480,7 +480,7 @@ class _FootDiagramWidgetState extends State<FootDiagramWidget> {
 
         Wrap(
           spacing: 12, runSpacing: 4,
-          children: MarkType.values.map((type) {
+          children: MarkType.values.where((type) => type != MarkType.pressure).map((type) {
             final mark = FootMark(position: Offset.zero, type: type);
             return Row(mainAxisSize: MainAxisSize.min, children: [
               Container(width: 8, height: 8,
@@ -796,3 +796,4 @@ Future<ui.Image?> captureRepaintBoundary(GlobalKey key) async {
     return null;
   }
 }
+
