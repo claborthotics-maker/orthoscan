@@ -252,7 +252,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
                   );
                 },
                 icon: const Icon(Icons.send, color: Colors.white),
-                label: const Text('Confirm & Submit to Lab',
+                label: Text(workOrder.submissionCount > 0 ? 'Confirm & Re-Submit to Lab' : 'Confirm & Submit to Lab',
                     style: TextStyle(
                         color: Colors.white,
                         fontSize: 16,
@@ -376,6 +376,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     return rows;
   }
 }
+
 
 
 

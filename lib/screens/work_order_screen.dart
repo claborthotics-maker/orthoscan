@@ -1432,14 +1432,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _submit,
-                  icon: const Icon(Icons.send, color: Colors.white),
-                  label: Text(
-                      _status == WorkOrderStatus.submitted
-                          ? 'Re-Submit to Lab' : 'Submit to Lab',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold)),
+                  icon: const Icon(Icons.preview, color: Colors.white),
+                  label: const Text('Review Work Order',
+                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+
+
+
+
+
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0F3460),
                     padding: const EdgeInsets.all(16),
@@ -1576,6 +1576,7 @@ class _CollapsibleSection extends StatelessWidget {
     );
   }
 }
+
 
 
 
