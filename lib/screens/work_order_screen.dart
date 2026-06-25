@@ -169,12 +169,12 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     _heelLiftFoot = wo.heelLiftFoot;
     _heelCup = wo.heelCup;
     _shoeSizeGender = wo.shoeSizeGender.isEmpty ? 'Male' : wo.shoeSizeGender;
-    _shoeSize = _validSize(wo.shoeSize, _shoeSizeGender);
+    _shoeSize = wo.shoeSize;
     _shoeWidth = wo.shoeWidth.isEmpty ? 'M' : wo.shoeWidth;
     _sameSizeForBothFeet = wo.sameSizeForBothFeet;
-    _shoeSizeLeft = _validSize(wo.shoeSizeLeft, _shoeSizeGender);
+    _shoeSizeLeft = wo.shoeSizeLeft;
     _shoeWidthLeft = wo.shoeWidthLeft.isEmpty ? 'M' : wo.shoeWidthLeft;
-    _shoeSizeRight = _validSize(wo.shoeSizeRight, _shoeSizeGender);
+    _shoeSizeRight = wo.shoeSizeRight;
     _shoeWidthRight = wo.shoeWidthRight.isEmpty ? 'M' : wo.shoeWidthRight;
     if (_widthOption(_shoeWidth) == 'Custom')
       _customShoeWidthController.text = _shoeWidth;
@@ -210,7 +210,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   String get _quantityLabel {
-    if (_quantityLeft == 0 && _quantityRight == 0) return 'None';
+    if (_quantityLeft == 0 && _quantityRight == 0) return 'Not Set';
     if (_quantityLeft == 0) return '$_quantityRight Right';
     if (_quantityRight == 0) return '$_quantityLeft Left';
     if (_quantityLeft == _quantityRight)
@@ -404,11 +404,34 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     }
   }
 
-  Future<void> _submit() async {    if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a work order name before submitting.'),
-          backgroundColor: Colors.red,
+  Future<void> _submit() async {
+    // Validation
+    final errors = <String>[];
+    if (_nameController.text.trim().isEmpty)
+      errors.add('• Work order name is required');
+    if (_dateOfService == null)
+      errors.add('• Date of service is required');
+    if (_shoeSize.isEmpty && _shoeSizeLeft.isEmpty && _shoeSizeRight.isEmpty)
+      errors.add('• Shoe size is required');
+    if (_quantityLeft == 0 && _quantityRight == 0)
+      errors.add('• Quantity must be at least 1');
+
+    if (errors.isNotEmpty) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: const Text('Required Fields Missing',
+              style: TextStyle(color: Colors.white)),
+          content: Text(errors.join('\n'),
+              style: const TextStyle(color: Colors.white70, height: 1.6)),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F3460)),
+              child: const Text('OK', style: TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
       );
       return;
@@ -603,7 +626,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   String _formatDate(DateTime? date) {
-    if (date == null) return 'Tap to set';
+    if (date == null) return 'Not Set';
     return '${date.month}/${date.day}/${date.year}';
   }
 
@@ -895,7 +918,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 icon: Icons.straighten,
                 isExpanded: _shoeSizeExpanded,
                 onToggle: () => setState(() => _shoeSizeExpanded = !_shoeSizeExpanded),
-                summary: '$_shoeSizeGender · ${_sameSizeForBothFeet ? '$_shoeSize / $_shoeWidth' : 'L:$_shoeSizeLeft R:$_shoeSizeRight'}',
+                summary: _shoeSize.isEmpty && _shoeSizeLeft.isEmpty ? 'Not Set' : '$_shoeSizeGender · ${_sameSizeForBothFeet ? '$_shoeSize / $_shoeWidth' : 'L:$_shoeSizeLeft R:$_shoeSizeRight'}',
                 child: Column(children: [
                   OptionRow(
                     label: 'Gender',
@@ -923,8 +946,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   ),
                   const SizedBox(height: 12),
                   if (_sameSizeForBothFeet) ...[
-                    DropdownButtonFormField<String>(
-                      value: _validSize(_shoeSize, _shoeSizeGender),
+                    DropdownButtonFormField<String?>(
+                      value: _shoeSize.isEmpty ? null : _shoeSize,
                       dropdownColor: const Color(0xFF16213E),
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
@@ -932,16 +955,16 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                         labelStyle: TextStyle(color: Colors.white54),
                         enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                         focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF4FC3F7))),
-                      ),
-                      items: _shoeSizes(_shoeSizeGender)
-                          .map((s) => DropdownMenuItem(
-                                value: s,
-                                child: Text(s, style: const TextStyle(color: Colors.white)),
-                              ))
-                          .toList(),
-                      onChanged: (v) => setState(() => _shoeSize = v ?? _shoeSize),
+
+                       ),
+                       items: [const DropdownMenuItem<String?>(value: null, child: Text('Not Set', style: TextStyle(color: Colors.white38))), ..._shoeSizes(_shoeSizeGender)
+                          .map((s) => DropdownMenuItem<String?>(value: s,
+                                child: Text(s, style: const TextStyle(color: Colors.white))))
+                          .toList()],
+                      onChanged: (v) => setState(() => _shoeSize = v ?? ''),
                     ),
                     const SizedBox(height: 12),
+
                     OptionRow(
                       label: 'Width',
                       options: const ['M', 'W', 'XW', 'Custom'],
@@ -1576,6 +1599,7 @@ class _CollapsibleSection extends StatelessWidget {
     );
   }
 }
+
 
 
 

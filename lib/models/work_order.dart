@@ -112,8 +112,8 @@ class WorkOrder {
     this.clinicName = '',
     this.clinicianId = '',
     this.clinicId = '',
-    this.quantityLeft = 1,
-    this.quantityRight = 1,
+    this.quantityLeft = 0,
+    this.quantityRight = 0,
     this.isPartialFootLeft = false,
     this.isPartialFootRight = false,
     this.toeFillerCountLeft = 1,
@@ -191,7 +191,7 @@ class WorkOrder {
   }
 
   String get quantityLabel {
-    if (quantityLeft == 0 && quantityRight == 0) return 'None';
+    if (quantityLeft == 0 && quantityRight == 0) return 'Not Set';
     if (quantityLeft == 0) return '$quantityRight Right';
     if (quantityRight == 0) return '$quantityLeft Left';
     if (quantityLeft == quantityRight)
@@ -392,5 +392,7 @@ class WorkOrder {
     );
   }
 }
+
+
 
 

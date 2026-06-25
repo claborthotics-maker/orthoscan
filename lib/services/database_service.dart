@@ -422,8 +422,8 @@ class DatabaseService {
       clinicName: map['clinicName'] as String? ?? '',
       clinicianId: map['clinicianId'] as String? ?? '',
       clinicId: map['clinicId'] as String? ?? '',
-      quantityLeft: map['quantityLeft'] as int? ?? 1,
-      quantityRight: map['quantityRight'] as int? ?? 1,
+      quantityLeft: map['quantityLeft'] as int? ?? 0,
+      quantityRight: map['quantityRight'] as int? ?? 0,
       isPartialFootLeft: (map['isPartialFootLeft'] as int? ?? 0) == 1,
       isPartialFootRight: (map['isPartialFootRight'] as int? ?? 0) == 1,
       toeFillerCountLeft: map['toeFillerCountLeft'] as int? ?? 1,
@@ -680,4 +680,5 @@ class DatabaseService {
     );
   }
 }
+
 

@@ -854,7 +854,7 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
             const SizedBox(height: 12),
             _buildField('Last Name', _lastNameController),
             const SizedBox(height: 12),
-            _buildField('Patient ID', _patientIdController, hint: 'Optional'),
+            _buildField('Patient ID', _patientIdController),
             const SizedBox(height: 12),
             _buildField('Date of Birth', _dobController,
                 hint: 'MM/DD/YYYY',
@@ -876,8 +876,28 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
         ),
         ElevatedButton(
           onPressed: () {
-            if (_firstNameController.text.isEmpty ||
-                _lastNameController.text.isEmpty) return;
+            final errors = <String>[];
+            if (_firstNameController.text.trim().isEmpty) errors.add('• First name is required');
+            if (_lastNameController.text.trim().isEmpty) errors.add('• Last name is required');
+            if (_patientIdController.text.trim().isEmpty) errors.add('• Patient ID is required');
+            if (errors.isNotEmpty) {
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  backgroundColor: const Color(0xFF16213E),
+                  title: const Text('Required Fields Missing', style: TextStyle(color: Colors.white)),
+                  content: Text(errors.join('\n'), style: const TextStyle(color: Colors.white70, height: 1.6)),
+                  actions: [
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F3460)),
+                      child: const Text('OK', style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              );
+              return;
+            }
             final patient = Patient(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               firstName: _firstNameController.text.trim(),

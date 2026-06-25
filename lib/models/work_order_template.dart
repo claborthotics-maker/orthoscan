@@ -77,7 +77,7 @@ class WorkOrderTemplate {
     return WorkOrder(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       patientId: patientId,
-      name: name,
+      name: '',
       lastTemplateName: name,
       templateType: templateType,
       createdAt: DateTime.now(),
@@ -210,4 +210,5 @@ class DefaultTemplates {
     }
   }
 }
+
 

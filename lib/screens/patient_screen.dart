@@ -108,7 +108,7 @@ class _PatientScreenState extends State<PatientScreen> {
                     patientId: widget.patient.id,
                     clinicianName: '',
                   );
-                  // name comes from template.toWorkOrder() — don't blank it
+                  // name starts empty — clinician must fill it in
                   await _db.insertWorkOrder(workOrder);
                   await Future.delayed(
                       const Duration(milliseconds: 300));
@@ -963,4 +963,5 @@ Future<void> _loadCustomTemplates() async {
     ]);
   }
 }
+
 
