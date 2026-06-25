@@ -411,6 +411,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       errors.add('• Work order name is required');
     if (_dateOfService == null)
       errors.add('• Date of service is required');
+    if (_expectedDeliveryDate == null)
+      errors.add('• Expected delivery date is required');
     if (_shoeSize.isEmpty && _shoeSizeLeft.isEmpty && _shoeSizeRight.isEmpty)
       errors.add('• Shoe size is required');
     if (_quantityLeft == 0 && _quantityRight == 0)
@@ -1599,6 +1601,7 @@ class _CollapsibleSection extends StatelessWidget {
     );
   }
 }
+
 
 
 
