@@ -36,6 +36,7 @@ class _PatientScreenState extends State<PatientScreen> {
       setState(() {
         _workOrders.clear();
         _workOrders.addAll(orders);
+        orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       });
     }
   }

@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final patients = await _db.getAllPatients();
     setState(() {
       _patients.clear();
+      patients.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       _patients.addAll(patients);
     });
   }
@@ -85,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => _NewPatientDialog(
         onSave: (patient) async {
           await _db.insertPatient(patient);
-          setState(() => _patients.add(patient));
+          _loadPatients();
         },
       ),
     );
