@@ -132,6 +132,19 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
 
             _buildSection('Accommodations', Icons.tune, accommodations),
 
+            if (workOrder.isPartialFootLeft || workOrder.isPartialFootRight) ...[
+              const SizedBox(height: 16),
+              _buildSection('Partial Foot', Icons.accessibility_new, [
+                if (workOrder.isPartialFootLeft)
+                  _row('Left', workOrder.toeFillerCountLeft > 0
+                      ? '${workOrder.toeFillerCountLeft} toe filler${workOrder.toeFillerCountLeft > 1 ? "s" : ""}'
+                      : 'Partial foot - no toe fillers'),
+                if (workOrder.isPartialFootRight)
+                  _row('Right', workOrder.toeFillerCountRight > 0
+                      ? '${workOrder.toeFillerCountRight} toe filler${workOrder.toeFillerCountRight > 1 ? "s" : ""}'
+                      : 'Partial foot - no toe fillers'),
+              ]),
+            ],
             const SizedBox(height: 16),
 
             // Foot Diagram
@@ -376,6 +389,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     return rows;
   }
 }
+
 
 
 

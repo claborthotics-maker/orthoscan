@@ -276,8 +276,8 @@ class WorkOrder {
       'clinicId': clinicId,
       'quantityLeft': quantityLeft,
       'quantityRight': quantityRight,
-      'isPartialFootLeft': isPartialFootLeft,
-      'isPartialFootRight': isPartialFootRight,
+      'isPartialFootLeft': isPartialFootLeft ? 1 : 0,
+      'isPartialFootRight': isPartialFootRight ? 1 : 0,
       'toeFillerCountLeft': toeFillerCountLeft,
       'toeFillerCountRight': toeFillerCountRight,
       'baseThickness': baseThickness,
@@ -341,8 +341,8 @@ class WorkOrder {
       clinicId: map['clinicId'] as String? ?? '',
       quantityLeft: map['quantityLeft'] ?? 1,
       quantityRight: map['quantityRight'] ?? 1,
-      isPartialFootLeft: map['isPartialFootLeft'] ?? false,
-      isPartialFootRight: map['isPartialFootRight'] ?? false,
+      isPartialFootLeft: (map['isPartialFootLeft'] as int? ?? 0) == 1,
+      isPartialFootRight: (map['isPartialFootRight'] as int? ?? 0) == 1,
       toeFillerCountLeft: map['toeFillerCountLeft'] ?? 1,
       toeFillerCountRight: map['toeFillerCountRight'] ?? 1,
       baseThickness: map['baseThickness'] ?? '3/16"',
@@ -392,6 +392,8 @@ class WorkOrder {
     );
   }
 }
+
+
 
 
 

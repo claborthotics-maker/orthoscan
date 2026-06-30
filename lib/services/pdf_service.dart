@@ -146,6 +146,19 @@ class PdfService {
                         ],
                         _sec('ACCOMMODATIONS', fontBold, font,
                             _hasAccommodations(wo) ? _accommodationRows(wo) : [_rd('', 'None')]),
+                        if (wo.isPartialFootLeft || wo.isPartialFootRight) ...[
+                          pw.SizedBox(height: 4),
+                          _sec('PARTIAL FOOT', fontBold, font, [
+                            if (wo.isPartialFootLeft)
+                              _rd('Left', wo.toeFillerCountLeft > 0
+                                  ? '${wo.toeFillerCountLeft} toe filler${wo.toeFillerCountLeft > 1 ? "s" : ""}'
+                                  : 'Partial foot'),
+                            if (wo.isPartialFootRight)
+                              _rd('Right', wo.toeFillerCountRight > 0
+                                  ? '${wo.toeFillerCountRight} toe filler${wo.toeFillerCountRight > 1 ? "s" : ""}'
+                                  : 'Partial foot'),
+                          ]),
+                        ],
                       ],
                     ),
                   ),
@@ -367,6 +380,7 @@ class _RD {
   final String value;
   _RD(this.label, this.value);
 }
+
 
 
 
