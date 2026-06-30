@@ -352,8 +352,27 @@ class _OverlayPainter extends CustomPainter {
     this.relative = false,
   });
 
-  Offset _scale(Offset p, Size size) =>
-      relative ? Offset(p.dx * size.width, p.dy * size.height) : p;
+  Rect _imageRect(Size size) {
+    const imageAspect = 583.0 / 1297.0;
+    final canvasAspect = size.width / size.height;
+    if (canvasAspect > imageAspect) {
+      // Canvas is wider than image — letterbox on left/right
+      final imageWidth = size.height * imageAspect;
+      final offsetX = (size.width - imageWidth) / 2;
+      return Rect.fromLTWH(offsetX, 0, imageWidth, size.height);
+    } else {
+      // Canvas is taller than image — letterbox on top/bottom
+      final imageHeight = size.width / imageAspect;
+      final offsetY = (size.height - imageHeight) / 2;
+      return Rect.fromLTWH(0, offsetY, size.width, imageHeight);
+    }
+  }
+
+  Offset _scale(Offset p, Size size) {
+    if (!relative) return p;
+    final rect = _imageRect(size);
+    return Offset(rect.left + p.dx * rect.width, rect.top + p.dy * rect.height);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -534,14 +553,28 @@ class _FullScreenFootState extends State<_FullScreenFoot> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
       if (box != null) {
-        final w = box.size.width;
-        final h = box.size.height;
+        const imageAspect = 583.0 / 1297.0;
+        final size = box.size;
+        final canvasAspect = size.width / size.height;
+        late Rect rect;
+        if (canvasAspect > imageAspect) {
+          final imageWidth = size.height * imageAspect;
+          final offsetX = (size.width - imageWidth) / 2;
+          rect = Rect.fromLTWH(offsetX, 0, imageWidth, size.height);
+        } else {
+          final imageHeight = size.width / imageAspect;
+          final offsetY = (size.height - imageHeight) / 2;
+          rect = Rect.fromLTWH(0, offsetY, size.width, imageHeight);
+        }
         setState(() {
           _marks = _marks.map((m) => FootMark(
-            position: Offset(m.position.dx * w, m.position.dy * h),
+            position: Offset(rect.left + m.position.dx * rect.width,
+                             rect.top + m.position.dy * rect.height),
             type: m.type, size: m.size, note: m.note)).toList();
           _paths = _paths.map((p) => DrawPath(
-            points: p.points.map((pt) => Offset(pt.dx * w, pt.dy * h)).toList(),
+            points: p.points.map((pt) => Offset(
+              rect.left + pt.dx * rect.width,
+              rect.top + pt.dy * rect.height)).toList(),
             color: p.color, strokeWidth: p.strokeWidth)).toList();
           _history = [..._marks, ..._paths];
         });
@@ -625,13 +658,27 @@ class _FullScreenFootState extends State<_FullScreenFoot> {
             onPressed: () {
               final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
               if (box != null) {
-                final w = box.size.width;
-                final h = box.size.height;
+                const imageAspect = 583.0 / 1297.0;
+                final size = box.size;
+                final canvasAspect = size.width / size.height;
+                late Rect rect;
+                if (canvasAspect > imageAspect) {
+                  final imageWidth = size.height * imageAspect;
+                  final offsetX = (size.width - imageWidth) / 2;
+                  rect = Rect.fromLTWH(offsetX, 0, imageWidth, size.height);
+                } else {
+                  final imageHeight = size.width / imageAspect;
+                  final offsetY = (size.height - imageHeight) / 2;
+                  rect = Rect.fromLTWH(0, offsetY, size.width, imageHeight);
+                }
                 final normMarks = _marks.map((m) => FootMark(
-                  position: Offset(m.position.dx / w, m.position.dy / h),
+                  position: Offset((m.position.dx - rect.left) / rect.width,
+                                   (m.position.dy - rect.top) / rect.height),
                   type: m.type, size: m.size, note: m.note)).toList();
                 final normPaths = _paths.map((p) => DrawPath(
-                  points: p.points.map((pt) => Offset(pt.dx / w, pt.dy / h)).toList(),
+                  points: p.points.map((pt) => Offset(
+                    (pt.dx - rect.left) / rect.width,
+                    (pt.dy - rect.top) / rect.height)).toList(),
                   color: p.color, strokeWidth: p.strokeWidth)).toList();
                 widget.onSave(normMarks, normPaths);
               } else {
@@ -833,5 +880,8 @@ class _FullScreenFootState extends State<_FullScreenFoot> {
     );
   }
 }
+
+
+
 
 
