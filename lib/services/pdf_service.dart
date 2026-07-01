@@ -61,10 +61,10 @@ class PdfService {
                         ]),
                         if (wo.clinicName.isNotEmpty)
                           pw.Text(wo.clinicName,
-                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.blueGrey200)),
+                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
                         if (wo.clinicianName.isNotEmpty)
                           pw.Text('Clinician: ${wo.clinicianName}',
-                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.blueGrey200)),
+                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
                       ],
                     ),
                     pw.Column(
@@ -380,6 +380,7 @@ class _RD {
   final String value;
   _RD(this.label, this.value);
 }
+
 
 
 
