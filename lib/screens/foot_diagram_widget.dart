@@ -588,6 +588,26 @@ class _FullScreenFootState extends State<_FullScreenFoot> {
   }
 
   void _showNoteDialog(Offset position) {
+    final noteCount = _marks.where((m) => m.type == MarkType.general).length;
+    if (noteCount >= 2) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: const Text('Note Limit Reached', style: TextStyle(color: Colors.white)),
+          content: const Text('Maximum 2 notes per foot.',
+              style: TextStyle(color: Colors.white70)),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F3460)),
+              child: const Text('OK', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     final controller = TextEditingController();
     showDialog(
       context: context,
@@ -599,6 +619,7 @@ class _FullScreenFootState extends State<_FullScreenFoot> {
           autofocus: true,
           style: const TextStyle(color: Colors.white),
           maxLines: 3,
+          maxLength: 50,
           decoration: const InputDecoration(
             hintText: 'Enter note...',
             hintStyle: TextStyle(color: Colors.white38),
@@ -880,6 +901,7 @@ class _FullScreenFootState extends State<_FullScreenFoot> {
     );
   }
 }
+
 
 
 
