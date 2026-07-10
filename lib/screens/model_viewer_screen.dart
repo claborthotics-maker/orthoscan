@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
@@ -144,7 +144,7 @@ class _ModelViewerScreenState extends State<ModelViewerScreen> {
           Container(
             color: const Color(0xFF0A0A14),
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: const Text('Drag to rotate · Pinch to zoom',
+            child: const Text('Drag to rotate Â· Pinch to zoom',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white38, fontSize: 12)),
           ),

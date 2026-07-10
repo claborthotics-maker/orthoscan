@@ -381,7 +381,7 @@ class _PatientScreenState extends State<PatientScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: const Color(0xFF16213E),
         title: Text(
@@ -964,5 +964,6 @@ Future<void> _loadCustomTemplates() async {
     ]);
   }
 }
+
 
 

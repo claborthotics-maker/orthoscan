@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
@@ -108,7 +108,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
     setState(() {
       _isScanning = false;
-      _status = 'Scan complete — $_pointCount points captured';
+      _status = 'Scan complete â€” $_pointCount points captured';
       _scanComplete = true;
     });
 

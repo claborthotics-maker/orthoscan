@@ -8,6 +8,7 @@ import '../models/work_order.dart';
 import '../models/work_order_template.dart';
 import '../models/clinician.dart';
 import '../services/clinician_service.dart';
+import '../services/theme_service.dart';
 import '../services/database_service.dart';
 import 'work_order_widgets.dart';
 import 'foot_diagram_widget.dart';
@@ -606,7 +607,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: isDelivery ? now.add(const Duration(days: 25)) : now,
+      initialDate: isDelivery ? now.add(Duration(days: ThemeService().defaultDeliveryDays)) : now,
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
       builder: (context, child) => Theme(
@@ -705,7 +706,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         if (mounted) Navigator.pop(context);
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF1A1A2E),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
           backgroundColor: const Color(0xFF16213E),
           title: const Text('Work Order', style: TextStyle(color: Colors.white)),
@@ -1601,6 +1602,8 @@ class _CollapsibleSection extends StatelessWidget {
     );
   }
 }
+
+
 
 
 

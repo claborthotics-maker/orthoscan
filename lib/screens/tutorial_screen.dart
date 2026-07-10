@@ -51,7 +51,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -155,3 +155,4 @@ class _Slide {
   final String body;
   const _Slide({required this.icon, required this.title, required this.body});
 }
+

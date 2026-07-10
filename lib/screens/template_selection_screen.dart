@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../models/work_order_template.dart';
 import '../models/work_order.dart';
 import '../models/patient.dart';
@@ -196,7 +196,7 @@ class _TemplateSelectionScreenState extends State<TemplateSelectionScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: const Color(0xFF16213E),
         title: const Text(
@@ -231,7 +231,7 @@ class _TemplateSelectionScreenState extends State<TemplateSelectionScreen>
   }
 }
 
-// ─── Template Card ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Template Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class _TemplateCard extends StatelessWidget {
   final WorkOrderTemplate template;
   final Color typeColor;

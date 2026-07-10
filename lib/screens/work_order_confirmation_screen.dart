@@ -27,7 +27,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     final fields = _collectFields();
     final accommodations = _collectAccommodations();
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: const Color(0xFF16213E),
         title: const Text('Review Work Order',
@@ -389,6 +389,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     return rows;
   }
 }
+
 
 
 

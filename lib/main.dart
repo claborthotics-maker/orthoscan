@@ -5,30 +5,45 @@ import 'screens/onboarding_screen.dart';
 import 'screens/tutorial_screen.dart';
 import 'services/database_service.dart';
 import 'services/clinician_service.dart';
+import 'services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DatabaseService().database;
   await ClinicianService().load();
+  await ThemeService().load();
   runApp(const OrthoScanApp());
 }
 
-class OrthoScanApp extends StatelessWidget {
+class OrthoScanApp extends StatefulWidget {
   const OrthoScanApp({super.key});
+  @override
+  State<OrthoScanApp> createState() => _OrthoScanAppState();
+}
+
+class _OrthoScanAppState extends State<OrthoScanApp> {
+  final _themeService = ThemeService();
+
+  @override
+  void initState() {
+    super.initState();
+    _themeService.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(() => setState(() {}));
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'CL@B',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0F3460),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFF1A1A2E),
-      ),
+      theme: _themeService.lightTheme,
+      darkTheme: _themeService.darkTheme,
+      themeMode: _themeService.isDark ? ThemeMode.dark : ThemeMode.light,
       home: const _StartupRouter(),
     );
   }
@@ -69,3 +84,5 @@ class _StartupRouterState extends State<_StartupRouter> {
     );
   }
 }
+
+

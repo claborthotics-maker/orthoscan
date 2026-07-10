@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../models/patient.dart';
 import 'scan_screen.dart';
 
@@ -27,11 +27,11 @@ class ScanSelectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: const Color(0xFF16213E),
         title: Text(
-          'New Scan — ${patient.fullName}',
+          'New Scan â€” ${patient.fullName}',
           style: const TextStyle(color: Colors.white),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
@@ -63,11 +63,11 @@ class ScanSelectionScreen extends StatelessWidget {
 
             const SizedBox(height: 40),
 
-           // ─── Impression Box (Coming Soon) ───────────────────────
+           // â”€â”€â”€ Impression Box (Coming Soon) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _ScanOptionCard(
               icon: Icons.inventory_2,
               title: 'Scan Impression Box',
-              description: 'Coming soon — scan a foam impression box '
+              description: 'Coming soon â€” scan a foam impression box '
                   'casting of the patient\'s foot.',
               color: Colors.white24,
               tags: ['Coming Soon'],
@@ -77,11 +77,11 @@ class ScanSelectionScreen extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // ─── Direct Foot (Coming Soon) ───────────────────────────
+            // â”€â”€â”€ Direct Foot (Coming Soon) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _ScanOptionCard(
               icon: Icons.accessibility_new,
               title: 'Scan Foot Directly',
-              description: 'Coming soon — scan the patient\'s foot '
+              description: 'Coming soon â€” scan the patient\'s foot '
                   'directly using the device camera.',
               color: Colors.white24,
               tags: ['Coming Soon'],
@@ -91,11 +91,11 @@ class ScanSelectionScreen extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // ─── Prosthetic (Coming Soon) ─────────────────────────────────
+            // â”€â”€â”€ Prosthetic (Coming Soon) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _ScanOptionCard(
               icon: Icons.medical_services,
               title: 'Scan Prosthetic',
-              description: 'Coming soon — scan prosthetic limb for custom '
+              description: 'Coming soon â€” scan prosthetic limb for custom '
                   'orthotic fabrication.',
               color: Colors.white24,
               tags: ['Coming Soon'],
@@ -105,7 +105,7 @@ class ScanSelectionScreen extends StatelessWidget {
 
             const Spacer(),
 
-            // ─── Info Box ─────────────────────────────────────────────────
+            // â”€â”€â”€ Info Box â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -139,7 +139,7 @@ class ScanSelectionScreen extends StatelessWidget {
   }
 }
 
-// ─── Scan Option Card ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Scan Option Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class _ScanOptionCard extends StatelessWidget {
   final IconData icon;
   final String title;
