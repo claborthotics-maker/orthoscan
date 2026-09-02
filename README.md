@@ -34,7 +34,7 @@ CL@B is a mobile app for orthotic clinicians to create and submit lab work order
 
 ## Roadmap
 
-- iOS / iPadOS support
+- [x] iOS / iPadOS support (in progress)
 - LiDAR foot scanning via ARKit
 - Cloud sync via Google Cloud / Firebase
 - HIPAA compliance (PIN lock + SQLite encryption)
