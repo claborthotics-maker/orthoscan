@@ -1,4 +1,4 @@
-import '../models/clinician.dart';
+﻿import '../models/clinician.dart';
 import '../models/clinic.dart';
 import 'database_service.dart';
 
@@ -21,7 +21,11 @@ class ClinicianService {
   String get activeLabel {
     if (_activeClinician == null) return 'No clinician set';
     if (_activeClinic == null) return _activeClinician!.name;
-    return '${_activeClinician!.name} @ ${_activeClinic!.name}';
+    final firstName = _activeClinician!.name.split(' ').first;
+    final clinicName = _activeClinic!.name.length > 12 
+        ? _activeClinic!.name.substring(0, 12) + '...' 
+        : _activeClinic!.name;
+    return '$firstName @ $clinicName';
   }
 
   Future<void> load() async {
@@ -75,7 +79,7 @@ class ClinicianService {
   bool get isEmpty => _clinicians.isEmpty;
   bool get isNotEmpty => _clinicians.isNotEmpty;
 
-  // ─── Clinician CRUD ────────────────────────────────────────────────────────
+  // â”€â”€â”€ Clinician CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<void> addClinician(Clinician clinician) async {
     if (_clinicians.isEmpty) clinician.isDefault = true;
@@ -111,7 +115,7 @@ class ClinicianService {
     }
   }
 
-  // ─── Clinic CRUD ───────────────────────────────────────────────────────────
+  // â”€â”€â”€ Clinic CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<void> addClinic(Clinic clinic) async {
     final existing = getClinicsForClinician(clinic.clinicianId);
