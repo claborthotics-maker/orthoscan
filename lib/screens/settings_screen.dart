@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/clinician.dart';
 import '../models/clinic.dart';
 import '../services/clinician_service.dart';
@@ -42,7 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildField('Full Name', nameController),
+            _buildField('Full Name *', nameController),
             const SizedBox(height: 12),
             _buildField('License Number', licenseController, hint: 'Optional'),
           ],
@@ -97,19 +98,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildField('Clinic Name', nameController),
+              _buildField('Clinic Name *', nameController),
               const SizedBox(height: 12),
-              _buildField('Address', addressController, hint: 'Optional'),
+              _buildField('Address *', addressController),
               const SizedBox(height: 12),
-              _buildField('City', cityController, hint: 'Optional'),
+              _buildField('City *', cityController),
               const SizedBox(height: 12),
               Row(children: [
-                Expanded(child: _buildField('State', stateController, hint: 'Optional')),
+                Expanded(child: _buildField('State *', stateController)),
                 const SizedBox(width: 8),
-                Expanded(child: _buildField('ZIP', zipController, hint: 'Optional')),
+                Expanded(child: _buildField('ZIP *', zipController,
+                    maxLength: 5, inputType: TextInputType.number)),
               ]),
               const SizedBox(height: 12),
-              _buildField('Phone', phoneController, hint: 'Optional'),
+              _buildPhoneField('Phone *', phoneController),
             ],
           ),
         ),
@@ -120,11 +122,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              final name = nameController.text.trim();
-              if (name.isEmpty) return;
+              final errors = <String>[];
+              if (nameController.text.trim().isEmpty) errors.add('• Clinic name');
+              if (addressController.text.trim().isEmpty) errors.add('• Address');
+              if (cityController.text.trim().isEmpty) errors.add('• City');
+              if (stateController.text.trim().isEmpty) errors.add('• State');
+              if (zipController.text.trim().length < 5) errors.add('• ZIP code (5 digits)');
+              if (phoneController.text.replaceAll(RegExp(r'\D'), '').length < 10) errors.add('• Phone (10 digits)');
+              if (errors.isNotEmpty) {
+                showDialog(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    backgroundColor: const Color(0xFF16213E),
+                    title: const Text('Required Fields', style: TextStyle(color: Colors.white)),
+                    content: Text(errors.join('\n'), style: const TextStyle(color: Colors.white70, height: 1.6)),
+                    actions: [ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F3460)),
+                      child: const Text('OK', style: TextStyle(color: Colors.white)),
+                    )],
+                  ),
+                );
+                return;
+              }
               Navigator.pop(context);
               if (isEditing) {
-                clinic.name = name;
+                clinic.name = nameController.text.trim();
                 clinic.address = addressController.text.trim();
                 clinic.city = cityController.text.trim();
                 clinic.state = stateController.text.trim();
@@ -135,7 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 final newClinic = Clinic(
                   id: DateTime.now().millisecondsSinceEpoch.toString(),
                   clinicianId: clinicianId,
-                  name: name,
+                  name: nameController.text.trim(),
                   address: addressController.text.trim(),
                   city: cityController.text.trim(),
                   state: stateController.text.trim(),
@@ -207,9 +230,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final clinicians = _clinicianService.all;
-
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
         backgroundColor: const Color(0xFF16213E),
         title: const Text('Settings', style: TextStyle(color: Colors.white)),
@@ -298,11 +320,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: const Center(
-                  child: Text(
-                    'No clinicians yet.\nTap "Add Clinician" to get started.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white54),
-                  ),
+                  child: Text('No clinicians yet.\nTap "Add Clinician" to get started.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white54)),
                 ),
               )
             else
@@ -319,64 +339,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.person, color: Color(0xFF4FC3F7), size: 20),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(clinician.name,
-                                      style: const TextStyle(color: Colors.white,
-                                          fontWeight: FontWeight.bold, fontSize: 16)),
-                                  if (clinician.licenseNumber.isNotEmpty)
-                                    Text('License: ${clinician.licenseNumber}',
-                                        style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.white54, size: 18),
-                              onPressed: () => _showClinicianDialog(clinician: clinician),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red, size: 18),
-                              onPressed: () => _confirmDeleteClinician(clinician),
-                            ),
-                          ],
-                        ),
+                        child: Row(children: [
+                          const Icon(Icons.person, color: Color(0xFF4FC3F7), size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(clinician.name,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                            if (clinician.licenseNumber.isNotEmpty)
+                              Text('License: ${clinician.licenseNumber}',
+                                  style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                          ])),
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.white54, size: 18),
+                            onPressed: () => _showClinicianDialog(clinician: clinician),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red, size: 18),
+                            onPressed: () => _confirmDeleteClinician(clinician),
+                          ),
+                        ]),
                       ),
                       if (clinics.isNotEmpty) ...[
                         const Divider(color: Colors.white12, height: 1),
                         ...clinics.map((clinic) => Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.location_on, color: Color(0xFF4FC3F7), size: 16),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(clinic.name,
-                                        style: const TextStyle(color: Colors.white, fontSize: 14)),
-                                    if (clinic.fullAddress.isNotEmpty)
-                                      Text(clinic.fullAddress,
-                                          style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.white54, size: 16),
-                                onPressed: () => _showClinicDialog(clinicianId: clinician.id, clinic: clinic),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red, size: 16),
-                                onPressed: () => _confirmDeleteClinic(clinic),
-                              ),
-                            ],
-                          ),
+                          child: Row(children: [
+                            const Icon(Icons.location_on, color: Color(0xFF4FC3F7), size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(clinic.name, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                              if (clinic.fullAddress.isNotEmpty)
+                                Text(clinic.fullAddress, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                            ])),
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.white54, size: 16),
+                              onPressed: () => _showClinicDialog(clinicianId: clinician.id, clinic: clinic),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red, size: 16),
+                              onPressed: () => _confirmDeleteClinic(clinic),
+                            ),
+                          ]),
                         )),
                       ],
                       Padding(
@@ -397,13 +400,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildField(String label, TextEditingController controller, {String? hint}) {
+  Widget _buildPhoneField(String label, TextEditingController controller) {
     return TextField(
       controller: controller,
+      maxLength: 12,
+      keyboardType: TextInputType.phone,
+      style: const TextStyle(color: Colors.white),
+      inputFormatters: [_PhoneInputFormatter()],
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: 'xxx-xxx-xxxx',
+        counterText: '',
+        labelStyle: const TextStyle(color: Colors.white54),
+        hintStyle: const TextStyle(color: Colors.white24),
+        enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+        focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF4FC3F7))),
+      ),
+    );
+  }
+
+  Widget _buildField(String label, TextEditingController controller,
+      {String? hint, int? maxLength, TextInputType? inputType}) {
+    return TextField(
+      controller: controller,
+      maxLength: maxLength,
+      keyboardType: inputType,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
+        counterText: '',
         labelStyle: const TextStyle(color: Colors.white54),
         hintStyle: const TextStyle(color: Colors.white24),
         enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
@@ -413,3 +439,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
+class _PhoneInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final buffer = StringBuffer();
+    for (int i = 0; i < digits.length && i < 10; i++) {
+      if (i == 3 || i == 6) buffer.write('-');
+      buffer.write(digits[i]);
+    }
+    final formatted = buffer.toString();
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}

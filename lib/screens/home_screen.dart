@@ -263,27 +263,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
                 }),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      final clinics = _clinicianService
-                          .getClinicsForClinician(selectedClinician.id);
-                      _clinicianService.setActive(
-                          selectedClinician,
-                          clinics.isNotEmpty ? clinics.first : null);
-                      setState(() {});
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F3460),
-                      padding: const EdgeInsets.all(14),
-                    ),
-                    child: const Text('Set Active Session',
-                        style: TextStyle(color: Colors.white)),
-                  ),
-                ),
               ],
             ),
           );
