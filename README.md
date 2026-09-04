@@ -1,6 +1,6 @@
 # CL@B - Orthotic Lab Order App (formerly Orthoscan)
 
-Designed and built by Chase Jahay - Compass Orthotics and Prosthetics
+Designed and built by Chase Jahay - Compass Limb & Brace LLC
 
 CL@B is a mobile app for orthotic clinicians to create and submit lab work orders digitally.
 
@@ -34,7 +34,7 @@ CL@B is a mobile app for orthotic clinicians to create and submit lab work order
 
 ## Roadmap
 
-- iOS / iPadOS support
+- [x] iOS / iPadOS support (in progress)
 - LiDAR foot scanning via ARKit
 - Cloud sync via Google Cloud / Firebase
 - HIPAA compliance (PIN lock + SQLite encryption)
