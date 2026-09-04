@@ -263,6 +263,7 @@ class DatabaseService {
       'phone': patient.phone,
       'email': patient.email,
       'notes': patient.notes,
+      'clinicId': patient.clinicId,
       'createdAt': patient.createdAt.toIso8601String(),
       'scanFiles': patient.scanFiles.join(','),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -288,10 +289,10 @@ class DatabaseService {
     await db.delete('work_orders', where: 'patientId = ?', whereArgs: [id]);
   }
 
-  Future<List<Patient>> getAllPatients() async {
+  Future<List<Patient>> getAllPatients({String? clinicId}) async {
     final db = await database;
     final maps = await db.query('patients',
-        orderBy: 'LOWER(firstName) ASC, LOWER(lastName) ASC');
+        where: clinicId != null ? 'clinicId = ?' : null, whereArgs: clinicId != null ? [clinicId] : null, orderBy: 'createdAt DESC');
     return maps.map((map) => Patient(
       id: map['id'] as String,
       firstName: map['firstName'] as String,
@@ -335,9 +336,9 @@ class DatabaseService {
     return maps.map((map) => _workOrderFromMap(map)).toList();
   }
 
-  Future<List<WorkOrder>> getAllWorkOrders() async {
+  Future<List<WorkOrder>> getAllWorkOrders({String? clinicId}) async {
     final db = await database;
-    final maps = await db.query('work_orders', orderBy: 'createdAt DESC');
+    final maps = await db.query('work_orders', where: clinicId != null ? 'clinicId = ?' : null, whereArgs: clinicId != null ? [clinicId] : null, orderBy: 'createdAt DESC');
     return maps.map((map) => _workOrderFromMap(map)).toList();
   }
 
@@ -571,6 +572,12 @@ class DatabaseService {
       phone: map['phone'] as String? ?? '',
       isDefault: (map['isDefault'] as int? ?? 0) == 1,
     )).toList();
+  }
+
+  Future<void> migrateExistingDataToClinic(String clinicId) async {
+    final db = await database;
+    await db.rawUpdate("UPDATE patients SET clinicId = ? WHERE clinicId IS NULL OR clinicId = ''", [clinicId]);
+    await db.rawUpdate("UPDATE work_orders SET clinicId = ? WHERE clinicId IS NULL OR clinicId = ''", [clinicId]);
   }
 
   Future<void> setDefaultClinic(String clinicianId, String clinicId) async {

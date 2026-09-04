@@ -4,30 +4,28 @@ import '../models/patient.dart';
 import '../models/work_order.dart';
 import '../models/clinician.dart';
 import '../models/clinic.dart';
-import '../utils/input_formatters.dart';
+import '../services/database_service.dart';
+import '../services/clinician_service.dart';
 import 'patient_screen.dart';
 import 'settings_screen.dart';
 import 'work_order_screen.dart';
-import '../services/database_service.dart';
-import '../services/clinician_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final _db = DatabaseService();
+  final _clinicianService = ClinicianService();
   final List<Patient> _patients = [];
   final List<_WOWithPatient> _allWorkOrders = [];
-  final _db = DatabaseService();
-  int _selectedIndex = 0;
-  String _searchQuery = '';
-  bool _isSearching = false;
   bool _woLoading = false;
+  int _selectedIndex = 0;
+  bool _isSearching = false;
+  String _searchQuery = '';
   final _searchController = TextEditingController();
-  final _clinicianService = ClinicianService();
 
   @override
   void initState() {
@@ -36,7 +34,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadPatients() async {
-    final patients = await _db.getAllPatients();
+    final clinicId = _clinicianService.activeClinic?.id;
+    final patients = await _db.getAllPatients(clinicId: clinicId);
     setState(() {
       _patients.clear();
       patients.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -46,9 +45,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadAllWorkOrders() async {
     setState(() => _woLoading = true);
-    final wos = await _db.getAllWorkOrders();
-    final patients = await _db.getAllPatients();
-    final patientMap = {for (final p in patients) p.id: p};
+    final clinicId = _clinicianService.activeClinic?.id;
+    final wos = await _db.getAllWorkOrders(clinicId: clinicId);
+    final patientMap = {for (final p in _patients) p.id: p};
     setState(() {
       _allWorkOrders.clear();
       for (final wo in wos) {
@@ -64,27 +63,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (index == 1) _loadAllWorkOrders();
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  List<Patient> get _filteredPatients {
-    if (_searchQuery.isEmpty) return _patients;
-    final query = _searchQuery.toLowerCase();
-    return _patients.where((p) {
-      return p.fullName.toLowerCase().contains(query) ||
-          p.patientId.toLowerCase().contains(query) ||
-          p.phone.toLowerCase().contains(query);
-    }).toList();
-  }
-
   void _addPatient() {
     showDialog(
       context: context,
       builder: (context) => _NewPatientDialog(
         onSave: (patient) async {
+          patient.clinicId = _clinicianService.activeClinic?.id ?? '';
           await _db.insertPatient(patient);
           _loadPatients();
         },
@@ -198,98 +182,87 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(color: Colors.white54, fontSize: 13)),
                 const SizedBox(height: 8),
                 ...clinicians.map((c) => GestureDetector(
-                      onTap: () =>
-                          setSheetState(() => selectedClinician = c),
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: selectedClinician.id == c.id
-                              ? const Color(0xFF0F3460)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: selectedClinician.id == c.id
-                                ? const Color(0xFF4FC3F7)
-                                : Colors.white24,
-                          ),
-                        ),
-                        child: Row(children: [
-                          const Icon(Icons.person,
-                              color: Color(0xFF4FC3F7), size: 18),
-                          const SizedBox(width: 10),
-                          Text(c.name,
-                              style: TextStyle(
-                                  color: selectedClinician.id == c.id
-                                      ? Colors.white
-                                      : Colors.white54,
-                                  fontWeight: selectedClinician.id == c.id
-                                      ? FontWeight.bold
-                                      : FontWeight.normal)),
-                        ]),
+                  onTap: () {
+                    setSheetState(() => selectedClinician = c);
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: selectedClinician.id == c.id
+                          ? const Color(0xFF0F3460)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: selectedClinician.id == c.id
+                            ? const Color(0xFF4FC3F7)
+                            : Colors.white24,
                       ),
-                    )),
+                    ),
+                    child: Text(c.name,
+                        style: TextStyle(
+                            color: selectedClinician.id == c.id
+                                ? Colors.white
+                                : Colors.white54)),
+                  ),
+                )),
                 const SizedBox(height: 16),
                 const Text('Clinic',
                     style: TextStyle(color: Colors.white54, fontSize: 13)),
                 const SizedBox(height: 8),
-                if (clinics.isEmpty)
-                  const Text('No clinics added for this clinician',
-                      style: TextStyle(color: Colors.white38))
-                else
-                  ...clinics.map((c) {
-                    final isSelected =
-                        _clinicianService.activeClinic?.id == c.id &&
-                            selectedClinician.id ==
-                                _clinicianService.activeClinician?.id;
-                    return GestureDetector(
-                      onTap: () {
-                        _clinicianService.setActive(selectedClinician, c);
-                        setState(() {});
-                        Navigator.pop(context);
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
+                ...clinics.map((c) {
+                  final isSelected =
+                      _clinicianService.activeClinic?.id == c.id &&
+                          selectedClinician.id ==
+                              _clinicianService.activeClinician?.id;
+                  return GestureDetector(
+                    onTap: () {
+                      _clinicianService.setActive(selectedClinician, c);
+                      setState(() {});
+                      Navigator.pop(context);
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF0F3460)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
                           color: isSelected
-                              ? const Color(0xFF0F3460)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: isSelected
-                                ? const Color(0xFF4FC3F7)
-                                : Colors.white24,
+                              ? const Color(0xFF4FC3F7)
+                              : Colors.white24,
+                        ),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.location_on,
+                            color: Color(0xFF4FC3F7), size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(c.name,
+                                  style: TextStyle(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.white54,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal)),
+                              if (c.fullAddress.isNotEmpty)
+                                Text(c.fullAddress,
+                                    style: const TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 11)),
+                            ],
                           ),
                         ),
-                        child: Row(children: [
-                          const Icon(Icons.location_on,
-                              color: Color(0xFF4FC3F7), size: 18),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(c.name,
-                                    style: TextStyle(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : Colors.white54,
-                                        fontWeight: isSelected
-                                            ? FontWeight.bold
-                                            : FontWeight.normal)),
-                                if (c.fullAddress.isNotEmpty)
-                                  Text(c.fullAddress,
-                                      style: const TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 11)),
-                              ],
-                            ),
-                          ),
-                        ]),
-                      ),
-                    );
-                  }),
+                      ]),
+                    ),
+                  );
+                }),
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
@@ -316,13 +289,32 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
-    );
+    ).then((_) {
+      _loadPatients();
+      _loadAllWorkOrders();
+    });
+  }
+
+  List<Patient> get _filteredPatients {
+    if (_searchQuery.isEmpty) return _patients;
+    return _patients.where((p) {
+      return p.fullName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          p.patientId.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+  }
+
+  List<_WOWithPatient> get _filteredWorkOrders {
+    if (_searchQuery.isEmpty) return _allWorkOrders;
+    return _allWorkOrders.where((w) {
+      return w.patient.fullName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          w.wo.displayName.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: _selectedIndex == 0
           ? _buildPatientList()
           : _buildWorkOrdersView(),
@@ -361,24 +353,16 @@ class _HomeScreenState extends State<HomeScreen> {
       slivers: [
         SliverAppBar(
           backgroundColor: const Color(0xFF16213E),
-          expandedHeight: _isSearching ? 0 : 120,
+          expandedHeight: 0,
           pinned: true,
-          flexibleSpace: _isSearching
-              ? null
-              : FlexibleSpaceBar(
-                  title: const Text('CL@B',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold)),
-                  background: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFF16213E), Color(0xFF0F3460)],
-                      ),
-                    ),
-                  ),
+          leading: _isSearching
+              ? IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: _stopSearch,
+                )
+              : IconButton(
+                  icon: const Icon(Icons.search, color: Colors.white),
+                  onPressed: () => setState(() => _isSearching = true),
                 ),
           title: _isSearching
               ? TextField(
@@ -393,18 +377,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   onChanged: (value) =>
                       setState(() => _searchQuery = value),
                 )
-              : null,
+              : const Text('CL@B',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
           actions: [
-            if (_isSearching)
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: _stopSearch,
-              )
-            else ...[
-              IconButton(
-                icon: const Icon(Icons.search, color: Colors.white),
-                onPressed: () => setState(() => _isSearching = true),
-              ),
+            if (!_isSearching) ...[
               GestureDetector(
                 onTap: _showSessionSwitcher,
                 child: Container(
@@ -468,55 +444,79 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-        if (_filteredPatients.isEmpty)
-          SliverFillRemaining(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _isSearching ? Icons.search_off : Icons.people_outline,
-                    size: 80,
-                    color: Colors.white24,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _isSearching ? 'No patients found' : 'No patients yet',
-                    style: const TextStyle(
-                        color: Colors.white54, fontSize: 18),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _isSearching
-                        ? 'Try a different search term'
-                        : 'Tap + New Patient to get started',
-                    style: const TextStyle(color: Colors.white38),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final patient = _filteredPatients[index];
-                  return _PatientCard(
-                    patient: patient,
-                    onTap: () => Navigator.push(
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final patient = _filteredPatients[index];
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: GestureDetector(
+                  onTap: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => PatientScreen(patient: patient)),
-                    ).then((_) => setState(() {})),
-                    onDelete: () => _confirmDeletePatient(patient),
-                  );
-                },
-                childCount: _filteredPatients.length,
-              ),
-            ),
+                        builder: (_) => PatientScreen(patient: patient),
+                      ),
+                    );
+                    _loadPatients();
+                  },
+                  onLongPress: () => _confirmDeletePatient(patient),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF16213E),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F3460),
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                          child: Center(
+                            child: Text(
+                              patient.firstName.isNotEmpty
+                                  ? patient.firstName[0].toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                  color: Color(0xFF4FC3F7),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(patient.fullName,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16)),
+                              if (patient.patientId.isNotEmpty)
+                                Text('ID: ${patient.patientId}',
+                                    style: const TextStyle(
+                                        color: Colors.white54, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right,
+                            color: Color(0xFF4FC3F7), size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+            childCount: _filteredPatients.length,
           ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 80)),
       ],
     );
   }
@@ -526,208 +526,166 @@ class _HomeScreenState extends State<HomeScreen> {
       slivers: [
         SliverAppBar(
           backgroundColor: const Color(0xFF16213E),
-          expandedHeight: 120,
+          expandedHeight: 0,
           pinned: true,
-          flexibleSpace: FlexibleSpaceBar(
-            title: const Text('Work Orders',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
-            background: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF16213E), Color(0xFF0F3460)],
+          leading: _isSearching
+              ? IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: _stopSearch,
+                )
+              : IconButton(
+                  icon: const Icon(Icons.search, color: Colors.white),
+                  onPressed: () => setState(() => _isSearching = true),
+                ),
+          title: _isSearching
+              ? TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    hintText: 'Search work orders...',
+                    hintStyle: TextStyle(color: Colors.white38),
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (value) =>
+                      setState(() => _searchQuery = value),
+                )
+              : const Text('Work Orders',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
+          actions: [
+            if (!_isSearching) ...[
+              GestureDetector(
+                onTap: _showSessionSwitcher,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(
+                      vertical: 8, horizontal: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F3460),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: const Color(0xFF4FC3F7).withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.medical_services,
+                          color: Color(0xFF4FC3F7), size: 14),
+                      const SizedBox(width: 4),
+                      Text(_clinicianService.activeLabel,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 11)),
+                      const Icon(Icons.arrow_drop_down,
+                          color: Color(0xFF4FC3F7), size: 14),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.search, color: Colors.white),
-              onPressed: () {
-                showSearch(
-                  context: context,
-                  delegate: _WOSearchDelegate(_allWorkOrders, _db),
-                );
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings, color: Colors.white),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              IconButton(
+                icon: const Icon(Icons.settings, color: Colors.white),
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const SettingsScreen()),
+                  );
+                  await _clinicianService.load();
+                  setState(() {});
+                },
               ),
-            ),
+            ],
           ],
         ),
         if (_woLoading)
-          const SliverFillRemaining(
+          const SliverToBoxAdapter(
             child: Center(
-                child: CircularProgressIndicator(
-                    color: Color(0xFF4FC3F7))),
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(color: Color(0xFF4FC3F7)),
+              ),
+            ),
           )
-        else if (_allWorkOrders.isEmpty)
-          SliverFillRemaining(
+        else if (_filteredWorkOrders.isEmpty)
+          SliverToBoxAdapter(
             child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.assignment_outlined,
-                      size: 80, color: Colors.white24),
-                  SizedBox(height: 16),
-                  Text('No work orders yet',
-                      style: TextStyle(color: Colors.white54, fontSize: 18)),
-                  SizedBox(height: 8),
-                  Text('Create a work order from a patient profile',
-                      style: TextStyle(color: Colors.white38)),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Text(
+                  _isSearching
+                      ? 'No work orders match your search'
+                      : 'No work orders yet',
+                  style: const TextStyle(color: Colors.white54),
+                ),
               ),
             ),
           )
         else
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final item = _allWorkOrders[index];
-                  return _WorkOrderCard(
-                    wo: item.wo,
-                    patient: item.patient,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final item = _filteredWorkOrders[index];
+                final wo = item.wo;
+                final patient = item.patient;
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: GestureDetector(
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
                           builder: (_) => WorkOrderScreen(
-                                workOrder: item.wo,
-                                patient: item.patient,
-                                onSave: (wo) async {
-                                  await _db.updateWorkOrder(wo);
-                                },
-                              )),
-                    ).then((_) => _loadAllWorkOrders()),
-                  );
-                },
-                childCount: _allWorkOrders.length,
-              ),
+                            workOrder: wo,
+                            patient: patient,
+                            onSave: (updated) async {
+                              await _db.updateWorkOrder(updated);
+                            },
+                          ),
+                        ),
+                      ).then((_) => _loadAllWorkOrders());
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      margin: const EdgeInsets.only(bottom: 0),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16213E),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(wo.displayName,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold)),
+                                Text(patient.fullName,
+                                    style: const TextStyle(
+                                        color: Colors.white54, fontSize: 12)),
+                                Text(wo.statusLabel,
+                                    style: TextStyle(
+                                        color: _statusColor(wo.status),
+                                        fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right,
+                              color: Color(0xFF4FC3F7), size: 20),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+              childCount: _filteredWorkOrders.length,
             ),
           ),
+        const SliverToBoxAdapter(child: SizedBox(height: 80)),
       ],
     );
   }
-}
-
-// ─── WO With Patient ──────────────────────────────────────────────────────────
-class _WOWithPatient {
-  final WorkOrder wo;
-  final Patient patient;
-  _WOWithPatient(this.wo, this.patient);
-}
-
-// ─── Patient Card ─────────────────────────────────────────────────────────────
-class _PatientCard extends StatelessWidget {
-  final Patient patient;
-  final VoidCallback onTap;
-  final VoidCallback onDelete;
-
-  const _PatientCard({
-    required this.patient,
-    required this.onTap,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: const Color(0xFF16213E),
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: const Color(0xFF0F3460),
-                  radius: 28,
-                  child: Text(
-                    '${patient.firstName[0]}${patient.lastName[0]}',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(patient.fullName,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16)),
-                      const SizedBox(height: 4),
-                      if (patient.patientId.isNotEmpty)
-                        Text('ID: ${patient.patientId}',
-                            style: const TextStyle(
-                                color: Color(0xFF4FC3F7), fontSize: 12)),
-                      Text(
-                        patient.dateOfBirth.isEmpty
-                            ? 'No DOB'
-                            : 'DOB: ${patient.dateOfBirth}',
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 13),
-                      ),
-                      if (patient.scanFiles.isNotEmpty)
-                        Text('${patient.scanFiles.length} scan(s)',
-                            style: const TextStyle(
-                                color: Color(0xFF4FC3F7), fontSize: 13)),
-                    ],
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert, color: Colors.white38),
-                  color: const Color(0xFF16213E),
-                  onSelected: (value) {
-                    if (value == 'delete') onDelete();
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(children: [
-                        Icon(Icons.delete, color: Colors.red, size: 18),
-                        SizedBox(width: 8),
-                        Text('Delete Patient',
-                            style: TextStyle(color: Colors.red)),
-                      ]),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Work Order Card ──────────────────────────────────────────────────────────
-class _WorkOrderCard extends StatelessWidget {
-  final WorkOrder wo;
-  final Patient patient;
-  final VoidCallback onTap;
-
-  const _WorkOrderCard({
-    required this.wo,
-    required this.patient,
-    required this.onTap,
-  });
 
   Color _statusColor(WorkOrderStatus status) {
     switch (status) {
@@ -738,88 +696,17 @@ class _WorkOrderCard extends StatelessWidget {
       case WorkOrderStatus.shipped: return const Color(0xFF4FC3F7);
     }
   }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: const Color(0xFF16213E),
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: _statusColor(wo.status).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: _statusColor(wo.status).withOpacity(0.4)),
-                ),
-                child: Icon(Icons.assignment,
-                    color: _statusColor(wo.status), size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(wo.displayName,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15)),
-                    const SizedBox(height: 2),
-                    Text(patient.fullName,
-                        style: const TextStyle(
-                            color: Color(0xFF4FC3F7), fontSize: 13)),
-                    Text(wo.quantityLabel,
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 12)),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _statusColor(wo.status).withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                          color: _statusColor(wo.status).withOpacity(0.4)),
-                    ),
-                    child: Text(wo.statusLabel,
-                        style: TextStyle(
-                            color: _statusColor(wo.status), fontSize: 11)),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${wo.createdAt.month}/${wo.createdAt.day}/${wo.createdAt.year}',
-                    style: const TextStyle(
-                        color: Colors.white38, fontSize: 11),
-                  ),
-                ],
-              ),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
-// ─── New Patient Dialog ───────────────────────────────────────────────────────
+class _WOWithPatient {
+  final WorkOrder wo;
+  final Patient patient;
+  _WOWithPatient(this.wo, this.patient);
+}
+
 class _NewPatientDialog extends StatefulWidget {
   final Function(Patient) onSave;
   const _NewPatientDialog({required this.onSave});
-
   @override
   State<_NewPatientDialog> createState() => _NewPatientDialogState();
 }
@@ -827,17 +714,17 @@ class _NewPatientDialog extends StatefulWidget {
 class _NewPatientDialogState extends State<_NewPatientDialog> {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
+  final _patientIdController = TextEditingController();
   final _dobController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _patientIdController = TextEditingController();
 
   @override
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
+    _patientIdController.dispose();
     _dobController.dispose();
     _phoneController.dispose();
-    _patientIdController.dispose();
     super.dispose();
   }
 
@@ -845,35 +732,27 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: const Color(0xFF16213E),
-      title: const Text('New Patient',
-          style: TextStyle(color: Colors.white)),
+      title: const Text('New Patient', style: TextStyle(color: Colors.white)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildField('First Name', _firstNameController),
+            _buildField('First Name *', _firstNameController),
             const SizedBox(height: 12),
-            _buildField('Last Name', _lastNameController),
+            _buildField('Last Name *', _lastNameController),
             const SizedBox(height: 12),
-            _buildField('Patient ID', _patientIdController),
+            _buildField('Patient ID *', _patientIdController),
             const SizedBox(height: 12),
-            _buildField('Date of Birth', _dobController,
-                hint: 'MM/DD/YYYY',
-                formatter: DobInputFormatter(),
-                keyboardType: TextInputType.number),
+            _buildField('Date of Birth', _dobController, hint: 'Optional'),
             const SizedBox(height: 12),
-            _buildField('Phone', _phoneController,
-                hint: '(555) 555-5555',
-                formatter: PhoneInputFormatter(),
-                keyboardType: TextInputType.phone),
+            _buildField('Phone', _phoneController, hint: 'Optional'),
           ],
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel',
-              style: TextStyle(color: Colors.white54)),
+          child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
         ),
         ElevatedButton(
           onPressed: () {
@@ -911,128 +790,25 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
             widget.onSave(patient);
             Navigator.pop(context);
           },
-          style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F3460)),
+          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F3460)),
           child: const Text('Save', style: TextStyle(color: Colors.white)),
         ),
       ],
     );
   }
 
-  Widget _buildField(
-    String label,
-    TextEditingController controller, {
-    String? hint,
-    TextInputFormatter? formatter,
-    TextInputType? keyboardType,
-  }) {
+  Widget _buildField(String label, TextEditingController controller, {String? hint}) {
     return TextField(
       controller: controller,
       style: const TextStyle(color: Colors.white),
-      keyboardType: keyboardType,
-      inputFormatters: formatter != null ? [formatter] : [],
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         labelStyle: const TextStyle(color: Colors.white54),
         hintStyle: const TextStyle(color: Colors.white24),
-        enabledBorder: const OutlineInputBorder(
-            borderSide: BorderSide(color: Colors.white24)),
-        focusedBorder: const OutlineInputBorder(
-            borderSide: BorderSide(color: Color(0xFF4FC3F7))),
+        enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+        focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF4FC3F7))),
       ),
     );
   }
 }
-
-// ─── WO Search Delegate ───────────────────────────────────────────────────────
-class _WOSearchDelegate extends SearchDelegate<String> {
-  final List<_WOWithPatient> allItems;
-  final DatabaseService db;
-
-  _WOSearchDelegate(this.allItems, this.db);
-
-  @override
-  ThemeData appBarTheme(BuildContext context) {
-    return Theme.of(context).copyWith(
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF16213E),
-        foregroundColor: Colors.white,
-      ),
-      inputDecorationTheme: const InputDecorationTheme(
-        hintStyle: TextStyle(color: Colors.white38),
-        border: InputBorder.none,
-      ),
-    );
-  }
-
-  @override
-  List<Widget> buildActions(BuildContext context) => [
-        IconButton(
-          icon: const Icon(Icons.clear, color: Colors.white),
-          onPressed: () => query = '',
-        ),
-      ];
-
-  @override
-  Widget buildLeading(BuildContext context) => IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.white),
-        onPressed: () => close(context, ''),
-      );
-
-  @override
-  Widget buildResults(BuildContext context) => _buildList(context);
-
-  @override
-  Widget buildSuggestions(BuildContext context) => _buildList(context);
-
-  Widget _buildList(BuildContext context) {
-    final q = query.toLowerCase();
-    final filtered = q.isEmpty
-        ? allItems
-        : allItems.where((item) =>
-            item.patient.fullName.toLowerCase().contains(q) ||
-            item.wo.displayName.toLowerCase().contains(q) ||
-            item.wo.statusLabel.toLowerCase().contains(q)).toList();
-
-    if (filtered.isEmpty) {
-      return Container(
-        color: const Color(0xFF1A1A2E),
-        child: const Center(
-          child: Text('No work orders found',
-              style: TextStyle(color: Colors.white54)),
-        ),
-      );
-    }
-
-    return Container(
-      color: const Color(0xFF1A1A2E),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: filtered.length,
-        itemBuilder: (context, index) {
-          final item = filtered[index];
-          return _WorkOrderCard(
-            wo: item.wo,
-            patient: item.patient,
-            onTap: () {
-              close(context, '');
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => WorkOrderScreen(
-                          workOrder: item.wo,
-                          patient: item.patient,
-                          onSave: (wo) async {
-                            await db.updateWorkOrder(wo);
-                          },
-                        )),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-

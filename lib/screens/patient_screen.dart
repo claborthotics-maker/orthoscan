@@ -8,6 +8,7 @@ import '../utils/input_formatters.dart';
 import '../services/database_service.dart';
 import 'scan_selection_screen.dart';
 import 'work_order_screen.dart';
+import '../services/clinician_service.dart';
 
 class PatientScreen extends StatefulWidget {
   final Patient patient;
@@ -110,6 +111,7 @@ class _PatientScreenState extends State<PatientScreen> {
                     clinicianName: '',
                   );
                   // name starts empty — clinician must fill it in
+                  workOrder.clinicId = ClinicianService().activeClinic?.id ?? '';
                   await _db.insertWorkOrder(workOrder);
                   await Future.delayed(
                       const Duration(milliseconds: 300));

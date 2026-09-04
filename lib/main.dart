@@ -12,6 +12,11 @@ void main() async {
   await DatabaseService().database;
   await ClinicianService().load();
   await ThemeService().load();
+  final activeClinic = ClinicianService().activeClinic;
+  print("Active clinic for migration: ${activeClinic?.id} - ${activeClinic?.name}");
+  if (activeClinic != null) {
+    await DatabaseService().migrateExistingDataToClinic(activeClinic.id);
+  }
   runApp(const OrthoScanApp());
 }
 
@@ -84,5 +89,6 @@ class _StartupRouterState extends State<_StartupRouter> {
     );
   }
 }
+
 
 

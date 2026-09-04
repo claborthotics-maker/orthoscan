@@ -1,4 +1,4 @@
-class Patient {
+﻿class Patient {
   final String id;
   String firstName;
   String lastName;
@@ -7,6 +7,7 @@ class Patient {
   String phone;
   String email;
   String notes;
+  String clinicId;
   DateTime createdAt;
   List<String> scanFiles;
 
@@ -19,6 +20,7 @@ class Patient {
     this.phone = '',
     this.email = '',
     this.notes = '',
+    this.clinicId = '',
     required this.createdAt,
     this.scanFiles = const [],
   });
@@ -35,6 +37,7 @@ class Patient {
       'phone': phone,
       'email': email,
       'notes': notes,
+      'clinicId': clinicId,
       'createdAt': createdAt.toIso8601String(),
       'scanFiles': scanFiles,
     };
@@ -50,6 +53,7 @@ class Patient {
       phone: map['phone'] ?? '',
       email: map['email'] ?? '',
       notes: map['notes'] ?? '',
+      clinicId: map['clinicId'] as String? ?? '',
       createdAt: DateTime.parse(map['createdAt']),
       scanFiles: List<String>.from(map['scanFiles'] ?? []),
     );
