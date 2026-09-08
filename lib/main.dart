@@ -12,12 +12,12 @@ void main() async {
   await DatabaseService().database;
   await ClinicianService().load();
   await ThemeService().load();
-  final activeClinic = ClinicianService().activeClinic;
-  print("Active clinic for migration: ${activeClinic?.id} - ${activeClinic?.name}");
-  if (activeClinic != null) {
-    await DatabaseService().migrateExistingDataToClinic(activeClinic.id);
-  }
-  runApp(const OrthoScanApp());
+  try {
+    final activeClinic = ClinicianService().activeClinic;
+    if (activeClinic != null) {
+      await DatabaseService().migrateExistingDataToClinic(activeClinic.id);
+    }
+  } catch (_) {}
 }
 
 class OrthoScanApp extends StatefulWidget {
