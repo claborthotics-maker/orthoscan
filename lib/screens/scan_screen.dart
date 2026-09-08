@@ -126,7 +126,7 @@ class _ScanScreenState extends State<ScanScreen> {
                     ? const CircularProgressIndicator(color: Color(0xFF4FC3F7))
                     : ElevatedButton.icon(
                         onPressed: _startScan,
-                        backgroundColor: const Color(0xFF0F3460),
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F3460)),
                         icon: const Icon(Icons.view_in_ar, color: Colors.white),
                         label: const Text('Start Scan', style: TextStyle(color: Colors.white)),
                       ),
@@ -138,3 +138,4 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 }
+
