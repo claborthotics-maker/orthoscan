@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -18,6 +18,8 @@
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		C04A7A06B4E206E8B4022DF9 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 89AB1D0C94A0DFBE3EFFFE01 /* Pods_Runner.framework */; };
+		D49A76E4305052E7005B40D5 /* ScanViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49A76E3305052E2005B40D5 /* ScanViewController.swift */; };
+		D49A76E630505388005B40D5 /* ScanPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49A76E530505386005B40D5 /* ScanPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -68,6 +70,8 @@
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B7C99D905A8ADB5849B9D1B9 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		CCBADE21E3989A11E55B9018 /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
+		D49A76E3305052E2005B40D5 /* ScanViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanViewController.swift; sourceTree = "<group>"; };
+		D49A76E530505386005B40D5 /* ScanPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanPlugin.swift; sourceTree = "<group>"; };
 		F5DC11DDDD8A32BCD0DFDA4C /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -102,7 +106,6 @@
 				3AB06BB7964BDB1187D73D86 /* Pods-RunnerTests.release.xcconfig */,
 				B7C99D905A8ADB5849B9D1B9 /* Pods-RunnerTests.profile.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -150,6 +153,8 @@
 		97C146F01CF9000F007C117D /* Runner */ = {
 			isa = PBXGroup;
 			children = (
+				D49A76E530505386005B40D5 /* ScanPlugin.swift */,
+				D49A76E3305052E2005B40D5 /* ScanViewController.swift */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
 				97C146FD1CF9000F007C117D /* Assets.xcassets */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
@@ -393,6 +398,8 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				D49A76E4305052E7005B40D5 /* ScanViewController.swift in Sources */,
+				D49A76E630505388005B40D5 /* ScanPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
