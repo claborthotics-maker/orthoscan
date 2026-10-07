@@ -137,7 +137,7 @@ class ScanViewController: UIViewController, ARSessionDelegate {
     func sampleDepthFrame(frame: ARFrame, depthMap: CVPixelBuffer, confidenceMap: CVPixelBuffer) {
         let depthWidth = CVPixelBufferGetWidth(depthMap)
         let depthHeight = CVPixelBufferGetHeight(depthMap)
-        let stride = 8 // sample every 8th pixel for performance
+        let step = 8 // sample every 8th pixel for performance
         
         CVPixelBufferLockBaseAddress(depthMap, .readOnly)
         CVPixelBufferLockBaseAddress(confidenceMap, .readOnly)
@@ -161,8 +161,8 @@ class ScanViewController: UIViewController, ARSessionDelegate {
         let cameraTransform = frame.camera.transform
         var newPoints: [SIMD3<Float>] = []
         
-        for y in stride(from: 0, to: depthHeight, by: stride) {
-            for x in stride(from: 0, to: depthWidth, by: stride) {
+        for y in Swift.stride(from: 0, to: depthHeight, by: step) {
+    for x in Swift.stride(from: 0, to: depthWidth, by: step) {
                 let confOffset = y * confBytesPerRow + x
                 let confidence = confPtr.load(fromByteOffset: confOffset, as: UInt8.self)
                 guard confidence >= 2 else { continue } // high confidence only
