@@ -20,7 +20,7 @@ class _ScanScreenState extends State<ScanScreen> {
 @override
   void initState() {
     super.initState();
-    _checkLiDAR();
+    setState(() => _isLiDARAvailable = true);
   }
 
    Future<void> _checkLiDAR() async {
