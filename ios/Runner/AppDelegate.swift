@@ -1,27 +1,29 @@
 import UIKit
 import Flutter
 import ARKit
- 
+
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  var scanChannel: FlutterMethodChannel?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
- 
+
     let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
- 
+
     guard let controller = window?.rootViewController as? FlutterViewController else {
       return result
     }
- 
-    let scanChannel = FlutterMethodChannel(
+
+    scanChannel = FlutterMethodChannel(
       name: "com.orthotics.orthoscan/scan",
       binaryMessenger: controller.binaryMessenger
     )
- 
-    scanChannel.setMethodCallHandler { [weak self] call, flutterResult in
+
+    scanChannel?.setMethodCallHandler { [weak self] call, flutterResult in
       switch call.method {
       case "isLiDARAvailable":
         let lidarAvailable = ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
@@ -35,10 +37,10 @@ import ARKit
         flutterResult(FlutterMethodNotImplemented)
       }
     }
- 
+
     return result
   }
- 
+
   func startScan(scanType: String, result: @escaping FlutterResult) {
     guard let rootVC = window?.rootViewController else {
       result(FlutterError(code: "NO_VC", message: "No root view controller", details: nil))
