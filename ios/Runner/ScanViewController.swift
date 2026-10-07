@@ -1,16 +1,19 @@
 import UIKit
+import RealityKit
 import ARKit
-import SceneKit
+import Accelerate
 
-class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
+class ScanViewController: UIViewController, ARSessionDelegate {
     
-    var sceneView: ARSCNView!
-    var meshAnchors: [ARAnchor] = []
+    var arView: ARView!
     var onScanComplete: ((String?) -> Void)?
     var scanType: String = "directFoot"
-    var isScanning = false
-    var captureButton: UIButton!
+    var isCapturing = false
+    var capturedPoints: [SIMD3<Float>] = []
+    var capturedNormals: [SIMD3<Float>] = []
     var statusLabel: UILabel!
+    var captureButton: UIButton!
+    var pointCountLabel: UILabel!
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -21,25 +24,28 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        let config = ARWorldTrackingConfiguration()
-        config.sceneReconstruction = .mesh
-        config.environmentTexturing = .automatic
-        sceneView.session.run(config)
+        startSession()
     }
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        sceneView.session.pause()
+        arView.session.pause()
     }
     
     func setupARView() {
-        sceneView = ARSCNView(frame: view.bounds)
-        sceneView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        sceneView.delegate = self
-        sceneView.session.delegate = self
-        sceneView.automaticallyUpdatesLighting = true
-        sceneView.debugOptions = [ARSCNDebugOptions.showFeaturePoints]
-        view.addSubview(sceneView)
+        arView = ARView(frame: view.bounds)
+        arView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        arView.session.delegate = self
+        arView.debugOptions = [.showSceneUnderstanding]
+        view.addSubview(arView)
+    }
+    
+    func startSession() {
+        let config = ARWorldTrackingConfiguration()
+        config.sceneReconstruction = .meshWithClassification
+        config.environmentTexturing = .automatic
+        config.frameSemantics = [.sceneDepth, .smoothedSceneDepth]
+        arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
     }
     
     func setupUI() {
@@ -48,23 +54,34 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
         titleLabel.textColor = .white
         titleLabel.font = UIFont.boldSystemFont(ofSize: 18)
         titleLabel.textAlignment = .center
-        titleLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        titleLabel.backgroundColor = UIColor.black.withAlphaComponent(0.6)
         titleLabel.layer.cornerRadius = 8
         titleLabel.clipsToBounds = true
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(titleLabel)
         
         statusLabel = UILabel()
-        statusLabel.text = "Move slowly around the object to scan"
+        statusLabel.text = "Hold device 1–2 ft from object and move slowly"
         statusLabel.textColor = .white
-        statusLabel.font = UIFont.systemFont(ofSize: 14)
+        statusLabel.font = UIFont.systemFont(ofSize: 13)
         statusLabel.textAlignment = .center
-        statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.6)
         statusLabel.layer.cornerRadius = 8
         statusLabel.clipsToBounds = true
         statusLabel.numberOfLines = 2
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(statusLabel)
+        
+        pointCountLabel = UILabel()
+        pointCountLabel.text = "Points: 0"
+        pointCountLabel.textColor = UIColor(red: 0.3, green: 0.9, blue: 0.3, alpha: 1.0)
+        pointCountLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
+        pointCountLabel.textAlignment = .center
+        pointCountLabel.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        pointCountLabel.layer.cornerRadius = 8
+        pointCountLabel.clipsToBounds = true
+        pointCountLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(pointCountLabel)
         
         captureButton = UIButton(type: .system)
         captureButton.setTitle("Capture Scan", for: .normal)
@@ -95,6 +112,10 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
             statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            pointCountLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 8),
+            pointCountLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            pointCountLabel.widthAnchor.constraint(equalToConstant: 160),
+            pointCountLabel.heightAnchor.constraint(equalToConstant: 28),
             captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -32),
             captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             captureButton.widthAnchor.constraint(equalToConstant: 200),
@@ -106,124 +127,138 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
         ])
     }
     
-    func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
-        for anchor in anchors {
-            if let meshAnchor = anchor as? ARMeshAnchor {
-                meshAnchors.append(meshAnchor)
-                DispatchQueue.main.async {
-                    self.statusLabel.text = "Scanning… \(self.meshAnchors.count) mesh patches captured"
-                }
-            }
-        }
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        guard let depthMap = frame.smoothedSceneDepth?.depthMap,
+              let confidenceMap = frame.smoothedSceneDepth?.confidenceMap else { return }
+        
+        sampleDepthFrame(frame: frame, depthMap: depthMap, confidenceMap: confidenceMap)
     }
     
-    func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
-        for anchor in anchors {
-            if let meshAnchor = anchor as? ARMeshAnchor {
-                if let index = meshAnchors.firstIndex(where: { $0.identifier == meshAnchor.identifier }) {
-                    meshAnchors[index] = meshAnchor
-                }
+    func sampleDepthFrame(frame: ARFrame, depthMap: CVPixelBuffer, confidenceMap: CVPixelBuffer) {
+        let depthWidth = CVPixelBufferGetWidth(depthMap)
+        let depthHeight = CVPixelBufferGetHeight(depthMap)
+        let stride = 8 // sample every 8th pixel for performance
+        
+        CVPixelBufferLockBaseAddress(depthMap, .readOnly)
+        CVPixelBufferLockBaseAddress(confidenceMap, .readOnly)
+        defer {
+            CVPixelBufferUnlockBaseAddress(depthMap, .readOnly)
+            CVPixelBufferUnlockBaseAddress(confidenceMap, .readOnly)
+        }
+        
+        guard let depthPtr = CVPixelBufferGetBaseAddress(depthMap),
+              let confPtr = CVPixelBufferGetBaseAddress(confidenceMap) else { return }
+        
+        let depthBytesPerRow = CVPixelBufferGetBytesPerRow(depthMap)
+        let confBytesPerRow = CVPixelBufferGetBytesPerRow(confidenceMap)
+        
+        let intrinsics = frame.camera.intrinsics
+        let fx = intrinsics[0][0]
+        let fy = intrinsics[1][1]
+        let cx = intrinsics[2][0]
+        let cy = intrinsics[2][1]
+        
+        let cameraTransform = frame.camera.transform
+        var newPoints: [SIMD3<Float>] = []
+        
+        for y in stride(from: 0, to: depthHeight, by: stride) {
+            for x in stride(from: 0, to: depthWidth, by: stride) {
+                let confOffset = y * confBytesPerRow + x
+                let confidence = confPtr.load(fromByteOffset: confOffset, as: UInt8.self)
+                guard confidence >= 2 else { continue } // high confidence only
+                
+                let depthOffset = y * depthBytesPerRow + x * 4
+                let depth = depthPtr.load(fromByteOffset: depthOffset, as: Float.self)
+                guard depth > 0.1 && depth < 2.0 else { continue } // 10cm to 2m
+                
+                // unproject to camera space
+                let xCamera = (Float(x) - cx) * depth / fx
+                let yCamera = (Float(y) - cy) * depth / fy
+                let pointCamera = SIMD4<Float>(xCamera, -yCamera, -depth, 1.0)
+                let pointWorld = cameraTransform * pointCamera
+                
+                newPoints.append(SIMD3<Float>(pointWorld.x, pointWorld.y, pointWorld.z))
+            }
+        }
+        
+        DispatchQueue.main.async {
+            self.capturedPoints.append(contentsOf: newPoints)
+            // keep point cloud manageable — deduplicate aggressively
+            if self.capturedPoints.count > 500_000 {
+                self.capturedPoints = Array(self.capturedPoints.suffix(500_000))
+            }
+            self.pointCountLabel.text = "Points: \(self.capturedPoints.count)"
+            if self.capturedPoints.count > 50_000 {
+                self.statusLabel.text = "Good coverage — tap Capture when ready"
+                self.captureButton.backgroundColor = UIColor(red: 0.0, green: 0.5, blue: 0.2, alpha: 0.9)
             }
         }
     }
     
     @objc func captureScan() {
-        guard !meshAnchors.isEmpty else {
-            showAlert("No scan data yet. Move the camera slowly around the object first.")
+        guard capturedPoints.count > 1000 else {
+            showAlert("Not enough scan data yet. Move slowly around the object at 1–2 feet.")
             return
         }
-        exportToSTL()
+        arView.session.pause()
+        statusLabel.text = "Processing scan…"
+        captureButton.isEnabled = false
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.exportToSTL()
+        }
     }
     
     @objc func cancelScan() {
-        sceneView.session.pause()
+        arView.session.pause()
         onScanComplete?(nil)
         dismiss(animated: true)
     }
     
     func exportToSTL() {
-        var stlData = Data()
-        let header = String(repeating: " ", count: 80).data(using: .utf8)!
-        stlData.append(header)
+        // Voxel downsample to reduce noise and duplicates
+        let voxelSize: Float = 0.003 // 3mm voxels
+        var voxelGrid: [SIMD3<Int>: SIMD3<Float>] = [:]
         
-        var totalTriangles: UInt32 = 0
-        var triangleData = Data()
-        
-        for anchor in meshAnchors {
-            guard let meshAnchor = anchor as? ARMeshAnchor else { continue }
-            let geometry = meshAnchor.geometry
-            let transform = meshAnchor.transform
-            let vertexBuffer = geometry.vertices
-            let faceBuffer = geometry.faces
-            let vertexCount = vertexBuffer.count
-            let faceCount = faceBuffer.count
-            
-            var vertices: [SIMD3<Float>] = []
-            for i in 0..<vertexCount {
-                let offset = i * vertexBuffer.stride
-                let x = vertexBuffer.buffer.contents().load(fromByteOffset: offset + 0, as: Float.self)
-                let y = vertexBuffer.buffer.contents().load(fromByteOffset: offset + 4, as: Float.self)
-                let z = vertexBuffer.buffer.contents().load(fromByteOffset: offset + 8, as: Float.self)
-                let localVertex = SIMD4<Float>(x, y, z, 1.0)
-                let worldVertex = transform * localVertex
-                vertices.append(SIMD3<Float>(worldVertex.x, worldVertex.y, worldVertex.z))
-            }
-            
-            for i in 0..<faceCount {
-                let offset = i * faceBuffer.bytesPerIndex * 3
-                var idx0: UInt32 = 0
-                var idx1: UInt32 = 0
-                var idx2: UInt32 = 0
-                if faceBuffer.bytesPerIndex == 2 {
-                    idx0 = UInt32(faceBuffer.buffer.contents().load(fromByteOffset: offset, as: UInt16.self))
-                    idx1 = UInt32(faceBuffer.buffer.contents().load(fromByteOffset: offset + 2, as: UInt16.self))
-                    idx2 = UInt32(faceBuffer.buffer.contents().load(fromByteOffset: offset + 4, as: UInt16.self))
-                } else {
-                    idx0 = faceBuffer.buffer.contents().load(fromByteOffset: offset, as: UInt32.self)
-                    idx1 = faceBuffer.buffer.contents().load(fromByteOffset: offset + 4, as: UInt32.self)
-                    idx2 = faceBuffer.buffer.contents().load(fromByteOffset: offset + 8, as: UInt32.self)
-                }
-                guard Int(idx0) < vertices.count, Int(idx1) < vertices.count, Int(idx2) < vertices.count else { continue }
-                let v0 = vertices[Int(idx0)]
-                let v1 = vertices[Int(idx1)]
-                let v2 = vertices[Int(idx2)]
-                let edge1 = v1 - v0
-                let edge2 = v2 - v0
-                let normal = normalize(cross(edge1, edge2))
-                var triangle = Data()
-                triangle.append(contentsOf: withUnsafeBytes(of: normal.x) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: normal.y) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: normal.z) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: v0.x) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: v0.y) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: v0.z) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: v1.x) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: v1.y) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: v1.z) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: v2.x) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: v2.y) { Array($0) })
-                triangle.append(contentsOf: withUnsafeBytes(of: v2.z) { Array($0) })
-                triangle.append(contentsOf: [0x00, 0x00])
-                triangleData.append(triangle)
-                totalTriangles += 1
-            }
+        for point in capturedPoints {
+            let voxel = SIMD3<Int>(
+                Int(point.x / voxelSize),
+                Int(point.y / voxelSize),
+                Int(point.z / voxelSize)
+            )
+            voxelGrid[voxel] = point
         }
         
-        var triangleCount = totalTriangles
-        stlData.append(Data(bytes: &triangleCount, count: 4))
-        stlData.append(triangleData)
+        let cleanedPoints = Array(voxelGrid.values)
         
-        let fileName = "scan_\(Int(Date().timeIntervalSince1970)).stl"
+        // Write as PLY point cloud (more useful than STL for point data)
+        var ply = "ply\nformat binary_little_endian 1.0\n"
+        ply += "element vertex \(cleanedPoints.count)\n"
+        ply += "property float x\nproperty float y\nproperty float z\n"
+        ply += "end_header\n"
+        
+        var plyData = ply.data(using: .utf8)!
+        for point in cleanedPoints {
+            plyData.append(contentsOf: withUnsafeBytes(of: point.x) { Array($0) })
+            plyData.append(contentsOf: withUnsafeBytes(of: point.y) { Array($0) })
+            plyData.append(contentsOf: withUnsafeBytes(of: point.z) { Array($0) })
+        }
+        
+        let fileName = "scan_\(Int(Date().timeIntervalSince1970)).ply"
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let fileURL = documentsDir.appendingPathComponent(fileName)
         
         do {
-            try stlData.write(to: fileURL)
-            sceneView.session.pause()
-            onScanComplete?(fileURL.path)
-            dismiss(animated: true)
+            try plyData.write(to: fileURL)
+            DispatchQueue.main.async {
+                self.onScanComplete?(fileURL.path)
+                self.dismiss(animated: true)
+            }
         } catch {
-            showAlert("Failed to save scan: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.showAlert("Failed to save scan: \(error.localizedDescription)")
+                self.captureButton.isEnabled = true
+            }
         }
     }
     
