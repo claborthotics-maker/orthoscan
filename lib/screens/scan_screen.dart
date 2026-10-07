@@ -16,17 +16,18 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _isLiDARAvailable = false;
   bool _isScanning = false;
   String? _scannedFilePath;
-  
+
 @override
   void initState() {
     super.initState();
     _checkLiDAR();
   }
 
-  Future<void> _checkLiDAR() async {
+   Future<void> _checkLiDAR() async {
     await Future.delayed(const Duration(milliseconds: 500));
     try {
       final available = await _channel.invokeMethod<bool>('isLiDARAvailable') ?? false;
+      debugPrint('LiDAR check result: $available');
       setState(() => _isLiDARAvailable = available);
     } catch (e) {
       debugPrint('LiDAR check failed: $e');

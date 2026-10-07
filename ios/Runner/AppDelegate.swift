@@ -24,7 +24,9 @@ import ARKit
     scanChannel.setMethodCallHandler { [weak self] call, flutterResult in
       switch call.method {
       case "isLiDARAvailable":
-        flutterResult(ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh))
+        let lidarAvailable = ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
+        print("LiDAR supportsSceneReconstruction: \(lidarAvailable)")
+        flutterResult(lidarAvailable)
       case "startScan":
         let args = call.arguments as? [String: Any]
         let scanType = args?["scanType"] as? String ?? "directFoot"
