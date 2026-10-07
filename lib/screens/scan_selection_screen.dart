@@ -31,7 +31,7 @@ class ScanSelectionScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: const Color(0xFF16213E),
         title: Text(
-          'New Scan â€” ${patient.fullName}',
+          'New Scan – ${patient.fullName}',
           style: const TextStyle(color: Colors.white),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
@@ -63,39 +63,37 @@ class ScanSelectionScreen extends StatelessWidget {
 
             const SizedBox(height: 40),
 
-           // â”€â”€â”€ Impression Box (Coming Soon) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+           // ─── Impression Box ─────────────────────────────────────────
             _ScanOptionCard(
               icon: Icons.inventory_2,
               title: 'Scan Impression Box',
-              description: 'Coming soon â€” scan a foam impression box '
-                  'casting of the patient\'s foot.',
-              color: Colors.white24,
-              tags: ['Coming Soon'],
-              onTap: null,
-              disabled: true,
+              description: 'Scan a foam impression box casting of the patient\'s foot using LiDAR.',
+              color: const Color(0xFF4FC3F7),
+              tags: ['LiDAR', 'iOS'],
+              onTap: () => _startScan(context, ScanType.impressionBox),
+              disabled: false,
             ),
 
             const SizedBox(height: 16),
 
-            // â”€â”€â”€ Direct Foot (Coming Soon) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ─── Direct Foot ─────────────────────────────────────────────
             _ScanOptionCard(
               icon: Icons.accessibility_new,
               title: 'Scan Foot Directly',
-              description: 'Coming soon â€” scan the patient\'s foot '
-                  'directly using the device camera.',
-              color: Colors.white24,
-              tags: ['Coming Soon'],
-              onTap: null,
-              disabled: true,
+              description: 'Scan the patient\'s foot directly using the device LiDAR camera.',
+              color: Colors.green,
+              tags: ['LiDAR', 'iOS'],
+              onTap: () => _startScan(context, ScanType.directFoot),
+              disabled: false,
             ),
 
             const SizedBox(height: 16),
 
-            // â”€â”€â”€ Prosthetic (Coming Soon) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ─── Prosthetic (Coming Soon) ─────────────────────────────────
             _ScanOptionCard(
               icon: Icons.medical_services,
               title: 'Scan Prosthetic',
-              description: 'Coming soon â€” scan prosthetic limb for custom '
+              description: 'Coming soon – scan prosthetic limb for custom '
                   'orthotic fabrication.',
               color: Colors.white24,
               tags: ['Coming Soon'],
@@ -105,7 +103,7 @@ class ScanSelectionScreen extends StatelessWidget {
 
             const Spacer(),
 
-            // â”€â”€â”€ Info Box â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ─── Info Box ─────────────────────────────────────────────────
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -139,7 +137,7 @@ class ScanSelectionScreen extends StatelessWidget {
   }
 }
 
-// â”€â”€â”€ Scan Option Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Scan Option Card ──────────────────────────────────────────────────────────
 class _ScanOptionCard extends StatelessWidget {
   final IconData icon;
   final String title;
