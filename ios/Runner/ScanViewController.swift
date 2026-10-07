@@ -8,6 +8,9 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
     var meshAnchors: [ARAnchor] = []
     var onScanComplete: ((String?) -> Void)?
     var scanType: String = "directFoot"
+    var isScanning = false
+    var captureButton: UIButton!
+    var statusLabel: UILabel!
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -35,6 +38,7 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
         sceneView.delegate = self
         sceneView.session.delegate = self
         sceneView.automaticallyUpdatesLighting = true
+        sceneView.debugOptions = [.showSceneUnderstanding]
         view.addSubview(sceneView)
     }
     
@@ -50,7 +54,19 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(titleLabel)
         
-        let captureButton = UIButton(type: .system)
+        statusLabel = UILabel()
+        statusLabel.text = "Move slowly around the object to scan"
+        statusLabel.textColor = .white
+        statusLabel.font = UIFont.systemFont(ofSize: 14)
+        statusLabel.textAlignment = .center
+        statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        statusLabel.layer.cornerRadius = 8
+        statusLabel.clipsToBounds = true
+        statusLabel.numberOfLines = 2
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(statusLabel)
+        
+        captureButton = UIButton(type: .system)
         captureButton.setTitle("Capture Scan", for: .normal)
         captureButton.setTitleColor(.white, for: .normal)
         captureButton.backgroundColor = UIColor(red: 0.06, green: 0.20, blue: 0.38, alpha: 0.9)
@@ -75,6 +91,10 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
             titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
             titleLabel.heightAnchor.constraint(equalToConstant: 44),
+            statusLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
             captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -32),
             captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             captureButton.widthAnchor.constraint(equalToConstant: 200),
@@ -90,6 +110,9 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
         for anchor in anchors {
             if let meshAnchor = anchor as? ARMeshAnchor {
                 meshAnchors.append(meshAnchor)
+                DispatchQueue.main.async {
+                    self.statusLabel.text = "Scanning… \(self.meshAnchors.count) mesh patches captured"
+                }
             }
         }
     }
@@ -105,6 +128,10 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
     }
     
     @objc func captureScan() {
+        guard !meshAnchors.isEmpty else {
+            showAlert("No scan data yet. Move the camera slowly around the object first.")
+            return
+        }
         exportToSTL()
     }
     
@@ -115,11 +142,6 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
     }
     
     func exportToSTL() {
-        guard !meshAnchors.isEmpty else {
-            showAlert("No scan data captured yet. Move the camera around the object first.")
-            return
-        }
-        
         var stlData = Data()
         let header = String(repeating: " ", count: 80).data(using: .utf8)!
         stlData.append(header)
