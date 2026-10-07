@@ -9,7 +9,7 @@ import 'services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await DatabaseService().database;
+  try { await DatabaseService().database; } catch (_) {}
   await ClinicianService().load();
   await ThemeService().load();
   try {
@@ -18,6 +18,7 @@ void main() async {
       await DatabaseService().migrateExistingDataToClinic(activeClinic.id);
     }
   } catch (_) {}
+  runApp(const OrthoScanApp());
 }
 
 class OrthoScanApp extends StatefulWidget {

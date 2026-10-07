@@ -24,7 +24,7 @@ class DatabaseService {
     final path = join(dbPath, 'orthoscan.db');
     return await openDatabase(
       path,
-      version: 11,
+      version: 13,
       onCreate: _createTables,
       onUpgrade: _onUpgrade,
     );
@@ -116,6 +116,9 @@ class DatabaseService {
       }
     if (oldVersion < 11) {
       try { await db.execute('ALTER TABLE work_orders ADD COLUMN lastTemplateName TEXT DEFAULT ""'); } catch (e) {}
+    }
+    if (oldVersion < 13) {
+      try { await db.execute('ALTER TABLE patients ADD COLUMN clinicId TEXT'); } catch (e) {}
     }
     }
     Future<void> _createTables(Database db, int version) async {
@@ -254,6 +257,7 @@ class DatabaseService {
 
   Future<void> insertPatient(Patient patient) async {
     final db = await database;
+    try { await db.execute('ALTER TABLE patients ADD COLUMN clinicId TEXT'); } catch (_) {}
     await db.insert('patients', {
       'id': patient.id,
       'firstName': patient.firstName,
@@ -291,8 +295,15 @@ class DatabaseService {
 
   Future<List<Patient>> getAllPatients({String? clinicId}) async {
     final db = await database;
-    final maps = await db.query('patients',
-        where: clinicId != null ? 'clinicId = ?' : null, whereArgs: clinicId != null ? [clinicId] : null, orderBy: 'createdAt DESC');
+    List<Map<String, dynamic>> maps;
+    try {
+      maps = await db.query('patients',
+          where: clinicId != null ? 'clinicId = ?' : null,
+          whereArgs: clinicId != null ? [clinicId] : null,
+          orderBy: 'createdAt DESC');
+    } catch (_) {
+      maps = await db.query('patients', orderBy: 'createdAt DESC');
+    }
     return maps.map((map) => Patient(
       id: map['id'] as String,
       firstName: map['firstName'] as String,
