@@ -451,7 +451,7 @@ class _PatientScreenState extends State<PatientScreen> {
                           color: Colors.white),
                       label: const Text('Start New Scan',
                           style: TextStyle(color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
+                     style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF0F3460),
                         padding: const EdgeInsets.all(14),
                       ),
@@ -460,12 +460,10 @@ class _PatientScreenState extends State<PatientScreen> {
                 ],
               ),
             ),
-                ),
-              ),
-              
+
             const SizedBox(height: 16),
 
-            // â”€â”€â”€ Clinical Notes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ─── Clinical Notes
             _SectionCard(
               title: 'Clinical Notes',
               icon: Icons.note_alt,
