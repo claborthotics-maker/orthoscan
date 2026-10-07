@@ -1,49 +1,41 @@
 import UIKit
 import ARKit
+import SceneKit
 
-class ScanViewController: UIViewController, ARSessionDelegate {
+class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     
-    var arView: UIView!
+    var sceneView: ARSCNView!
     var meshAnchors: [ARAnchor] = []
     var onScanComplete: ((String?) -> Void)?
     var scanType: String = "directFoot"
-    var session: ARSession?
     
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-            setupARSession()
-        } else {
-            showLiDARUnavailable()
-        }
+        setupARView()
         setupUI()
     }
     
-    func showLiDARUnavailable() {
-        let label = UILabel()
-        label.text = "LiDAR not available on this device"
-        label.textColor = .white
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-        ])
-    }
-    
-    func setupARSession() {
-        session = ARSession()
-        session?.delegate = self
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
         let config = ARWorldTrackingConfiguration()
         config.sceneReconstruction = .mesh
         config.environmentTexturing = .automatic
-        session?.run(config)
+        sceneView.session.run(config)
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        sceneView.session.pause()
+    }
+    
+    func setupARView() {
+        sceneView = ARSCNView(frame: view.bounds)
+        sceneView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        sceneView.delegate = self
+        sceneView.session.delegate = self
+        sceneView.automaticallyUpdatesLighting = true
+        view.addSubview(sceneView)
     }
     
     func setupUI() {
@@ -52,13 +44,16 @@ class ScanViewController: UIViewController, ARSessionDelegate {
         titleLabel.textColor = .white
         titleLabel.font = UIFont.boldSystemFont(ofSize: 18)
         titleLabel.textAlignment = .center
+        titleLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        titleLabel.layer.cornerRadius = 8
+        titleLabel.clipsToBounds = true
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(titleLabel)
         
         let captureButton = UIButton(type: .system)
         captureButton.setTitle("Capture Scan", for: .normal)
         captureButton.setTitleColor(.white, for: .normal)
-        captureButton.backgroundColor = UIColor(red: 0.06, green: 0.20, blue: 0.38, alpha: 1.0)
+        captureButton.backgroundColor = UIColor(red: 0.06, green: 0.20, blue: 0.38, alpha: 0.9)
         captureButton.layer.cornerRadius = 25
         captureButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 16)
         captureButton.translatesAutoresizingMaskIntoConstraints = false
@@ -68,6 +63,8 @@ class ScanViewController: UIViewController, ARSessionDelegate {
         let cancelButton = UIButton(type: .system)
         cancelButton.setTitle("Cancel", for: .normal)
         cancelButton.setTitleColor(.white, for: .normal)
+        cancelButton.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        cancelButton.layer.cornerRadius = 16
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
         cancelButton.addTarget(self, action: #selector(cancelScan), for: .touchUpInside)
         view.addSubview(cancelButton)
@@ -75,12 +72,17 @@ class ScanViewController: UIViewController, ARSessionDelegate {
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            titleLabel.heightAnchor.constraint(equalToConstant: 44),
             captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -32),
             captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             captureButton.widthAnchor.constraint(equalToConstant: 200),
             captureButton.heightAnchor.constraint(equalToConstant: 50),
             cancelButton.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -16),
             cancelButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            cancelButton.widthAnchor.constraint(equalToConstant: 100),
+            cancelButton.heightAnchor.constraint(equalToConstant: 32),
         ])
     }
     
@@ -103,23 +105,18 @@ class ScanViewController: UIViewController, ARSessionDelegate {
     }
     
     @objc func captureScan() {
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-            exportToSTL()
-        } else {
-            onScanComplete?(nil)
-            dismiss(animated: true)
-        }
+        exportToSTL()
     }
     
     @objc func cancelScan() {
-        session?.pause()
+        sceneView.session.pause()
         onScanComplete?(nil)
         dismiss(animated: true)
     }
     
     func exportToSTL() {
         guard !meshAnchors.isEmpty else {
-            showAlert("No scan data captured yet.")
+            showAlert("No scan data captured yet. Move the camera around the object first.")
             return
         }
         
@@ -200,7 +197,7 @@ class ScanViewController: UIViewController, ARSessionDelegate {
         
         do {
             try stlData.write(to: fileURL)
-            session?.pause()
+            sceneView.session.pause()
             onScanComplete?(fileURL.path)
             dismiss(animated: true)
         } catch {
