@@ -38,7 +38,7 @@ class ScanViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate
         sceneView.delegate = self
         sceneView.session.delegate = self
         sceneView.automaticallyUpdatesLighting = true
-        sceneView.debugOptions = [.showSceneUnderstanding]
+        sceneView.debugOptions = [ARSCNDebugOptions.showFeaturePoints]
         view.addSubview(sceneView)
     }
     
