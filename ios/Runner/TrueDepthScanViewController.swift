@@ -4,31 +4,22 @@ import SceneKit
 import simd
 import CoreMotion
 
-// MARK: - TrueDepthScanViewController
-// Front-facing TrueDepth scanner optimized for foot & lower-limb orthotics capture.
-// Accumulates 90 depth frames, median-fuses them, filters to foot range (15–60 cm),
-// excludes floor/ceiling/background planes, builds a mesh, and exports binary STL.
-
 class TrueDepthScanViewController: UIViewController {
 
-    // MARK: Outlets / subviews
     private var previewLayer: AVCaptureVideoPreviewLayer!
     private var sceneView: SCNView!
     private var ovalGuideView: OvalGuideView!
     private var distanceBadge: UILabel!
     private var statusLabel: UILabel!
-    private var progressRing: ProgressRingView!
     private var captureButton: UIButton!
     private var cancelButton: UIButton!
     private var submitButton: UIButton!
     private var rescanButton: UIButton!
 
-    // MARK: AVFoundation
     private let session = AVCaptureSession()
     private let depthOutput = AVCaptureDepthDataOutput()
     private let depthQueue = DispatchQueue(label: "com.clab.depth", qos: .userInteractive)
 
-    // MARK: Capture state
     private enum ScanPhase { case idle, scanning, processing, preview }
     private var phase: ScanPhase = .idle
 
@@ -36,24 +27,19 @@ class TrueDepthScanViewController: UIViewController {
     private var calibration: AVCameraCalibrationData?
     private var depthWidth  = 0
     private var depthHeight = 0
-    private let targetFrames = 90
     private var isAutoCapturing = false
 
-    // MARK: Motion (stability check)
     private let motionManager = CMMotionManager()
     private var isStable = false
 
-    // MARK: Result
     private var builtMeshNode: SCNNode?
     var onScanComplete: ((URL) -> Void)?
     var onCancel: (() -> Void)?
 
-    // MARK: Foot-specific depth constants (metres)
     private let minDepth: Float  = 0.15
     private let maxDepth: Float  = 0.60
     private let floorMargin: Float = 0.03
 
-    // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
@@ -73,7 +59,6 @@ class TrueDepthScanViewController: UIViewController {
         motionManager.stopAccelerometerUpdates()
     }
 
-    // MARK: - UI Construction
     private func buildUI() {
         previewLayer = AVCaptureVideoPreviewLayer(session: session)
         previewLayer.videoGravity = .resizeAspectFill
@@ -105,11 +90,6 @@ class TrueDepthScanViewController: UIViewController {
         statusLabel.textAlignment = .center
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(statusLabel)
-
-        progressRing = ProgressRingView(frame: CGRect(x: 0, y: 0, width: 80, height: 80))
-        progressRing.center = view.center
-        progressRing.isHidden = true
-        view.addSubview(progressRing)
 
         cancelButton = makeButton(title: "Cancel", style: .secondary)
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
@@ -193,15 +173,23 @@ class TrueDepthScanViewController: UIViewController {
     }
 
     @objc private func captureTapped() {
-        guard phase == .idle else { return }
-        phase = .scanning
-        depthFrames = []
-        isAutoCapturing = true
-        captureButton.isEnabled = false
-        progressRing.isHidden = false
-        progressRing.setProgress(0)
-        updateDistanceBadge(text: "Scanning...", color: .systemGreen)
-        statusLabel.text = "Hold steady - \(targetFrames) frames"
+        if phase == .idle {
+            phase = .scanning
+            depthFrames = []
+            isAutoCapturing = true
+            captureButton.setTitle("Stop Scan", for: .normal)
+            captureButton.backgroundColor = UIColor.systemRed
+            updateDistanceBadge(text: "Recording...", color: .systemRed)
+            statusLabel.text = "Move around the foot, tap Stop when done"
+        } else if phase == .scanning {
+            guard depthFrames.count >= 10 else {
+                statusLabel.text = "Keep scanning - need more frames"
+                return
+            }
+            isAutoCapturing = false
+            captureButton.isEnabled = false
+            processAccumulatedFrames()
+        }
     }
 
     @objc private func cancelTapped() {
@@ -217,9 +205,15 @@ class TrueDepthScanViewController: UIViewController {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             if let url = MeshBuilder.exportSTL(from: geo) {
-                DispatchQueue.main.async { self.onScanComplete?(url); self.dismiss(animated: true) }
+                DispatchQueue.main.async {
+                    self.onScanComplete?(url)
+                    self.dismiss(animated: true)
+                }
             } else {
-                DispatchQueue.main.async { self.showError("Failed to export STL."); self.submitButton.isEnabled = true }
+                DispatchQueue.main.async {
+                    self.showError("Failed to export STL.")
+                    self.submitButton.isEnabled = true
+                }
             }
         }
     }
@@ -230,13 +224,13 @@ class TrueDepthScanViewController: UIViewController {
         sceneView.isHidden = true
         previewLayer.isHidden = false
         ovalGuideView.isHidden = false
-        progressRing.isHidden = true
-        progressRing.setProgress(0)
         submitButton.isHidden = true
         rescanButton.isHidden = true
         captureButton.isHidden = false
-        cancelButton.isHidden = false
         captureButton.isEnabled = true
+        captureButton.setTitle("Scan Foot", for: .normal)
+        captureButton.backgroundColor = UIColor.systemBlue
+        cancelButton.isHidden = false
         phase = .idle
         depthFrames = []
         updateDistanceBadge(text: "Position foot in frame", color: .systemGray)
@@ -255,7 +249,9 @@ class TrueDepthScanViewController: UIViewController {
             let frames = self.depthFrames
             guard !frames.isEmpty, let cal = self.calibration else { return }
             let fused = Self.medianFuse(frames: frames, width: self.depthWidth, height: self.depthHeight)
-            let points = Self.unproject(depth: fused, calibration: cal, minD: self.minDepth, maxD: self.maxDepth, floorMargin: self.floorMargin)
+            let points = Self.unproject(depth: fused, calibration: cal,
+                                        minD: self.minDepth, maxD: self.maxDepth,
+                                        floorMargin: self.floorMargin)
             guard points.count > 500 else {
                 DispatchQueue.main.async { self.showError("Not enough foot geometry captured. Try again.") }
                 self.phase = .idle
@@ -285,7 +281,8 @@ class TrueDepthScanViewController: UIViewController {
         return result
     }
 
-    private static func unproject(depth: [[Float]], calibration: AVCameraCalibrationData, minD: Float, maxD: Float, floorMargin: Float) -> [SIMD3<Float>] {
+    private static func unproject(depth: [[Float]], calibration: AVCameraCalibrationData,
+                                   minD: Float, maxD: Float, floorMargin: Float) -> [SIMD3<Float>] {
         let h = depth.count
         guard h > 0 else { return [] }
         let w = depth[0].count
@@ -301,8 +298,8 @@ class TrueDepthScanViewController: UIViewController {
         let rowStart = Int(Float(h) * 0.10), rowEnd = Int(Float(h) * 0.90)
         var points = [SIMD3<Float>]()
         points.reserveCapacity(w * h / 4)
-        for row in Swift.stride(from: rowStart, to: rowEnd, by: 2) {
-            for col in Swift.stride(from: colStart, to: colEnd, by: 2) {
+        for row in rowStart..<rowEnd {
+            for col in colStart..<colEnd {
                 let z = depth[row][col]
                 guard z >= minD, z <= maxD else { continue }
                 let x = (Float(col) - cx) * z / fx
@@ -321,21 +318,35 @@ class TrueDepthScanViewController: UIViewController {
         session.stopRunning()
         let scene = SCNScene()
         let node = SCNNode(geometry: geometry)
-        let (min, max) = node.boundingBox
-        let centre = SIMD3<Float>((min.x+max.x)/2, (min.y+max.y)/2, (min.z+max.z)/2)
-        node.position = SCNVector3(-centre.x, -centre.y, -centre.z)
+        let (bboxMin, bboxMax) = node.boundingBox
+        let centreX = (bboxMin.x + bboxMax.x) / 2
+        let centreY = (bboxMin.y + bboxMax.y) / 2
+        let centreZ = (bboxMin.z + bboxMax.z) / 2
+        node.position = SCNVector3(-centreX, -centreY, -centreZ)
         scene.rootNode.addChildNode(node)
         builtMeshNode = node
+        let dimX = bboxMax.x - bboxMin.x
+        let dimY = bboxMax.y - bboxMin.y
+        let dimZ = bboxMax.z - bboxMin.z
+        let maxDim = Swift.max(dimX, Swift.max(dimY, dimZ))
+        let camDist = maxDim * 2.5
         let camNode = SCNNode()
         camNode.camera = SCNCamera()
-        camNode.position = SCNVector3(0, 0, 0.5)
+        camNode.camera?.zNear = 0.001
+        camNode.camera?.zFar  = 10.0
+        camNode.position = SCNVector3(0, 0, camDist)
         scene.rootNode.addChildNode(camNode)
+        let lightNode = SCNNode()
+        lightNode.light = SCNLight()
+        lightNode.light!.type = .omni
+        lightNode.position = SCNVector3(0, camDist, camDist)
+        scene.rootNode.addChildNode(lightNode)
         sceneView.scene = scene
         sceneView.pointOfView = camNode
+        sceneView.autoenablesDefaultLighting = true
         sceneView.isHidden = false
         previewLayer.isHidden = true
         ovalGuideView.isHidden = true
-        progressRing.isHidden = true
         captureButton.isHidden = true
         cancelButton.isHidden = true
         submitButton.isHidden = false
@@ -363,9 +374,9 @@ class TrueDepthScanViewController: UIViewController {
         btn.layer.cornerRadius = 12
         btn.layer.masksToBounds = true
         switch style {
-        case .primary:   btn.backgroundColor = .systemBlue;  btn.setTitleColor(.white, for: .normal)
+        case .primary:   btn.backgroundColor = UIColor.systemBlue;  btn.setTitleColor(.white, for: .normal)
         case .secondary: btn.backgroundColor = UIColor(white: 0.2, alpha: 0.9); btn.setTitleColor(.white, for: .normal)
-        case .confirm:   btn.backgroundColor = .systemGreen; btn.setTitleColor(.white, for: .normal)
+        case .confirm:   btn.backgroundColor = UIColor.systemGreen; btn.setTitleColor(.white, for: .normal)
         }
         return btn
     }
@@ -374,7 +385,8 @@ class TrueDepthScanViewController: UIViewController {
 }
 
 extension TrueDepthScanViewController: AVCaptureDepthDataOutputDelegate {
-    func depthDataOutput(_ output: AVCaptureDepthDataOutput, didOutput depthData: AVDepthData, timestamp: CMTime, connection: AVCaptureConnection) {
+    func depthDataOutput(_ output: AVCaptureDepthDataOutput, didOutput depthData: AVDepthData,
+                         timestamp: CMTime, connection: AVCaptureConnection) {
         let converted = depthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)
         let pixelBuffer = converted.depthDataMap
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
@@ -402,10 +414,7 @@ extension TrueDepthScanViewController: AVCaptureDepthDataOutputDelegate {
         depthFrames.append(frame)
         let count = depthFrames.count
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.progressRing.setProgress(Float(count) / Float(self.targetFrames))
-            self.statusLabel.text = "Scanning... \(count)/\(self.targetFrames) frames"
-            if count >= self.targetFrames { self.isAutoCapturing = false; self.processAccumulatedFrames() }
+            self?.statusLabel.text = "Scanning... \(count) frames captured"
         }
     }
 
@@ -442,30 +451,22 @@ private class OvalGuideView: UIView {
     override init(frame: CGRect) { super.init(frame: frame); backgroundColor = .clear }
     required init?(coder: NSCoder) { fatalError() }
     override func draw(_ rect: CGRect) {
-        let ovalRect = CGRect(x: rect.width*0.10, y: rect.height*0.25, width: rect.width*0.80, height: rect.height*0.50)
+        let ovalRect = CGRect(x: rect.width * 0.10, y: rect.height * 0.25,
+                              width: rect.width * 0.80, height: rect.height * 0.50)
         let path = UIBezierPath(ovalIn: ovalRect)
-        let outer = UIBezierPath(rect: rect); outer.append(path); outer.usesEvenOddFillRule = true
-        UIColor.black.withAlphaComponent(0.45).setFill(); outer.fill()
-        UIColor.white.withAlphaComponent(0.9).setStroke(); path.lineWidth = 2.5; path.stroke()
-        let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: UIColor.white.withAlphaComponent(0.7)]
-        ("Align foot/ankle within oval" as NSString).draw(at: CGPoint(x: ovalRect.midX - 95, y: ovalRect.maxY + 8), withAttributes: attrs)
+        let outer = UIBezierPath(rect: rect)
+        outer.append(path)
+        outer.usesEvenOddFillRule = true
+        UIColor.black.withAlphaComponent(0.45).setFill()
+        outer.fill()
+        UIColor.white.withAlphaComponent(0.9).setStroke()
+        path.lineWidth = 2.5
+        path.stroke()
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.7)
+        ]
+        ("Align foot/ankle within oval" as NSString)
+            .draw(at: CGPoint(x: ovalRect.midX - 95, y: ovalRect.maxY + 8), withAttributes: attrs)
     }
-}
-
-private class ProgressRingView: UIView {
-    private let trackLayer = CAShapeLayer()
-    private let fillLayer  = CAShapeLayer()
-    override init(frame: CGRect) {
-        super.init(frame: frame); backgroundColor = .clear
-        let r = min(frame.width, frame.height) / 2 - 6
-        let centre = CGPoint(x: frame.width/2, y: frame.height/2)
-        let path = UIBezierPath(arcCenter: centre, radius: r, startAngle: -.pi/2, endAngle: 3*.pi/2, clockwise: true)
-        trackLayer.path = path.cgPath; trackLayer.strokeColor = UIColor.white.withAlphaComponent(0.2).cgColor
-        trackLayer.fillColor = UIColor.clear.cgColor; trackLayer.lineWidth = 5; layer.addSublayer(trackLayer)
-        fillLayer.path = path.cgPath; fillLayer.strokeColor = UIColor.systemGreen.cgColor
-        fillLayer.fillColor = UIColor.clear.cgColor; fillLayer.lineWidth = 5
-        fillLayer.lineCap = .round; fillLayer.strokeEnd = 0; layer.addSublayer(fillLayer)
-    }
-    required init?(coder: NSCoder) { fatalError() }
-    func setProgress(_ p: Float) { fillLayer.strokeEnd = CGFloat(p) }
 }
