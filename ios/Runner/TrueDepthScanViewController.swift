@@ -248,16 +248,22 @@ class TrueDepthScanViewController: UIViewController {
             guard let self = self else { return }
             let frames = self.depthFrames
             guard !frames.isEmpty, let cal = self.calibration else { return }
+
             let fused = Self.medianFuse(frames: frames, width: self.depthWidth, height: self.depthHeight)
-            let points = Self.unproject(depth: fused, calibration: cal,
-                                        minD: self.minDepth, maxD: self.maxDepth,
-                                        floorMargin: self.floorMargin)
-            guard points.count > 500 else {
-                DispatchQueue.main.async { self.showError("Not enough foot geometry captured. Try again.") }
-                self.phase = .idle
-                return
-            }
-            guard let geometry = MeshBuilder.buildMesh(from: points) else {
+
+            let intrinsics = cal.intrinsicMatrix
+            let refDims = cal.intrinsicMatrixReferenceDimensions
+            let scaleX = Float(self.depthWidth) / Float(refDims.width)
+            let scaleY = Float(self.depthHeight) / Float(refDims.height)
+            let fx = intrinsics[0][0] * scaleX
+            let fy = intrinsics[1][1] * scaleY
+            let cx = intrinsics[2][0] * scaleX
+            let cy = intrinsics[2][1] * scaleY
+
+            guard let geometry = MeshBuilder.buildMeshFromDepth(
+                depth: fused, fx: fx, fy: fy, cx: cx, cy: cy,
+                minD: self.minDepth, maxD: self.maxDepth,
+                floorMargin: self.floorMargin) else {
                 DispatchQueue.main.async { self.showError("Mesh build failed. Try again.") }
                 self.phase = .idle
                 return
@@ -470,3 +476,4 @@ private class OvalGuideView: UIView {
             .draw(at: CGPoint(x: ovalRect.midX - 95, y: ovalRect.maxY + 8), withAttributes: attrs)
     }
 }
+
