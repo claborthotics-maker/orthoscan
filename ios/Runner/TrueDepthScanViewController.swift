@@ -263,7 +263,7 @@ class TrueDepthScanViewController: UIViewController {
             guard let geometry = MeshBuilder.buildMeshFromDepth(
                 depth: fused, fx: fx, fy: fy, cx: cx, cy: cy,
                 minD: self.minDepth, maxD: self.maxDepth,
-                floorMargin: self.floorMargin) else {
+                floorMargin: 0.0) else {
                 DispatchQueue.main.async { self.showError("Mesh build failed. Try again.") }
                 self.phase = .idle
                 return
@@ -476,4 +476,5 @@ private class OvalGuideView: UIView {
             .draw(at: CGPoint(x: ovalRect.midX - 95, y: ovalRect.maxY + 8), withAttributes: attrs)
     }
 }
+
 
