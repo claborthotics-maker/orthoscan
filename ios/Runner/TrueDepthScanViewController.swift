@@ -320,6 +320,7 @@ class TrueDepthScanViewController: UIViewController {
     }
 
     private func showPreview(geometry: SCNGeometry) {
+        depthPreviewView.isHidden = true
         phase = .preview
         session.stopRunning()
         let scene = SCNScene()
@@ -476,5 +477,6 @@ private class OvalGuideView: UIView {
             .draw(at: CGPoint(x: ovalRect.midX - 95, y: ovalRect.maxY + 8), withAttributes: attrs)
     }
 }
+
 
 
