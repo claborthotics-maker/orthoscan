@@ -1,7 +1,7 @@
-﻿import SceneKit
+import SceneKit
 import simd
 
-// MeshBuilder — triangulates directly from the depth map grid.
+// MeshBuilder � triangulates directly from the depth map grid.
 // Each depth pixel becomes a vertex; adjacent pixels are connected into quads.
 // This preserves the natural connectivity of the TrueDepth sensor output.
 
@@ -22,7 +22,7 @@ struct MeshBuilder {
         let colStart = Int(Float(w) * 0.10), colEnd = Int(Float(w) * 0.90)
         let rowStart = Int(Float(h) * 0.10), rowEnd = Int(Float(h) * 0.90)
 
-        // Build vertex grid: index → 3D point (nil if invalid)
+        // Build vertex grid: index ? 3D point (nil if invalid)
         var grid = [[SIMD3<Float>?]](repeating: [SIMD3<Float>?](repeating: nil, count: w), count: h)
         var allY = [Float]()
 
@@ -38,6 +38,25 @@ struct MeshBuilder {
         }
 
         guard !allY.isEmpty else { return nil }
+
+        // 3x3 median smooth to reduce depth noise while preserving edges
+        var smoothed = depth
+        for r in 1..<(depth.count-1) {
+            for c in 1..<(depth[0].count-1) {
+                var neighbors: [Float] = []
+                for dr in -1...1 {
+                    for dc in -1...1 {
+                        let v = depth[r+dr][c+dc]
+                        if v > 0 { neighbors.append(v) }
+                    }
+                }
+                if neighbors.count >= 5 {
+                    neighbors.sort()
+                    smoothed[r][c] = neighbors[neighbors.count/2]
+                }
+            }
+        }
+        let depth = smoothed
 
         // Floor exclusion
         let maxY = allY.max()!
@@ -66,7 +85,7 @@ struct MeshBuilder {
         guard vertices.count > 100 else { return nil }
 
         // Connect adjacent pixels into triangles
-        // Max allowed depth jump between neighbours (metres) — skips holes/edges
+        // Max allowed depth jump between neighbours (metres) � skips holes/edges
         let maxDepthJump: Float = 0.015
 
         var indices = [UInt32]()
@@ -156,3 +175,4 @@ struct MeshBuilder {
         do { try data.write(to: url); return url } catch { print("STL write error: \(error)"); return nil }
     }
 }
+
