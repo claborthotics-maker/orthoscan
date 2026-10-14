@@ -274,29 +274,33 @@ class TrueDepthScanViewController: UIViewController {
         let rows = coverageRows
         let cols = coverageCols
         let hits = coverageHits
+        let screenW = view.bounds.width
+        let screenH = view.bounds.height
+        let cellW = screenW / CGFloat(cols)
+        let cellH = screenH / CGFloat(rows)
+        let dotRadius = min(cellW, cellH) * 0.38
 
-        var pixels = [UInt8](repeating: 0, count: rows * cols * 4)
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: screenW, height: screenH), false, 0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return }
+
         for r in 0..<rows {
             for c in 0..<cols {
-                let idx = (r * cols + c) * 4
                 let hit = hits[r][c]
-                if hit >= coverageThreshold {
-                    pixels[idx] = 0; pixels[idx+1] = 0; pixels[idx+2] = 0; pixels[idx+3] = 0
-                } else {
-                    let progress = Float(hit) / Float(coverageThreshold)
-                    let alpha = UInt8(200 - Int(progress * 180))
-                    pixels[idx] = 220; pixels[idx+1] = 40; pixels[idx+2] = 40; pixels[idx+3] = alpha
-                }
+                guard hit < coverageThreshold else { continue }
+                let progress = CGFloat(hit) / CGFloat(coverageThreshold)
+                let alpha = 0.85 - progress * 0.75
+                let cx = CGFloat(c) * cellW + cellW * 0.5
+                let cy = CGFloat(r) * cellH + cellH * 0.5
+                let dotRect = CGRect(x: cx - dotRadius, y: cy - dotRadius,
+                                     width: dotRadius * 2, height: dotRadius * 2)
+                ctx.setFillColor(UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: alpha).cgColor)
+                ctx.fillEllipse(in: dotRect)
             }
         }
 
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let ctx = CGContext(data: &pixels, width: cols, height: rows,
-                                  bitsPerComponent: 8, bytesPerRow: cols * 4,
-                                  space: colorSpace,
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
-              let cgImg = ctx.makeImage() else { return }
-        coverageOverlay.image = UIImage(cgImage: cgImg)
+        let img = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        coverageOverlay.image = img
     }
 
     private func updateCoverageGrid(floats: UnsafePointer<Float>, w: Int, h: Int) {
@@ -340,7 +344,32 @@ class TrueDepthScanViewController: UIViewController {
                 DispatchQueue.main.async { self.showError("Not enough geometry captured. Try again.") }
                 self.phase = .idle; return
             }
-            guard let geometry = MeshBuilder.buildMesh(from: points) else {
+            guard let geometry = MeshBuilder.buildMeshFromDepth(
+                depth: fused,
+                fx: {
+                    let i = cal.intrinsicMatrix
+                    let s = Float(self.depthWidth) / Float(cal.intrinsicMatrixReferenceDimensions.width)
+                    return i[0][0] * s
+                }(),
+                fy: {
+                    let i = cal.intrinsicMatrix
+                    let s = Float(self.depthHeight) / Float(cal.intrinsicMatrixReferenceDimensions.height)
+                    return i[1][1] * s
+                }(),
+                cx: {
+                    let i = cal.intrinsicMatrix
+                    let s = Float(self.depthWidth) / Float(cal.intrinsicMatrixReferenceDimensions.width)
+                    return i[2][0] * s
+                }(),
+                cy: {
+                    let i = cal.intrinsicMatrix
+                    let s = Float(self.depthHeight) / Float(cal.intrinsicMatrixReferenceDimensions.height)
+                    return i[2][1] * s
+                }(),
+                minD: self.minDepth,
+                maxD: self.maxDepth,
+                floorMargin: self.floorMargin
+            ) else {
                 DispatchQueue.main.async { self.showError("Mesh build failed. Try again.") }
                 self.phase = .idle; return
             }
@@ -544,3 +573,4 @@ private class OvalGuideView: UIView {
         ("Align foot/ankle within oval" as NSString).draw(at: CGPoint(x: ovalRect.midX-95, y: ovalRect.maxY+8), withAttributes: attrs)
     }
 }
+
