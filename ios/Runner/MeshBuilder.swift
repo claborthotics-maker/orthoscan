@@ -1,4 +1,4 @@
-﻿import SceneKit
+import SceneKit
 import ModelIO
 import simd
 

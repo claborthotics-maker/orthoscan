@@ -11,6 +11,7 @@ import ARKit
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     ScanPlugin.register(with: self.registrar(forPlugin: "ScanPlugin")!)
+    UIApplication.shared.isIdleTimerDisabled = true
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
