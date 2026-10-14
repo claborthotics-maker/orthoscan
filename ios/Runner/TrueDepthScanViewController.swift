@@ -16,6 +16,14 @@ class TrueDepthScanViewController: UIViewController {
     private var submitButton: UIButton!
     private var rescanButton: UIButton!
 
+    private let depthPreviewView: UIImageView = {
+        let iv = UIImageView()
+        iv.contentMode = .scaleAspectFill
+        iv.alpha = 0.9
+        iv.translatesAutoresizingMaskIntoConstraints = false
+        return iv
+    }()
+
     private let session = AVCaptureSession()
     private let depthOutput = AVCaptureDepthDataOutput()
     private let depthQueue = DispatchQueue(label: "com.clab.depth", qos: .userInteractive)
@@ -71,6 +79,15 @@ class TrueDepthScanViewController: UIViewController {
         sceneView.autoenablesDefaultLighting = true
         sceneView.isHidden = true
         view.addSubview(sceneView)
+
+        view.addSubview(depthPreviewView)
+        depthPreviewView.isHidden = true
+        NSLayoutConstraint.activate([
+            depthPreviewView.topAnchor.constraint(equalTo: view.topAnchor),
+            depthPreviewView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            depthPreviewView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            depthPreviewView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
 
         ovalGuideView = OvalGuideView(frame: view.bounds)
         ovalGuideView.isUserInteractionEnabled = false
@@ -172,6 +189,39 @@ class TrueDepthScanViewController: UIViewController {
         }
     }
 
+    private func renderDepthPreview(_ depthMap: CVPixelBuffer) {
+        let width = CVPixelBufferGetWidth(depthMap)
+        let height = CVPixelBufferGetHeight(depthMap)
+        CVPixelBufferLockBaseAddress(depthMap, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(depthMap) else { return }
+        let floats = base.bindMemory(to: Float32.self, capacity: width * height)
+        var pixels = [UInt8](repeating: 0, count: width * height)
+        let minD: Float = self.minDepth
+        let maxD: Float = self.maxDepth
+        let range = maxD - minD
+        for i in 0..<(width * height) {
+            let d = floats[i]
+            if d >= minD && d <= maxD {
+                let norm = 1.0 - ((d - minD) / range)
+                pixels[i] = UInt8(min(255, max(0, Int(norm * 255))))
+            } else {
+                pixels[i] = 0
+            }
+        }
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        guard let ctx = CGContext(data: &pixels, width: width, height: height,
+                                  bitsPerComponent: 8, bytesPerRow: width,
+                                  space: colorSpace,
+                                  bitmapInfo: CGImageAlphaInfo.none.rawValue),
+              let cgImg = ctx.makeImage() else { return }
+        let uiImg = UIImage(cgImage: cgImg)
+        DispatchQueue.main.async {
+            self.depthPreviewView.image = uiImg
+            self.depthPreviewView.isHidden = false
+        }
+    }
+
     @objc private func captureTapped() {
         if phase == .idle {
             phase = .scanning
@@ -188,6 +238,7 @@ class TrueDepthScanViewController: UIViewController {
             }
             isAutoCapturing = false
             captureButton.isEnabled = false
+            depthPreviewView.isHidden = true
             processAccumulatedFrames()
         }
     }
@@ -222,6 +273,7 @@ class TrueDepthScanViewController: UIViewController {
         builtMeshNode?.removeFromParentNode()
         builtMeshNode = nil
         sceneView.isHidden = true
+        depthPreviewView.isHidden = true
         previewLayer.isHidden = false
         ovalGuideView.isHidden = false
         submitButton.isHidden = true
@@ -300,12 +352,9 @@ class TrueDepthScanViewController: UIViewController {
         let fy = intrinsics[1][1] * scaleY
         let cx = intrinsics[2][0] * scaleX
         let cy = intrinsics[2][1] * scaleY
-        let colStart = Int(Float(w) * 0.10), colEnd = Int(Float(w) * 0.90)
-        let rowStart = Int(Float(h) * 0.10), rowEnd = Int(Float(h) * 0.90)
         var points = [SIMD3<Float>]()
-        points.reserveCapacity(w * h / 4)
-        for row in rowStart..<rowEnd {
-            for col in colStart..<colEnd {
+        for row in 0..<h {
+            for col in 0..<w {
                 let z = depth[row][col]
                 guard z >= minD, z <= maxD else { continue }
                 let x = (Float(col) - cx) * z / fx
@@ -313,14 +362,10 @@ class TrueDepthScanViewController: UIViewController {
                 points.append(SIMD3(x, y, z))
             }
         }
-        if points.isEmpty { return points }
-        let maxY = points.map { $0.y }.max()!
-        points = points.filter { $0.y < (maxY - floorMargin) }
         return points
     }
 
     private func showPreview(geometry: SCNGeometry) {
-        depthPreviewView.isHidden = true
         phase = .preview
         session.stopRunning()
         let scene = SCNScene()
@@ -412,10 +457,16 @@ extension TrueDepthScanViewController: AVCaptureDepthDataOutputDelegate {
         centre.sort()
         let medianDist = centre.isEmpty ? Float(0) : centre[centre.count / 2]
         DispatchQueue.main.async { [weak self] in self?.updateDistanceUI(metres: medianDist) }
-        guard phase == .scanning, isAutoCapturing else { return }
+        guard phase == .scanning, isAutoCapturing else {
+            if phase == .idle {
+                renderDepthPreview(pixelBuffer)
+            }
+            return
+        }
         guard isStable else { return }
         guard converted.depthDataAccuracy == .absolute else { return }
         if calibration == nil { calibration = converted.cameraCalibrationData; depthWidth = w; depthHeight = h }
+        renderDepthPreview(pixelBuffer)
         var frame = Array(repeating: Array(repeating: Float(0), count: w), count: h)
         for row in 0..<h { for col in 0..<w { frame[row][col] = floats[row * w + col] } }
         depthFrames.append(frame)
@@ -477,6 +528,3 @@ private class OvalGuideView: UIView {
             .draw(at: CGPoint(x: ovalRect.midX - 95, y: ovalRect.maxY + 8), withAttributes: attrs)
     }
 }
-
-
-
