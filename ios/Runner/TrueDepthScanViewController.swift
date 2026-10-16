@@ -291,7 +291,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
             let fc = self.frameCount
             DispatchQueue.main.async { [weak self] in
-                self?.frameCountLabel.text = "\(fc)/\(self.maxFrames)"
+                self?.frameCountLabel.text = "\(fc)/350"
             }
         }
     }
@@ -666,5 +666,6 @@ struct VoxelGrid {
         }
     }
 }
+
 
 
