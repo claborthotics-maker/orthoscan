@@ -280,7 +280,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
             self.overlayUpdateCounter += 1
             if self.overlayUpdateCounter % 10 == 0 {
-                let pts = self.voxelGrid.occupiedCentres()
+                let allPts = self.voxelGrid.occupiedCentres()
+                let pts = stride(from: 0, to: allPts.count, by: 8).map { allPts[$0] }
                 let currentFrame = frame
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
@@ -464,7 +465,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
         accumQueue.async { [weak self] in
             guard let self = self else { return }
-            let pts = self.voxelGrid.occupiedCentres()
+            let allPts = self.voxelGrid.occupiedCentres()
+                let pts = stride(from: 0, to: allPts.count, by: 8).map { allPts[$0] }
             guard pts.count > 500 else {
                 DispatchQueue.main.async { self.showError("Not enough geometry — rescan and move around the foot more.") }
                 return
@@ -665,6 +667,7 @@ struct VoxelGrid {
         }
     }
 }
+
 
 
 
