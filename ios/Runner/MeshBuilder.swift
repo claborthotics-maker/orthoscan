@@ -32,7 +32,7 @@ struct MeshBuilder {
         maxPt += SIMD3<Float>(repeating: pad)
 
         // 2. Build occupancy grid at 3 mm resolution
-        let res: Float = 0.003
+        let res: Float = 0.002
         let nx = max(2, Int(ceil((maxPt.x - minPt.x) / res)))
         let ny = max(2, Int(ceil((maxPt.y - minPt.y) / res)))
         let nz = max(2, Int(ceil((maxPt.z - minPt.z) / res)))
@@ -55,65 +55,6 @@ struct MeshBuilder {
             guard ix >= 0, ix < nx, iy >= 0, iy < ny, iz >= 0, iz < nz else { continue }
             occ[idx(ix, iy, iz)] = true
         }
-
-
-
-        // 2b. Morphological closing (dilate r=3, erode r=3) to seal shell gaps,
-        //     then flood-fill from boundary to solidify interior.
-        let r = 3
-        // --- Dilation ---
-        var dilated = [Bool](repeating: false, count: nx * ny * nz)
-        for iz2 in 0..<nz { for iy2 in 0..<ny { for ix2 in 0..<nx {
-            if occ[idx(ix2,iy2,iz2)] {
-                for dz in -r...r { for dy in -r...r { for dx in -r...r {
-                    let jx=ix2+dx, jy=iy2+dy, jz=iz2+dz
-                    guard jx>=0,jx<nx,jy>=0,jy<ny,jz>=0,jz<nz else { continue }
-                    dilated[idx(jx,jy,jz)] = true
-                }}}
-            }
-        }}}
-        // --- Erosion ---
-        var closed = [Bool](repeating: false, count: nx * ny * nz)
-        for iz2 in 0..<nz { for iy2 in 0..<ny { for ix2 in 0..<nx {
-            if dilated[idx(ix2,iy2,iz2)] {
-                var keep = true
-                outer: for dz in -r...r { for dy in -r...r { for dx in -r...r {
-                    let jx=ix2+dx, jy=iy2+dy, jz=iz2+dz
-                    if jx<0||jx>=nx||jy<0||jy>=ny||jz<0||jz>=nz { keep=false; break outer }
-                    if !dilated[idx(jx,jy,jz)] { keep=false; break outer }
-                }}}
-                closed[idx(ix2,iy2,iz2)] = keep
-            }
-        }}}
-        occ = closed
-        // --- Flood-fill exterior ---
-        var exterior = [Bool](repeating: false, count: nx * ny * nz)
-        var queue = [(Int,Int,Int)]()
-        for iz2 in 0..<nz { for iy2 in 0..<ny {
-            for bx in [0, nx-1] {
-                let i2=idx(bx,iy2,iz2); if !occ[i2] && !exterior[i2] { exterior[i2]=true; queue.append((bx,iy2,iz2)) }
-            }
-        }}
-        for iz2 in 0..<nz { for ix2 in 0..<nx {
-            for by in [0, ny-1] {
-                let i2=idx(ix2,by,iz2); if !occ[i2] && !exterior[i2] { exterior[i2]=true; queue.append((ix2,by,iz2)) }
-            }
-        }}
-        for iy2 in 0..<ny { for ix2 in 0..<nx {
-            for bz in [0, nz-1] {
-                let i2=idx(ix2,iy2,bz); if !occ[i2] && !exterior[i2] { exterior[i2]=true; queue.append((ix2,iy2,bz)) }
-            }
-        }}
-        var head = 0
-        while head < queue.count {
-            let (qx,qy,qz) = queue[head]; head += 1
-            for (ax,ay,az) in [(qx-1,qy,qz),(qx+1,qy,qz),(qx,qy-1,qz),(qx,qy+1,qz),(qx,qy,qz-1),(qx,qy,qz+1)] {
-                guard ax>=0,ax<nx,ay>=0,ay<ny,az>=0,az<nz else { continue }
-                let ni=idx(ax,ay,az)
-                if !occ[ni] && !exterior[ni] { exterior[ni]=true; queue.append((ax,ay,az)) }
-            }
-        }
-        for i2 in 0..<(nx*ny*nz) { if !exterior[i2] { occ[i2]=true } }
 
         // 3. Marching cubes on the occupancy field
         var vertices = [SIMD3<Float>]()
@@ -207,56 +148,18 @@ struct MeshBuilder {
         }
 
 
-        // 5. Hole filling — find boundary edges, trace loops, fan-triangulate
-        var edgeCount = [String: Int]()
-        var edgeTriangle = [String: (Int,Int,Int)]()
-        let tCount = smoothed.count / 3
-        for t in 0..<tCount {
-            let a = Int(indices[t*3]), b = Int(indices[t*3+1]), c = Int(indices[t*3+2])
-            for (p,q) in [(a,b),(b,c),(c,a)] {
-                let key = "\(min(p,q))-\(max(p,q))"
-                edgeCount[key, default: 0] += 1
-                edgeTriangle[key] = (a,b,c)
-            }
+        // 5. Add back-faces: duplicate every triangle with flipped winding
+        //    This fills visual holes when mesh is not watertight
+        let frontCount = indices.count
+        var backIndices = [UInt32]()
+        var ti3 = 0
+        while ti3 < frontCount {
+            backIndices.append(indices[ti3+2])
+            backIndices.append(indices[ti3+1])
+            backIndices.append(indices[ti3])
+            ti3 += 3
         }
-        // Boundary edges: appear only once
-        var boundaryAdj = [Int: [Int]]()
-        for (key, count) in edgeCount where count == 1 {
-            let parts = key.split(separator: "-").compactMap { Int($0) }
-            guard parts.count == 2 else { continue }
-            boundaryAdj[parts[0], default: []].append(parts[1])
-            boundaryAdj[parts[1], default: []].append(parts[0])
-        }
-        // Trace boundary loops
-        var visited = Set<Int>()
-        var loops = [[Int]]()
-        for startV in boundaryAdj.keys where !visited.contains(startV) {
-            var loop = [Int]()
-            var cur = startV
-            var prev = -1
-            while true {
-                visited.insert(cur)
-                loop.append(cur)
-                let neighbors = boundaryAdj[cur] ?? []
-                if let next = neighbors.first(where: { $0 != prev && !visited.contains($0) }) {
-                    prev = cur; cur = next
-                } else { break }
-            }
-            if loop.count >= 3 { loops.append(loop) }
-        }
-        // Fan-triangulate each loop from centroid
-        var filledIdx = Array(indices)
-        for loop in loops {
-            let centroid = loop.reduce(SIMD3<Float>(0,0,0)) { acc, vi in acc + smoothed[vi] } / Float(loop.count)
-            let cIdx = UInt32(smoothed.count)
-            smoothed.append(centroid)
-            for i in 0..<loop.count {
-                let a = UInt32(loop[i])
-                let b = UInt32(loop[(i+1) % loop.count])
-                filledIdx.append(contentsOf: [cIdx, a, b])
-            }
-        }
-        indices = filledIdx
+        indices.append(contentsOf: backIndices)
 
         return buildSCNGeometry(vertices: smoothed, indices: indices)
     }
@@ -302,7 +205,6 @@ struct MeshBuilder {
             idxs.append(contentsOf:[UInt32(i00),UInt32(i10),UInt32(i01),UInt32(i01),UInt32(i10),UInt32(i11)])
         }}
         guard !idxs.isEmpty else { return nil }
-
         return buildSCNGeometry(vertices: verts, indices: idxs)
     }
 
@@ -346,199 +248,6 @@ struct MeshBuilder {
         mat.isDoubleSided = true
         geo.materials = [mat]
         return geo
-    }
-
-
-    // MARK: - TSDF Mesh Build
-    static func buildMeshTSDF(frames: [(pose: simd_float4x4, depthMap: UnsafeMutablePointer<Float>, w: Int, h: Int, fx: Float, fy: Float, cx: Float, cy: Float)], footSide: String) -> SCNGeometry? {
-        guard !frames.isEmpty else { return nil }
-
-        let res: Float = 0.004          // 4mm voxels for TSDF
-        let truncDist: Float = 0.020    // 20mm truncation distance
-
-        // 1. Find world bounding box from all frames
-        var minPt = SIMD3<Float>(repeating:  Float.infinity)
-        var maxPt = SIMD3<Float>(repeating: -Float.infinity)
-        for fr in frames {
-            let origin = SIMD3<Float>(fr.pose.columns.3.x, fr.pose.columns.3.y, fr.pose.columns.3.z)
-            minPt = min(minPt, origin - 0.3)
-            maxPt = max(maxPt, origin + 0.3)
-        }
-        // Pad
-        minPt -= 0.02; maxPt += 0.02
-
-        let nx = Int((maxPt.x - minPt.x) / res) + 1
-        let ny = Int((maxPt.y - minPt.y) / res) + 1
-        let nz = Int((maxPt.z - minPt.z) / res) + 1
-        guard nx > 1, ny > 1, nz > 1, nx*ny*nz < 8_000_000 else { return nil }
-
-        var tsdf    = [Float](repeating:  truncDist, count: nx*ny*nz)
-        var weights = [Float](repeating:  0.0,       count: nx*ny*nz)
-
-        func vIdx(_ ix: Int, _ iy: Int, _ iz: Int) -> Int { ix + nx*(iy + ny*iz) }
-
-        // 2. Integrate each frame into the TSDF
-        for fr in frames {
-            // World-to-camera transform
-            let w2c = fr.pose.inverse
-            let step = 4   // subsample depth map for speed
-            for iz in 0..<nz { for iy in 0..<ny { for ix in 0..<nx {
-                // Voxel centre in world space
-                let wx = minPt.x + Float(ix)*res
-                let wy = minPt.y + Float(iy)*res
-                let wz = minPt.z + Float(iz)*res
-                let wPt = SIMD4<Float>(wx, wy, wz, 1.0)
-
-                // Project into camera space
-                let cPt = w2c * wPt
-                guard cPt.z < 0 else { continue }   // behind camera
-                let camZ = -cPt.z                    // positive depth
-
-                // Project to pixel
-                let px = Int(cPt.x / cPt.z * (-fr.fx) + fr.cx)
-                let py = Int(-cPt.y / cPt.z * (-fr.fy) + fr.cy)
-                guard px >= 0, px < fr.w, py >= 0, py < fr.h else { continue }
-
-                let measuredZ = fr.depthMap[py * fr.w + px]
-                guard measuredZ > 0, measuredZ.isFinite else { continue }
-
-                let sdf = measuredZ - camZ
-                let tsdfVal = max(-truncDist, min(truncDist, sdf))
-
-                let vi = vIdx(ix, iy, iz)
-                tsdf[vi]    = (tsdf[vi] * weights[vi] + tsdfVal) / (weights[vi] + 1.0)
-                weights[vi] += 1.0
-            }}}
-        }
-
-        // 3. Marching cubes at isovalue 0
-        var vertices   = [SIMD3<Float>]()
-        var indices    = [UInt32]()
-        var edgeCache  = [Int64: UInt32]()
-
-        func cornerVal(_ ix: Int, _ iy: Int, _ iz: Int) -> Float {
-            guard ix>=0,ix<nx,iy>=0,iy<ny,iz>=0,iz<nz else { return truncDist }
-            let w = weights[vIdx(ix,iy,iz)]
-            return w > 0 ? tsdf[vIdx(ix,iy,iz)] : truncDist
-        }
-        func cornerPos(_ ix: Int, _ iy: Int, _ iz: Int) -> SIMD3<Float> {
-            SIMD3<Float>(minPt.x+Float(ix)*res, minPt.y+Float(iy)*res, minPt.z+Float(iz)*res)
-        }
-        func interpVert(_ p0: SIMD3<Float>, _ v0: Float, _ p1: SIMD3<Float>, _ v1: Float) -> SIMD3<Float> {
-            let t = abs(v0-v1) < 1e-6 ? 0.5 : (-v0)/(v1-v0)
-            return p0 + (p1-p0)*t
-        }
-        func edgeKey(_ a: Int, _ b: Int) -> Int64 { Int64(min(a,b)) * 10_000_000 + Int64(max(a,b)) }
-        func addVert(_ p: SIMD3<Float>, _ a: Int, _ b: Int) -> UInt32 {
-            let k = edgeKey(a,b)
-            if let v = edgeCache[k] { return v }
-            let v = UInt32(vertices.count); vertices.append(p); edgeCache[k]=v; return v
-        }
-
-        let triTable: [[Int]] = [
-            [],
-            [0,8,3],[0,1,9],[1,8,3,9,8,1],[1,2,10],[0,8,3,1,2,10],[9,2,10,0,2,9],
-            [2,8,3,2,10,8,10,9,8],[3,11,2],[0,11,2,8,11,0],[1,9,0,2,3,11],
-            [1,11,2,1,9,11,9,8,11],[3,10,1,11,10,3],[0,10,1,0,8,10,8,11,10],
-            [3,9,0,3,11,9,11,10,9],[9,8,10,10,8,11],
-            [4,7,8],[4,3,0,7,3,4],[0,1,9,8,4,7],[4,1,9,4,7,1,7,3,1],
-            [1,2,10,8,4,7],[3,4,7,3,0,4,1,2,10],[9,2,10,9,0,2,8,4,7],
-            [2,10,9,2,9,7,2,7,3,7,9,4],[3,11,2,7,8,4],[11,4,7,11,2,4,2,0,4],
-            [9,0,1,8,4,7,2,3,11],[4,7,11,9,4,11,9,11,2,9,2,1],
-            [3,10,1,3,11,10,7,8,4],[1,11,10,1,4,11,1,0,4,7,11,4],
-            [4,7,8,9,0,11,9,11,10,11,0,3],[4,7,11,4,11,9,9,11,10],
-            [9,5,4],[9,5,4,0,8,3],[0,5,4,1,5,0],[8,5,4,8,3,5,3,1,5],
-            [1,2,10,9,5,4],[3,0,8,1,2,10,4,9,5],[5,2,10,5,4,2,4,0,2],
-            [2,10,5,3,2,5,3,5,4,3,4,8],[9,5,4,2,3,11],[0,11,2,0,8,11,4,9,5],
-            [0,5,4,0,1,5,2,3,11],[2,1,5,2,5,8,2,8,11,4,8,5],
-            [10,3,11,10,1,3,9,5,4],[4,9,5,0,8,1,8,10,1,8,11,10],
-            [5,4,0,5,0,11,5,11,10,11,0,3],[4,8,5,5,8,11,5,11,10],
-            [5,8,7,5,6,8,6,11,8],[3,6,11,0,6,3,0,5,6,0,9,5],
-            [0,1,9,2,5,6,2,6,11,6,5,8,5,7,8],[9,5,6,9,6,0,0,6,11,0,11,3],
-            [1,5,6,2,1,6,10,5,4,2,6,10,10,2,1],[1,5,6,1,6,2,2,6,11],[],
-            [5,6,9,9,6,0,0,6,11,0,11,3],[6,0,5,6,11,0,11,3,0],[],
-            [0,9,1],[0,3,8],[1,9,0],[],[1,2,10],[],[9,2,10,0,2,9],[],
-            [3,11,2],[0,11,2,8,11,0],[],[],[3,10,1,11,10,3],[],[],[],
-            [8,4,5,8,5,11,11,5,6],[3,0,9,3,9,11,11,9,6],[],
-            [9,5,11,9,11,1,1,11,3],[],[1,0,10,10,0,6,6,0,11,11,0,3],[],[],
-            [6,11,3,6,3,5,5,3,0],[6,11,8,6,8,5,5,8,9],[],[],
-            [5,6,10,5,10,9,9,10,1],[],[],[],
-            [6,10,5],[6,10,5,0,8,3],[9,0,1,5,10,6],[1,8,3,1,9,8,5,10,6],
-            [1,6,5,2,6,1],[1,6,5,1,2,6,3,0,8],[9,6,5,9,0,6,0,2,6],
-            [5,9,8,5,8,2,5,2,6,3,2,8],[11,5,10,7,5,11],[11,5,10,11,7,5,8,3,0],
-            [5,11,7,5,10,11,1,9,0],[10,7,5,10,11,7,9,8,1,8,3,1],
-            [11,1,2,11,7,1,7,5,1],[0,8,3,1,2,7,1,7,5,7,2,11],
-            [9,7,5,9,2,7,9,0,2,2,11,7],[7,5,2,7,2,11,5,9,2,3,2,8,9,8,2],
-            [2,5,10,2,3,5,3,7,5],[8,2,0,8,5,2,8,7,5,10,2,5],
-            [9,0,1,5,10,3,5,3,7,3,10,2],[9,8,2,9,2,1,8,7,2,10,2,5,7,5,2],
-            [1,3,5,3,7,5],[0,8,7,0,7,1,1,7,5],[9,0,3,9,3,5,5,3,7],[9,8,7,5,9,7],
-            [5,8,4,5,10,8,10,11,8],[5,0,4,5,11,0,5,10,11,11,3,0],
-            [0,1,9,8,4,10,8,10,11,10,4,5],[10,11,4,10,4,5,11,3,4,9,4,1,3,1,4],
-            [2,5,1,2,8,5,2,11,8,4,5,8],[0,4,11,0,11,3,4,5,11,2,11,1,5,1,11],
-            [0,2,5,0,5,9,2,11,5,4,5,8,11,8,5],[9,4,5,2,11,3],[],
-            [7,8,3,7,11,8,5,6,10],[],[5,6,10,7,2,11,7,11,8,8,11,0,8,0,9],
-            [5,6,10,5,10,7,7,10,11],[2,1,10,2,11,1,11,7,1,7,5,1],[],
-            [1,10,6,1,6,7,1,7,0,7,6,11],[],[],[1,2,10,6,7,4],[],
-            [0,9,1,4,6,7],[],[10,6,7,1,10,7,1,7,5],[10,6,7,10,7,1,7,5,1],[],
-            [],[],[],[]]
-
-        let edgeVerts = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),(0,4),(1,5),(2,6),(3,7)]
-        let cornerOffsets = [(0,0,0),(1,0,0),(1,1,0),(0,1,0),(0,0,1),(1,0,1),(1,1,1),(0,1,1)]
-
-        for iz in 0..<(nz-1) { for iy in 0..<(ny-1) { for ix in 0..<(nx-1) {
-            var cubeIdx = 0
-            var cVals = [Float](repeating: 0, count: 8)
-            for i in 0..<8 {
-                let (dx,dy,dz) = cornerOffsets[i]
-                cVals[i] = cornerVal(ix+dx,iy+dy,iz+dz)
-                if cVals[i] < 0 { cubeIdx |= (1<<i) }
-            }
-            guard cubeIdx != 0 && cubeIdx != 255 else { continue }
-            let tris = triTable[cubeIdx]
-            var i = 0
-            while i+2 < tris.count {
-                var tri = [UInt32](repeating: 0, count: 3)
-                for t in 0..<3 {
-                    let eIdx = tris[i+t]
-                    let (ca,cb) = edgeVerts[eIdx]
-                    let (dxa,dya,dza) = cornerOffsets[ca]
-                    let (dxb,dyb,dzb) = cornerOffsets[cb]
-                    let p0 = cornerPos(ix+dxa,iy+dya,iz+dza)
-                    let p1 = cornerPos(ix+dxb,iy+dyb,iz+dzb)
-                    let v0 = cVals[ca], v1 = cVals[cb]
-                    let pt = interpVert(p0,v0,p1,v1)
-                    let aIdx = vIdx(ix+dxa,iy+dya,iz+dza)
-                    let bIdx = vIdx(ix+dxb,iy+dyb,iz+dzb)
-                    tri[t] = addVert(pt, aIdx, bIdx)
-                }
-                indices.append(contentsOf: tri)
-                i += 3
-            }
-        }}}
-
-        guard vertices.count > 10, !indices.isEmpty else { return nil }
-
-        // 4. Laplacian smoothing — 3 passes
-        var smoothed = vertices
-        for _ in 0..<3 {
-            var sums   = [SIMD3<Float>](repeating: .zero, count: smoothed.count)
-            var counts = [Int](repeating: 0, count: smoothed.count)
-            var ti2 = 0
-            while ti2 < indices.count {
-                let a = Int(indices[ti2]), b = Int(indices[ti2+1]), c = Int(indices[ti2+2])
-                sums[a] += smoothed[b] + smoothed[c]; counts[a] += 2
-                sums[b] += smoothed[a] + smoothed[c]; counts[b] += 2
-                sums[c] += smoothed[a] + smoothed[b]; counts[c] += 2
-                ti2 += 3
-            }
-            for i in 0..<smoothed.count {
-                if counts[i] > 0 {
-                    smoothed[i] = smoothed[i] * 0.5 + (sums[i] / Float(counts[i])) * 0.5
-                }
-            }
-        }
-
-        return buildSCNGeometry(vertices: smoothed, indices: indices)
     }
 
     // MARK: - STL Export
