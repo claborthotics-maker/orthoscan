@@ -291,11 +291,11 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
                 }
             }
             let fc = self.frameCount
+            DispatchQueue.main.async { [weak self] in
                 self?.frameCountLabel.text = "\(fc)/350"
             }
         }
     }
-
     func session(_ session: ARSession, didFailWithError error: Error) {
         DispatchQueue.main.async { [weak self] in
             self?.showError("AR session failed: \(error.localizedDescription)")
