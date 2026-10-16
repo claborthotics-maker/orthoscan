@@ -131,12 +131,11 @@ struct MeshBuilder {
         var dilated = occ
         for iz2 in 0..<nz { for iy2 in 0..<ny { for ix2 in 0..<nx {
             if occ[idx(ix2,iy2,iz2)] {
-                let nb2 = [(1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)]
-                for (dx,dy,dz) in nb2 {
+                for dx in -1...1 { for dy in -1...1 { for dz in -1...1 {
                     let jx=ix2+dx,jy=iy2+dy,jz=iz2+dz
                     guard jx>=0,jx<nx,jy>=0,jy<ny,jz>=0,jz<nz else { continue }
                     dilated[idx(jx,jy,jz)] = true
-                }
+                }}}
             }
         }}}
         occ = dilated
@@ -574,6 +573,7 @@ struct MarchingCubesTables {
         [-1]
     ]
 }
+
 
 
 
