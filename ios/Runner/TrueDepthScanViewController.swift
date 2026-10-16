@@ -327,7 +327,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         let cy = m[2][1] * scaleY
 
         // Subsample: every 4th pixel in each axis for speed
-        let step = 4
+        let step = 2
         for row in stride(from: 0, to: h, by: step) {
             for col in stride(from: 0, to: w, by: step) {
                 let z = floats[row * w + col]
@@ -667,6 +667,7 @@ struct VoxelGrid {
         }
     }
 }
+
 
 
 
