@@ -47,17 +47,13 @@ struct MeshBuilder {
 
         func idx(_ ix: Int, _ iy: Int, _ iz: Int) -> Int { ix + nx * (iy + ny * iz) }
 
-        // Mark occupied cells — dilate by 1 face-adjacent cell to close gaps
+        // Mark occupied cells — exact cell only, no dilation
         for p in points {
             let ix = Int((p.x - minPt.x) / res)
             let iy = Int((p.y - minPt.y) / res)
             let iz = Int((p.z - minPt.z) / res)
-            let neighbors = [(0,0,0),(1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)]
-            for (dx,dy,dz) in neighbors {
-                let jx = ix+dx, jy = iy+dy, jz = iz+dz
-                guard jx >= 0, jx < nx, jy >= 0, jy < ny, jz >= 0, jz < nz else { continue }
-                occ[idx(jx, jy, jz)] = true
-            }
+            guard ix >= 0, ix < nx, iy >= 0, iy < ny, iz >= 0, iz < nz else { continue }
+            occ[idx(ix, iy, iz)] = true
         }
 
         // 3. Marching cubes on the occupancy field
@@ -131,7 +127,27 @@ struct MeshBuilder {
 
         guard vertices.count > 10, !indices.isEmpty else { return nil }
 
-        return buildSCNGeometry(vertices: vertices, indices: indices)
+        // Laplacian smoothing — 3 passes
+        var smoothed = vertices
+        for _ in 0..<3 {
+            var sums   = [SIMD3<Float>](repeating: .zero, count: smoothed.count)
+            var counts = [Int](repeating: 0, count: smoothed.count)
+            var ti2 = 0
+            while ti2 < indices.count {
+                let a = Int(indices[ti2]), b = Int(indices[ti2+1]), c = Int(indices[ti2+2])
+                sums[a] += smoothed[b] + smoothed[c]; counts[a] += 2
+                sums[b] += smoothed[a] + smoothed[c]; counts[b] += 2
+                sums[c] += smoothed[a] + smoothed[b]; counts[c] += 2
+                ti2 += 3
+            }
+            for i in 0..<smoothed.count {
+                if counts[i] > 0 {
+                    smoothed[i] = smoothed[i] * 0.5 + (sums[i] / Float(counts[i])) * 0.5
+                }
+            }
+        }
+
+        return buildSCNGeometry(vertices: smoothed, indices: indices)
     }
 
     // MARK: - Legacy depth-map mesh (kept for reference, not used in new pipeline)
@@ -544,5 +560,7 @@ struct MarchingCubesTables {
         [-1]
     ]
 }
+
+
 
 
