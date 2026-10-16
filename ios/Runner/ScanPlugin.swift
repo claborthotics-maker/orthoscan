@@ -1,6 +1,7 @@
 ﻿import Flutter
 import UIKit
 import AVFoundation
+import ARKit
 
 public class ScanPlugin: NSObject, FlutterPlugin {
 
@@ -62,3 +63,4 @@ public class ScanPlugin: NSObject, FlutterPlugin {
         }
     }
 }
+
