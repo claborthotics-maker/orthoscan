@@ -212,7 +212,7 @@ struct MeshBuilder {
         var edgeTriangle = [String: (Int,Int,Int)]()
         let tCount = smoothed.count / 3
         for t in 0..<tCount {
-            let a = Int(idx32[t*3]), b = Int(idx32[t*3+1]), c = Int(idx32[t*3+2])
+            let a = Int(indices[t*3]), b = Int(indices[t*3+1]), c = Int(indices[t*3+2])
             for (p,q) in [(a,b),(b,c),(c,a)] {
                 let key = "\(min(p,q))-\(max(p,q))"
                 edgeCount[key, default: 0] += 1
@@ -245,9 +245,9 @@ struct MeshBuilder {
             if loop.count >= 3 { loops.append(loop) }
         }
         // Fan-triangulate each loop from centroid
-        var filledIdx = Array(idx32)
+        var filledIdx = Array(indices)
         for loop in loops {
-            let centroid = loop.reduce(SIMD3<Float>(0,0,0)) { $0 + smoothed[$1] } / Float(loop.count)
+            let centroid = loop.reduce(SIMD3<Float>(0,0,0)) { acc, vi in acc + smoothed[vi] } / Float(loop.count)
             let cIdx = UInt32(smoothed.count)
             smoothed.append(centroid)
             for i in 0..<loop.count {
@@ -256,7 +256,7 @@ struct MeshBuilder {
                 filledIdx.append(contentsOf: [cIdx, a, b])
             }
         }
-        idx32 = filledIdx
+        indices = filledIdx
 
         return buildSCNGeometry(vertices: smoothed, indices: indices)
     }
@@ -308,7 +308,7 @@ struct MeshBuilder {
         var edgeTriangle = [String: (Int,Int,Int)]()
         let tCount = smoothed.count / 3
         for t in 0..<tCount {
-            let a = Int(idx32[t*3]), b = Int(idx32[t*3+1]), c = Int(idx32[t*3+2])
+            let a = Int(indices[t*3]), b = Int(indices[t*3+1]), c = Int(indices[t*3+2])
             for (p,q) in [(a,b),(b,c),(c,a)] {
                 let key = "\(min(p,q))-\(max(p,q))"
                 edgeCount[key, default: 0] += 1
@@ -341,9 +341,9 @@ struct MeshBuilder {
             if loop.count >= 3 { loops.append(loop) }
         }
         // Fan-triangulate each loop from centroid
-        var filledIdx = Array(idx32)
+        var filledIdx = Array(indices)
         for loop in loops {
-            let centroid = loop.reduce(SIMD3<Float>(0,0,0)) { $0 + smoothed[$1] } / Float(loop.count)
+            let centroid = loop.reduce(SIMD3<Float>(0,0,0)) { acc, vi in acc + smoothed[vi] } / Float(loop.count)
             let cIdx = UInt32(smoothed.count)
             smoothed.append(centroid)
             for i in 0..<loop.count {
@@ -352,7 +352,7 @@ struct MeshBuilder {
                 filledIdx.append(contentsOf: [cIdx, a, b])
             }
         }
-        idx32 = filledIdx
+        indices = filledIdx
 
         return buildSCNGeometry(vertices: verts, indices: idxs)
     }
