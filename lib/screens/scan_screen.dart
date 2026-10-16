@@ -39,9 +39,10 @@ class _ScanScreenState extends State<ScanScreen> {
     if (!_isLiDARAvailable) return;
     setState(() => _isScanning = true);
     try {
-      final filePath = await _channel.invokeMethod<String>('startScan', {
+      final result = await _channel.invokeMethod<Map>('startScan', {
         'scanType': widget.scanType == ScanType.directFoot ? 'directFoot' : 'impressionBox',
       });
+      final filePath = result?['filePath'] as String?;
       setState(() {
         _scannedFilePath = filePath;
         _isScanning = false;
