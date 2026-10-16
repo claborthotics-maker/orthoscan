@@ -91,17 +91,17 @@ struct MeshBuilder {
         var queue = [(Int,Int,Int)]()
         for iz2 in 0..<nz { for iy2 in 0..<ny {
             for bx in [0, nx-1] {
-                let i2=idx(bx,iy2,iz2); if !occ[i2]&&!exterior[i2] { exterior[i2]=true; queue.append((bx,iy2,iz2)) }
+                let i2=idx(bx,iy2,iz2); if !occ[i2]&& !exterior[i2] { exterior[i2]=true; queue.append((bx,iy2,iz2)) }
             }
         }}
         for iz2 in 0..<nz { for ix2 in 0..<nx {
             for by in [0, ny-1] {
-                let i2=idx(ix2,by,iz2); if !occ[i2]&&!exterior[i2] { exterior[i2]=true; queue.append((ix2,by,iz2)) }
+                let i2=idx(ix2,by,iz2); if !occ[i2]&& !exterior[i2] { exterior[i2]=true; queue.append((ix2,by,iz2)) }
             }
         }}
         for iy2 in 0..<ny { for ix2 in 0..<nx {
             for bz in [0, nz-1] {
-                let i2=idx(ix2,iy2,bz); if !occ[i2]&&!exterior[i2] { exterior[i2]=true; queue.append((ix2,iy2,bz)) }
+                let i2=idx(ix2,iy2,bz); if !occ[i2]&& !exterior[i2] { exterior[i2]=true; queue.append((ix2,iy2,bz)) }
             }
         }}
         var head = 0
@@ -110,7 +110,7 @@ struct MeshBuilder {
             for (ax,ay,az) in [(qx-1,qy,qz),(qx+1,qy,qz),(qx,qy-1,qz),(qx,qy+1,qz),(qx,qy,qz-1),(qx,qy,qz+1)] {
                 guard ax>=0,ax<nx,ay>=0,ay<ny,az>=0,az<nz else { continue }
                 let ni=idx(ax,ay,az)
-                if !occ[ni]&&!exterior[ni] { exterior[ni]=true; queue.append((ax,ay,az)) }
+                if !occ[ni]&& !exterior[ni] { exterior[ni]=true; queue.append((ax,ay,az)) }
             }
         }
         for i2 in 0..<(nx*ny*nz) { if !exterior[i2] { occ[i2]=true } }
