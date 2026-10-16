@@ -283,14 +283,14 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             self.overlayUpdateCounter += 1
             if self.overlayUpdateCounter % 10 == 0 {
                 let pts = self.voxelGrid.occupiedCentres()
-                let proj = self.projectToScreen(worldPoints: pts, frame: frame)
+                let currentFrame = frame
                 DispatchQueue.main.async { [weak self] in
-                    self?.renderLiveOverlay(screenPoints: proj)
+                    guard let self = self else { return }
+                    let proj = self.projectToScreen(worldPoints: pts, frame: currentFrame)
+                    self.renderLiveOverlay(screenPoints: proj)
                 }
             }
-
             let fc = self.frameCount
-            DispatchQueue.main.async { [weak self] in
                 self?.frameCountLabel.text = "\(fc)/350"
             }
         }
