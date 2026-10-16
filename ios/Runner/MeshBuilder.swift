@@ -32,7 +32,7 @@ struct MeshBuilder {
         maxPt += SIMD3<Float>(repeating: pad)
 
         // 2. Build occupancy grid at 3 mm resolution
-        let res: Float = 0.002
+        let res: Float = 0.004
         let nx = max(2, Int(ceil((maxPt.x - minPt.x) / res)))
         let ny = max(2, Int(ceil((maxPt.y - minPt.y) / res)))
         let nz = max(2, Int(ceil((maxPt.z - minPt.z) / res)))
@@ -55,6 +55,19 @@ struct MeshBuilder {
             guard ix >= 0, ix < nx, iy >= 0, iy < ny, iz >= 0, iz < nz else { continue }
             occ[idx(ix, iy, iz)] = true
         }
+
+        // 2b. Dilation — expand occupied cells before marching cubes
+        var dilated = occ
+        for iz2 in 0..<nz { for iy2 in 0..<ny { for ix2 in 0..<nx {
+            if occ[idx(ix2,iy2,iz2)] {
+                for dx in -1...1 { for dy in -1...1 { for dz in -1...1 {
+                    let jx=ix2+dx,jy=iy2+dy,jz=iz2+dz
+                    guard jx>=0,jx<nx,jy>=0,jy<ny,jz>=0,jz<nz else { continue }
+                    dilated[idx(jx,jy,jz)] = true
+                }}}
+            }
+        }}}
+        occ = dilated
 
         // 3. Marching cubes on the occupancy field
         var vertices = [SIMD3<Float>]()
@@ -127,22 +140,9 @@ struct MeshBuilder {
 
         guard vertices.count > 10, !indices.isEmpty else { return nil }
 
-        // Single dilation pass on completed occupancy grid to close gaps
-        var dilated = occ
-        for iz2 in 0..<nz { for iy2 in 0..<ny { for ix2 in 0..<nx {
-            if occ[idx(ix2,iy2,iz2)] {
-                for dx in -1...1 { for dy in -1...1 { for dz in -1...1 {
-                    let jx=ix2+dx,jy=iy2+dy,jz=iz2+dz
-                    guard jx>=0,jx<nx,jy>=0,jy<ny,jz>=0,jz<nz else { continue }
-                    dilated[idx(jx,jy,jz)] = true
-                }}}
-            }
-        }}}
-        occ = dilated
-
         // Laplacian smoothing — 3 passes
         var smoothed = vertices
-        for _ in 0..<3 {
+        for _ in 0..<10 {
             var sums   = [SIMD3<Float>](repeating: .zero, count: smoothed.count)
             var counts = [Int](repeating: 0, count: smoothed.count)
             var ti2 = 0
