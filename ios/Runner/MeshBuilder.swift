@@ -129,7 +129,7 @@ struct MeshBuilder {
 
         // Laplacian smoothing — 3 passes
         var smoothed = vertices
-        for _ in 0..<3 {
+        for _ in 0..<1 {
             var sums   = [SIMD3<Float>](repeating: .zero, count: smoothed.count)
             var counts = [Int](repeating: 0, count: smoothed.count)
             var ti2 = 0
