@@ -400,7 +400,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
         guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return }
 
-        // Draw colored point cloud — cyan/green gradient by density
+        // Draw colored point cloud  cyan/green gradient by density
         let dotR: CGFloat = 1.5
         ctx.setFillColor(UIColor(red: 0.0, green: 0.95, blue: 0.75, alpha: 0.75).cgColor)
         for pt in screenPoints {
@@ -426,8 +426,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         cancelButton.isHidden  = false
         captureButton.isHidden = false
         let sideText = footSide.capitalized
-        updateDistanceBadge(text: "\(sideText) Foot — Position", color: .systemGray)
-        statusLabel.text = "Hold phone 15–45 cm above foot\nStart at heel, rotate around foot"
+        updateDistanceBadge(text: "\(sideText) Foot  Position", color: .systemGray)
+        statusLabel.text = "Hold phone 1545 cm above foot\nStart at heel, rotate around foot"
         startARSession()
     }
 
@@ -448,7 +448,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
         } else if phase == .scanning {
             guard frameCount >= 20 else {
-                statusLabel.text = "Keep scanning — need more frames"
+                statusLabel.text = "Keep scanning  need more frames"
                 return
             }
             stopScanAndProcess()
@@ -468,7 +468,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             let allPts = self.voxelGrid.occupiedCentres()
                 let pts = stride(from: 0, to: allPts.count, by: 4).map { allPts[$0] }
             guard pts.count > 500 else {
-                DispatchQueue.main.async { self.showError("Not enough geometry — rescan and move around the foot more.") }
+                DispatchQueue.main.async { self.showError("Not enough geometry  rescan and move around the foot more.") }
                 return
             }
 
@@ -476,7 +476,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
             let geometry = MeshBuilder.buildMeshFromPoints(pts, footSide: self.footSide)
             guard let geo = geometry else {
-                DispatchQueue.main.async { self.showError("Mesh build failed — try scanning again.") }
+                DispatchQueue.main.async { self.showError("Mesh build failed  try scanning again.") }
                 return
             }
 
@@ -530,8 +530,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         voxelGrid  = VoxelGrid(cellSize: 0.002)
         worldPoints = []
         let side = footSide.capitalized
-        updateDistanceBadge(text: "\(side) Foot — Position", color: .systemGray)
-        statusLabel.text = "Hold phone 15–45 cm above foot"
+        updateDistanceBadge(text: "\(side) Foot  Position", color: .systemGray)
+        statusLabel.text = "Hold phone 1545 cm above foot"
         // Restart AR
         if let cfg = arConfig { arSession.run(cfg, options: [.resetTracking]) }
     }
@@ -573,7 +573,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         rescanButton.isHidden  = false
 
         updateDistanceBadge(text: "Scan Ready ?", color: .systemGreen)
-        statusLabel.text = "Rotate to inspect — Save or Rescan"
+        statusLabel.text = "Rotate to inspect  Save or Rescan"
     }
 
     // MARK: - Helpers
@@ -583,14 +583,14 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         if metres == 0 {
             if phase == .idle { updateDistanceBadge(text: "No foot detected", color: .systemGray) }
         } else if metres < minDepth {
-            updateDistanceBadge(text: "Too close — move back", color: .systemRed)
-            if phase == .idle { statusLabel.text = String(format: "%.0f cm — minimum 10 cm", metres * 100) }
+            updateDistanceBadge(text: "Too close  move back", color: .systemRed)
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm  minimum 10 cm", metres * 100) }
         } else if metres > maxDepth {
             updateDistanceBadge(text: "Move closer", color: .systemOrange)
-            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 45 cm", metres * 100) }
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm  maximum 45 cm", metres * 100) }
         } else if phase == .idle {
             updateDistanceBadge(text: String(format: "?  %.0f cm", metres * 100), color: .systemGreen)
-            statusLabel.text = "Good distance — tap Scan Foot"
+            statusLabel.text = "Good distance  tap Scan Foot"
         }
     }
 
