@@ -334,8 +334,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
                 // Camera-space point
                 let xc = (Float(col) - cx) * z / fx
-                let yc = (Float(row) - cy) * z / fy
-                let camPt = SIMD4<Float>(xc, yc, z, 1.0)
+                let yc = -(Float(row) - cy) * z / fy
+                let camPt = SIMD4<Float>(xc, yc, -z, 1.0)
 
                 // World-space point
                 let worldPt4 = pose * camPt
@@ -665,6 +665,7 @@ struct VoxelGrid {
         }
     }
 }
+
 
 
 
