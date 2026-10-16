@@ -348,6 +348,199 @@ struct MeshBuilder {
         return geo
     }
 
+
+    // MARK: - TSDF Mesh Build
+    static func buildMeshTSDF(frames: [(pose: simd_float4x4, depthMap: UnsafeMutablePointer<Float>, w: Int, h: Int, fx: Float, fy: Float, cx: Float, cy: Float)], footSide: String) -> SCNGeometry? {
+        guard !frames.isEmpty else { return nil }
+
+        let res: Float = 0.004          // 4mm voxels for TSDF
+        let truncDist: Float = 0.020    // 20mm truncation distance
+
+        // 1. Find world bounding box from all frames
+        var minPt = SIMD3<Float>(repeating:  Float.infinity)
+        var maxPt = SIMD3<Float>(repeating: -Float.infinity)
+        for fr in frames {
+            let origin = SIMD3<Float>(fr.pose.columns.3.x, fr.pose.columns.3.y, fr.pose.columns.3.z)
+            minPt = min(minPt, origin - 0.3)
+            maxPt = max(maxPt, origin + 0.3)
+        }
+        // Pad
+        minPt -= 0.02; maxPt += 0.02
+
+        let nx = Int((maxPt.x - minPt.x) / res) + 1
+        let ny = Int((maxPt.y - minPt.y) / res) + 1
+        let nz = Int((maxPt.z - minPt.z) / res) + 1
+        guard nx > 1, ny > 1, nz > 1, nx*ny*nz < 8_000_000 else { return nil }
+
+        var tsdf    = [Float](repeating:  truncDist, count: nx*ny*nz)
+        var weights = [Float](repeating:  0.0,       count: nx*ny*nz)
+
+        func vIdx(_ ix: Int, _ iy: Int, _ iz: Int) -> Int { ix + nx*(iy + ny*iz) }
+
+        // 2. Integrate each frame into the TSDF
+        for fr in frames {
+            // World-to-camera transform
+            let w2c = fr.pose.inverse
+            let step = 4   // subsample depth map for speed
+            for iz in 0..<nz { for iy in 0..<ny { for ix in 0..<nx {
+                // Voxel centre in world space
+                let wx = minPt.x + Float(ix)*res
+                let wy = minPt.y + Float(iy)*res
+                let wz = minPt.z + Float(iz)*res
+                let wPt = SIMD4<Float>(wx, wy, wz, 1.0)
+
+                // Project into camera space
+                let cPt = w2c * wPt
+                guard cPt.z < 0 else { continue }   // behind camera
+                let camZ = -cPt.z                    // positive depth
+
+                // Project to pixel
+                let px = Int(cPt.x / cPt.z * (-fr.fx) + fr.cx)
+                let py = Int(-cPt.y / cPt.z * (-fr.fy) + fr.cy)
+                guard px >= 0, px < fr.w, py >= 0, py < fr.h else { continue }
+
+                let measuredZ = fr.depthMap[py * fr.w + px]
+                guard measuredZ > 0, measuredZ.isFinite else { continue }
+
+                let sdf = measuredZ - camZ
+                let tsdfVal = max(-truncDist, min(truncDist, sdf))
+
+                let vi = vIdx(ix, iy, iz)
+                tsdf[vi]    = (tsdf[vi] * weights[vi] + tsdfVal) / (weights[vi] + 1.0)
+                weights[vi] += 1.0
+            }}}
+        }
+
+        // 3. Marching cubes at isovalue 0
+        var vertices   = [SIMD3<Float>]()
+        var indices    = [UInt32]()
+        var edgeCache  = [Int64: UInt32]()
+
+        func cornerVal(_ ix: Int, _ iy: Int, _ iz: Int) -> Float {
+            guard ix>=0,ix<nx,iy>=0,iy<ny,iz>=0,iz<nz else { return truncDist }
+            let w = weights[vIdx(ix,iy,iz)]
+            return w > 0 ? tsdf[vIdx(ix,iy,iz)] : truncDist
+        }
+        func cornerPos(_ ix: Int, _ iy: Int, _ iz: Int) -> SIMD3<Float> {
+            SIMD3<Float>(minPt.x+Float(ix)*res, minPt.y+Float(iy)*res, minPt.z+Float(iz)*res)
+        }
+        func interpVert(_ p0: SIMD3<Float>, _ v0: Float, _ p1: SIMD3<Float>, _ v1: Float) -> SIMD3<Float> {
+            let t = abs(v0-v1) < 1e-6 ? 0.5 : (-v0)/(v1-v0)
+            return p0 + (p1-p0)*t
+        }
+        func edgeKey(_ a: Int, _ b: Int) -> Int64 { Int64(min(a,b)) * 10_000_000 + Int64(max(a,b)) }
+        func addVert(_ p: SIMD3<Float>, _ a: Int, _ b: Int) -> UInt32 {
+            let k = edgeKey(a,b)
+            if let v = edgeCache[k] { return v }
+            let v = UInt32(vertices.count); vertices.append(p); edgeCache[k]=v; return v
+        }
+
+        let triTable: [[Int]] = [
+            [],
+            [0,8,3],[0,1,9],[1,8,3,9,8,1],[1,2,10],[0,8,3,1,2,10],[9,2,10,0,2,9],
+            [2,8,3,2,10,8,10,9,8],[3,11,2],[0,11,2,8,11,0],[1,9,0,2,3,11],
+            [1,11,2,1,9,11,9,8,11],[3,10,1,11,10,3],[0,10,1,0,8,10,8,11,10],
+            [3,9,0,3,11,9,11,10,9],[9,8,10,10,8,11],
+            [4,7,8],[4,3,0,7,3,4],[0,1,9,8,4,7],[4,1,9,4,7,1,7,3,1],
+            [1,2,10,8,4,7],[3,4,7,3,0,4,1,2,10],[9,2,10,9,0,2,8,4,7],
+            [2,10,9,2,9,7,2,7,3,7,9,4],[3,11,2,7,8,4],[11,4,7,11,2,4,2,0,4],
+            [9,0,1,8,4,7,2,3,11],[4,7,11,9,4,11,9,11,2,9,2,1],
+            [3,10,1,3,11,10,7,8,4],[1,11,10,1,4,11,1,0,4,7,11,4],
+            [4,7,8,9,0,11,9,11,10,11,0,3],[4,7,11,4,11,9,9,11,10],
+            [9,5,4],[9,5,4,0,8,3],[0,5,4,1,5,0],[8,5,4,8,3,5,3,1,5],
+            [1,2,10,9,5,4],[3,0,8,1,2,10,4,9,5],[5,2,10,5,4,2,4,0,2],
+            [2,10,5,3,2,5,3,5,4,3,4,8],[9,5,4,2,3,11],[0,11,2,0,8,11,4,9,5],
+            [0,5,4,0,1,5,2,3,11],[2,1,5,2,5,8,2,8,11,4,8,5],
+            [10,3,11,10,1,3,9,5,4],[4,9,5,0,8,1,8,10,1,8,11,10],
+            [5,4,0,5,0,11,5,11,10,11,0,3],[4,8,5,5,8,11,5,11,10],
+            [5,8,7,5,6,8,6,11,8],[3,6,11,0,6,3,0,5,6,0,9,5],
+            [0,1,9,2,5,6,2,6,11,6,5,8,5,7,8],[9,5,6,9,6,0,0,6,11,0,11,3],
+            [1,5,6,2,1,6,10,5,4,2,6,10,10,2,1],[1,5,6,1,6,2,2,6,11],[],
+            [5,6,9,9,6,0,0,6,11,0,11,3],[6,0,5,6,11,0,11,3,0],[],
+            [0,9,1],[0,3,8],[1,9,0],[],[1,2,10],[],[9,2,10,0,2,9],[],
+            [3,11,2],[0,11,2,8,11,0],[],[],[3,10,1,11,10,3],[],[],[],
+            [8,4,5,8,5,11,11,5,6],[3,0,9,3,9,11,11,9,6],[],
+            [9,5,11,9,11,1,1,11,3],[],[1,0,10,10,0,6,6,0,11,11,0,3],[],[],
+            [6,11,3,6,3,5,5,3,0],[6,11,8,6,8,5,5,8,9],[],[],
+            [5,6,10,5,10,9,9,10,1],[],[],[],
+            [6,10,5],[6,10,5,0,8,3],[9,0,1,5,10,6],[1,8,3,1,9,8,5,10,6],
+            [1,6,5,2,6,1],[1,6,5,1,2,6,3,0,8],[9,6,5,9,0,6,0,2,6],
+            [5,9,8,5,8,2,5,2,6,3,2,8],[11,5,10,7,5,11],[11,5,10,11,7,5,8,3,0],
+            [5,11,7,5,10,11,1,9,0],[10,7,5,10,11,7,9,8,1,8,3,1],
+            [11,1,2,11,7,1,7,5,1],[0,8,3,1,2,7,1,7,5,7,2,11],
+            [9,7,5,9,2,7,9,0,2,2,11,7],[7,5,2,7,2,11,5,9,2,3,2,8,9,8,2],
+            [2,5,10,2,3,5,3,7,5],[8,2,0,8,5,2,8,7,5,10,2,5],
+            [9,0,1,5,10,3,5,3,7,3,10,2],[9,8,2,9,2,1,8,7,2,10,2,5,7,5,2],
+            [1,3,5,3,7,5],[0,8,7,0,7,1,1,7,5],[9,0,3,9,3,5,5,3,7],[9,8,7,5,9,7],
+            [5,8,4,5,10,8,10,11,8],[5,0,4,5,11,0,5,10,11,11,3,0],
+            [0,1,9,8,4,10,8,10,11,10,4,5],[10,11,4,10,4,5,11,3,4,9,4,1,3,1,4],
+            [2,5,1,2,8,5,2,11,8,4,5,8],[0,4,11,0,11,3,4,5,11,2,11,1,5,1,11],
+            [0,2,5,0,5,9,2,11,5,4,5,8,11,8,5],[9,4,5,2,11,3],[],
+            [7,8,3,7,11,8,5,6,10],[],[5,6,10,7,2,11,7,11,8,8,11,0,8,0,9],
+            [5,6,10,5,10,7,7,10,11],[2,1,10,2,11,1,11,7,1,7,5,1],[],
+            [1,10,6,1,6,7,1,7,0,7,6,11],[],[],[1,2,10,6,7,4],[],
+            [0,9,1,4,6,7],[],[10,6,7,1,10,7,1,7,5],[10,6,7,10,7,1,7,5,1],[],
+            [],[],[],[]]
+
+        let edgeVerts = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),(0,4),(1,5),(2,6),(3,7)]
+        let cornerOffsets = [(0,0,0),(1,0,0),(1,1,0),(0,1,0),(0,0,1),(1,0,1),(1,1,1),(0,1,1)]
+
+        for iz in 0..<(nz-1) { for iy in 0..<(ny-1) { for ix in 0..<(nx-1) {
+            var cubeIdx = 0
+            var cVals = [Float](repeating: 0, count: 8)
+            for i in 0..<8 {
+                let (dx,dy,dz) = cornerOffsets[i]
+                cVals[i] = cornerVal(ix+dx,iy+dy,iz+dz)
+                if cVals[i] < 0 { cubeIdx |= (1<<i) }
+            }
+            guard cubeIdx != 0 && cubeIdx != 255 else { continue }
+            let tris = triTable[cubeIdx]
+            var i = 0
+            while i+2 < tris.count {
+                var tri = [UInt32](repeating: 0, count: 3)
+                for t in 0..<3 {
+                    let eIdx = tris[i+t]
+                    let (ca,cb) = edgeVerts[eIdx]
+                    let (dxa,dya,dza) = cornerOffsets[ca]
+                    let (dxb,dyb,dzb) = cornerOffsets[cb]
+                    let p0 = cornerPos(ix+dxa,iy+dya,iz+dza)
+                    let p1 = cornerPos(ix+dxb,iy+dyb,iz+dzb)
+                    let v0 = cVals[ca], v1 = cVals[cb]
+                    let pt = interpVert(p0,v0,p1,v1)
+                    let aIdx = vIdx(ix+dxa,iy+dya,iz+dza)
+                    let bIdx = vIdx(ix+dxb,iy+dyb,iz+dzb)
+                    tri[t] = addVert(pt, aIdx, bIdx)
+                }
+                indices.append(contentsOf: tri)
+                i += 3
+            }
+        }}}
+
+        guard vertices.count > 10, !indices.isEmpty else { return nil }
+
+        // 4. Laplacian smoothing — 3 passes
+        var smoothed = vertices
+        for _ in 0..<3 {
+            var sums   = [SIMD3<Float>](repeating: .zero, count: smoothed.count)
+            var counts = [Int](repeating: 0, count: smoothed.count)
+            var ti2 = 0
+            while ti2 < indices.count {
+                let a = Int(indices[ti2]), b = Int(indices[ti2+1]), c = Int(indices[ti2+2])
+                sums[a] += smoothed[b] + smoothed[c]; counts[a] += 2
+                sums[b] += smoothed[a] + smoothed[c]; counts[b] += 2
+                sums[c] += smoothed[a] + smoothed[b]; counts[c] += 2
+                ti2 += 3
+            }
+            for i in 0..<smoothed.count {
+                if counts[i] > 0 {
+                    smoothed[i] = smoothed[i] * 0.5 + (sums[i] / Float(counts[i])) * 0.5
+                }
+            }
+        }
+
+        return buildSCNGeometry(vertices: smoothed, indices: indices)
+    }
+
     // MARK: - STL Export
 
     /// Export geometry to binary STL.

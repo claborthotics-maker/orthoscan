@@ -24,6 +24,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private let accumQueue = DispatchQueue(label: "com.clab.accum", qos: .userInteractive)
     private var worldPoints = [SIMD3<Float>]()          // accumulated world-space points
     private var voxelGrid   = VoxelGrid(cellSize: 0.002) // 2 mm cells
+    private var tsdfFrames: [(pose: simd_float4x4, depthMap: UnsafeMutablePointer<Float>, w: Int, h: Int, fx: Float, fy: Float, cx: Float, cy: Float)] = []
     private var frameCount  = 0
     private let maxFrames   = 350
     private var overlayUpdateCounter = 0
@@ -345,6 +346,12 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
                 voxelGrid.insert(worldPt)
             }
         }
+        // Store raw frame for TSDF mesh build
+        let bufSize = w * h
+        let copy = UnsafeMutablePointer<Float>.allocate(capacity: bufSize)
+        copy.initialize(from: floats, count: bufSize)
+        let frame = (pose: pose, depthMap: copy, w: w, h: h, fx: fx, fy: fy, cx: cx, cy: cy)
+        tsdfFrames.append(frame)
     }
 
     // MARK: - Live Overlay
@@ -465,16 +472,15 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
         accumQueue.async { [weak self] in
             guard let self = self else { return }
-            let allPts = self.voxelGrid.occupiedCentres()
-                let pts = stride(from: 0, to: allPts.count, by: 8).map { allPts[$0] }
-            guard pts.count > 500 else {
-                DispatchQueue.main.async { self.showError("Not enough geometry — rescan and move around the foot more.") }
+            let frames = self.tsdfFrames
+            guard frames.count > 10 else {
+                DispatchQueue.main.async { self.showError("Not enough frames — rescan and move around the foot more.") }
                 return
             }
 
-            DispatchQueue.main.async { self.statusLabel.text = "Running marching cubes..." }
+            DispatchQueue.main.async { self.statusLabel.text = "Running TSDF + marching cubes..." }
 
-            let geometry = MeshBuilder.buildMeshFromPoints(pts, footSide: self.footSide)
+            let geometry = MeshBuilder.buildMeshTSDF(frames: frames, footSide: self.footSide)
             guard let geo = geometry else {
                 DispatchQueue.main.async { self.showError("Mesh build failed — try scanning again.") }
                 return
@@ -528,6 +534,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         phase = .idle
         frameCount = 0
         voxelGrid  = VoxelGrid(cellSize: 0.002)
+        tsdfFrames.forEach { $0.depthMap.deallocate() }; tsdfFrames = []
         worldPoints = []
         let side = footSide.capitalized
         updateDistanceBadge(text: "\(side) Foot — Position", color: .systemGray)
