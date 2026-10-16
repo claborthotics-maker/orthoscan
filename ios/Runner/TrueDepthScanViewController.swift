@@ -1,90 +1,93 @@
 ﻿import UIKit
-import AVFoundation
+import ARKit
 import SceneKit
 import simd
-import CoreMotion
 
-class TrueDepthScanViewController: UIViewController {
+// MARK: - TrueDepthScanViewController
+// ARFaceTrackingConfiguration + isWorldTrackingEnabled = true
+// Per-frame: unproject TrueDepth pixels → transform to world space → accumulate in voxel grid
+// Live overlay: project world points back to screen every 10 frames as colored point cloud
+// On Stop: run marching cubes on voxel grid → SCNGeometry preview → STL export
 
-    private var previewLayer: AVCaptureVideoPreviewLayer!
-    private var coverageOverlay: UIImageView!
+class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
+
+    // MARK: - Public callbacks
+    var onScanComplete: ((URL) -> Void)?
+    var onCancel:       (() -> Void)?
+    var footSide: String = "left"   // "left" or "right", set by caller
+
+    // MARK: - AR
+    private let arSession = ARSession()
+    private var arConfig: ARFaceTrackingConfiguration?
+
+    // MARK: - World-space accumulation
+    private let accumQueue = DispatchQueue(label: "com.clab.accum", qos: .userInteractive)
+    private var worldPoints = [SIMD3<Float>]()          // accumulated world-space points
+    private var voxelGrid   = VoxelGrid(cellSize: 0.002) // 2 mm cells
+    private var frameCount  = 0
+    private let maxFrames   = 350
+    private var overlayUpdateCounter = 0
+
+    // MARK: - Scan state
+    private enum ScanPhase { case footSelection, idle, scanning, processing, preview }
+    private var phase: ScanPhase = .footSelection
+
+    // MARK: - Depth filter params
+    private let minDepth: Float = 0.10
+    private let maxDepth: Float = 0.45
+
+    // MARK: - UI
+    private var arSceneView: ARSCNView!
+    private var overlayImageView: UIImageView!
     private var sceneView: SCNView!
-    private var ovalGuideView: OvalGuideView!
     private var distanceBadge: UILabel!
     private var statusLabel: UILabel!
+    private var frameCountLabel: UILabel!
     private var captureButton: UIButton!
     private var cancelButton: UIButton!
     private var submitButton: UIButton!
     private var rescanButton: UIButton!
+    private var footSelectionView: UIView!
 
-    private let session = AVCaptureSession()
-    private let depthOutput = AVCaptureDepthDataOutput()
-    private var videoOutput: AVCaptureVideoDataOutput!
-    private let depthQueue = DispatchQueue(label: "com.clab.depth", qos: .userInteractive)
-
-    private enum ScanPhase { case idle, scanning, processing, preview }
-    private var phase: ScanPhase = .idle
-
-    private var depthFrames: [[[Float]]] = []
-    private var calibration: AVCameraCalibrationData?
-    private var depthWidth  = 0
-    private var depthHeight = 0
-    private var isAutoCapturing = false
-
-    private let coverageCols = 48
-    private let coverageRows = 64
-    private var coverageHits: [[Int]] = []
-    private let coverageThreshold = 3
-    private var coverageRenderTimer: Timer?
-
-    private let motionManager = CMMotionManager()
-    private var isStable = false
-
+    // built mesh stored for export
     private var builtMeshNode: SCNNode?
-    var onScanComplete: ((URL) -> Void)?
-    var onCancel: (() -> Void)?
 
-    private let minDepth: Float  = 0.15
-    private let maxDepth: Float  = 0.60
-    private let floorMargin: Float = 0.03
+    // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        resetCoverageGrid()
         buildUI()
-        configureCapture()
-        startMotionMonitoring()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        if phase == .idle { startPreviewSession() }
+        // Don't start AR until foot is selected
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        session.stopRunning()
-        motionManager.stopAccelerometerUpdates()
-        coverageRenderTimer?.invalidate()
+        arSession.pause()
     }
 
-    private func resetCoverageGrid() {
-        coverageHits = Array(repeating: Array(repeating: 0, count: coverageCols), count: coverageRows)
-    }
+    // MARK: - UI Construction
 
     private func buildUI() {
-        previewLayer = AVCaptureVideoPreviewLayer(session: session)
-        previewLayer.videoGravity = .resizeAspectFill
-        previewLayer.frame = view.bounds
-        view.layer.addSublayer(previewLayer)
+        // AR live camera view
+        arSceneView = ARSCNView(frame: view.bounds)
+        arSceneView.session = arSession
+        arSceneView.automaticallyUpdatesLighting = true
+        arSceneView.scene = SCNScene()
+        view.addSubview(arSceneView)
 
-        coverageOverlay = UIImageView(frame: view.bounds)
-        coverageOverlay.contentMode = .scaleToFill
-        coverageOverlay.isHidden = true
-        coverageOverlay.isUserInteractionEnabled = false
-        view.addSubview(coverageOverlay)
+        // Transparent overlay for live point cloud dots
+        overlayImageView = UIImageView(frame: view.bounds)
+        overlayImageView.contentMode = .scaleToFill
+        overlayImageView.isUserInteractionEnabled = false
+        overlayImageView.isHidden = true
+        view.addSubview(overlayImageView)
 
+        // 3D preview (hidden until scan complete)
         sceneView = SCNView(frame: view.bounds)
         sceneView.backgroundColor = UIColor(white: 0.08, alpha: 1)
         sceneView.allowsCameraControl = true
@@ -92,10 +95,7 @@ class TrueDepthScanViewController: UIViewController {
         sceneView.isHidden = true
         view.addSubview(sceneView)
 
-        ovalGuideView = OvalGuideView(frame: view.bounds)
-        ovalGuideView.isUserInteractionEnabled = false
-        view.addSubview(ovalGuideView)
-
+        // Distance badge
         distanceBadge = UILabel()
         distanceBadge.font = .systemFont(ofSize: 15, weight: .semibold)
         distanceBadge.textAlignment = .center
@@ -104,398 +104,207 @@ class TrueDepthScanViewController: UIViewController {
         distanceBadge.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(distanceBadge)
 
+        // Status label
         statusLabel = UILabel()
         statusLabel.font = .systemFont(ofSize: 13, weight: .medium)
         statusLabel.textColor = .white
         statusLabel.textAlignment = .center
+        statusLabel.numberOfLines = 2
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(statusLabel)
 
-        cancelButton = makeButton(title: "Cancel", style: .secondary)
-        cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        // Frame counter
+        frameCountLabel = UILabel()
+        frameCountLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        frameCountLabel.textColor = UIColor.white.withAlphaComponent(0.7)
+        frameCountLabel.textAlignment = .right
+        frameCountLabel.translatesAutoresizingMaskIntoConstraints = false
+        frameCountLabel.isHidden = true
+        view.addSubview(frameCountLabel)
 
+        // Buttons
+        cancelButton  = makeButton(title: "Cancel",    style: .secondary)
         captureButton = makeButton(title: "Scan Foot", style: .primary)
+        submitButton  = makeButton(title: "Save Scan", style: .confirm)
+        rescanButton  = makeButton(title: "Rescan",    style: .secondary)
+
+        cancelButton.addTarget(self,  action: #selector(cancelTapped),  for: .touchUpInside)
         captureButton.addTarget(self, action: #selector(captureTapped), for: .touchUpInside)
+        submitButton.addTarget(self,  action: #selector(submitTapped),  for: .touchUpInside)
+        rescanButton.addTarget(self,  action: #selector(rescanTapped),  for: .touchUpInside)
 
-        submitButton = makeButton(title: "Save Scan", style: .confirm)
         submitButton.isHidden = true
-        submitButton.addTarget(self, action: #selector(submitTapped), for: .touchUpInside)
-
-        rescanButton = makeButton(title: "Rescan", style: .secondary)
         rescanButton.isHidden = true
-        rescanButton.addTarget(self, action: #selector(rescanTapped), for: .touchUpInside)
+        captureButton.isHidden = true
+        cancelButton.isHidden = true
 
-        let stack = UIStackView(arrangedSubviews: [cancelButton, captureButton, submitButton, rescanButton])
-        stack.axis = .horizontal
-        stack.spacing = 12
-        stack.distribution = .fillEqually
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
+        let buttonStack = UIStackView(arrangedSubviews: [cancelButton, captureButton, submitButton, rescanButton])
+        buttonStack.axis = .horizontal
+        buttonStack.spacing = 12
+        buttonStack.distribution = .fillEqually
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(buttonStack)
 
         NSLayoutConstraint.activate([
             distanceBadge.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             distanceBadge.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            distanceBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 160),
+            distanceBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 180),
             distanceBadge.heightAnchor.constraint(equalToConstant: 36),
+
             statusLabel.topAnchor.constraint(equalTo: distanceBadge.bottomAnchor, constant: 6),
             statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            stack.heightAnchor.constraint(equalToConstant: 52),
+            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+
+            frameCountLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            frameCountLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+
+            buttonStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            buttonStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            buttonStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            buttonStack.heightAnchor.constraint(equalToConstant: 52),
         ])
 
-        updateDistanceBadge(text: "Position foot in frame", color: .systemGray)
-        statusLabel.text = "Hold phone 20-40 cm above foot"
+        updateDistanceBadge(text: "Select Foot", color: .systemBlue)
+        statusLabel.text = ""
+
+        buildFootSelectionView()
     }
 
-    private func configureCapture() {
-        session.beginConfiguration()
-        session.sessionPreset = .photo
+    private func buildFootSelectionView() {
+        footSelectionView = UIView(frame: view.bounds)
+        footSelectionView.backgroundColor = UIColor.black.withAlphaComponent(0.88)
+        view.addSubview(footSelectionView)
 
-        guard let device = AVCaptureDevice.default(.builtInTrueDepthCamera, for: .video, position: .front),
-              let input = try? AVCaptureDeviceInput(device: device),
-              session.canAddInput(input) else {
-            showError("TrueDepth camera not available on this device.")
+        let title = UILabel()
+        title.text = "Which foot are you scanning?"
+        title.font = .systemFont(ofSize: 20, weight: .semibold)
+        title.textColor = .white
+        title.textAlignment = .center
+        title.translatesAutoresizingMaskIntoConstraints = false
+        footSelectionView.addSubview(title)
+
+        let subtitle = UILabel()
+        subtitle.text = "Scan one foot at a time.\nThe STL will be labelled with the foot selected."
+        subtitle.font = .systemFont(ofSize: 14, weight: .regular)
+        subtitle.textColor = UIColor.white.withAlphaComponent(0.7)
+        subtitle.textAlignment = .center
+        subtitle.numberOfLines = 2
+        subtitle.translatesAutoresizingMaskIntoConstraints = false
+        footSelectionView.addSubview(subtitle)
+
+        let leftBtn  = makeFootButton(title: "👣  Left Foot",  color: .systemBlue)
+        let rightBtn = makeFootButton(title: "👣  Right Foot", color: .systemGreen)
+        leftBtn.tag  = 0
+        rightBtn.tag = 1
+        leftBtn.addTarget(self,  action: #selector(footSelected(_:)), for: .touchUpInside)
+        rightBtn.addTarget(self, action: #selector(footSelected(_:)), for: .touchUpInside)
+
+        let btnStack = UIStackView(arrangedSubviews: [leftBtn, rightBtn])
+        btnStack.axis = .horizontal
+        btnStack.spacing = 16
+        btnStack.distribution = .fillEqually
+        btnStack.translatesAutoresizingMaskIntoConstraints = false
+        footSelectionView.addSubview(btnStack)
+
+        let cancelLbl = UIButton(type: .system)
+        cancelLbl.setTitle("Cancel", for: .normal)
+        cancelLbl.setTitleColor(UIColor.white.withAlphaComponent(0.6), for: .normal)
+        cancelLbl.translatesAutoresizingMaskIntoConstraints = false
+        cancelLbl.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        footSelectionView.addSubview(cancelLbl)
+
+        NSLayoutConstraint.activate([
+            title.centerXAnchor.constraint(equalTo: footSelectionView.centerXAnchor),
+            title.centerYAnchor.constraint(equalTo: footSelectionView.centerYAnchor, constant: -80),
+
+            subtitle.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 10),
+            subtitle.centerXAnchor.constraint(equalTo: footSelectionView.centerXAnchor),
+            subtitle.leadingAnchor.constraint(equalTo: footSelectionView.leadingAnchor, constant: 30),
+            subtitle.trailingAnchor.constraint(equalTo: footSelectionView.trailingAnchor, constant: -30),
+
+            btnStack.topAnchor.constraint(equalTo: subtitle.bottomAnchor, constant: 36),
+            btnStack.centerXAnchor.constraint(equalTo: footSelectionView.centerXAnchor),
+            btnStack.leadingAnchor.constraint(equalTo: footSelectionView.leadingAnchor, constant: 30),
+            btnStack.trailingAnchor.constraint(equalTo: footSelectionView.trailingAnchor, constant: -30),
+            btnStack.heightAnchor.constraint(equalToConstant: 64),
+
+            cancelLbl.topAnchor.constraint(equalTo: btnStack.bottomAnchor, constant: 24),
+            cancelLbl.centerXAnchor.constraint(equalTo: footSelectionView.centerXAnchor),
+        ])
+    }
+
+    // MARK: - AR Session
+
+    private func startARSession() {
+        guard ARFaceTrackingConfiguration.isSupported else {
+            showError("Face/TrueDepth camera not supported on this device.")
             return
         }
-        session.addInput(input)
-
-        depthOutput.isFilteringEnabled = true
-        depthOutput.alwaysDiscardsLateDepthData = true
-        guard session.canAddOutput(depthOutput) else { return }
-        session.addOutput(depthOutput)
-        depthOutput.setDelegate(self, callbackQueue: depthQueue)
-
-        if let connection = depthOutput.connection(with: .depthData) {
-            connection.isEnabled = true
-        }
-        session.commitConfiguration()
+        let config = ARFaceTrackingConfiguration()
+        config.isWorldTrackingEnabled = true
+        config.maximumNumberOfTrackedFaces = 0  // we only want depth, no face mesh needed
+        arConfig = config
+        arSession.delegate = self
+        arSession.run(config, options: [.resetTracking, .removeExistingAnchors])
     }
 
-    private func startPreviewSession() {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.session.startRunning()
-        }
-    }
+    // MARK: - ARSessionDelegate
 
-    private func startMotionMonitoring() {
-        guard motionManager.isAccelerometerAvailable else { return }
-        motionManager.accelerometerUpdateInterval = 0.1
-        var recentMags: [Double] = []
-        motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, _ in
-            guard let d = data else { return }
-            let mag = sqrt(d.acceleration.x*d.acceleration.x +
-                           d.acceleration.y*d.acceleration.y +
-                           d.acceleration.z*d.acceleration.z)
-            recentMags.append(mag)
-            if recentMags.count > 10 { recentMags.removeFirst() }
-            self?.isStable = recentMags.variance() < 0.002
-        }
-    }
-
-    @objc private func captureTapped() {
-        if phase == .idle {
-            phase = .scanning
-            depthFrames = []
-            resetCoverageGrid()
-            isAutoCapturing = true
-            captureButton.setTitle("Stop Scan", for: .normal)
-            captureButton.backgroundColor = UIColor.systemRed
-            coverageOverlay.isHidden = false
-            startCoverageRenderTimer()
-            updateDistanceBadge(text: "Scanning...", color: .systemRed)
-            statusLabel.text = "Move around the foot, tap Stop when done"
-        } else if phase == .scanning {
-            guard depthFrames.count >= 10 else {
-                statusLabel.text = "Keep scanning - need more frames"
-                return
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        // Distance badge update (always)
+        if let depthMap = frame.capturedDepthData?.depthDataMap {
+            let dist = sampleCentreDepth(depthMap)
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.updateDistanceUI(metres: dist)
             }
-            isAutoCapturing = false
-            coverageRenderTimer?.invalidate()
-            coverageOverlay.isHidden = true
-            captureButton.isEnabled = false
-            processAccumulatedFrames()
         }
-    }
 
-    @objc private func cancelTapped() {
-        session.stopRunning()
-        coverageRenderTimer?.invalidate()
-        onCancel?()
-        dismiss(animated: true)
-    }
+        guard phase == .scanning else { return }
+        guard frameCount < maxFrames else {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.phase == .scanning else { return }
+                self.stopScanAndProcess()
+            }
+            return
+        }
 
-    @objc private func submitTapped() {
-        guard let node = builtMeshNode, let geo = node.geometry else { return }
-        statusLabel.text = "Saving..."
-        submitButton.isEnabled = false
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        guard let depthData = frame.capturedDepthData else { return }
+        guard depthData.depthDataAccuracy == .absolute else { return }
+
+        let cameraPose = frame.camera.transform  // camera-to-world 4x4
+
+        accumQueue.async { [weak self] in
             guard let self = self else { return }
-            if let url = MeshBuilder.exportSTL(from: geo) {
-                DispatchQueue.main.async { self.onScanComplete?(url); self.dismiss(animated: true) }
-            } else {
-                DispatchQueue.main.async { self.showError("Failed to export STL."); self.submitButton.isEnabled = true }
-            }
-        }
-    }
+            self.integrateFrame(depthData: depthData, pose: cameraPose)
+            self.frameCount += 1
 
-    @objc private func rescanTapped() {
-        builtMeshNode?.removeFromParentNode()
-        builtMeshNode = nil
-        sceneView.isHidden = true
-        previewLayer.isHidden = false
-        ovalGuideView.isHidden = false
-        coverageOverlay.isHidden = true
-        coverageOverlay.image = nil
-        submitButton.isHidden = true
-        rescanButton.isHidden = true
-        captureButton.isHidden = false
-        captureButton.isEnabled = true
-        captureButton.setTitle("Scan Foot", for: .normal)
-        captureButton.backgroundColor = UIColor.systemBlue
-        cancelButton.isHidden = false
-        phase = .idle
-        depthFrames = []
-        resetCoverageGrid()
-        updateDistanceBadge(text: "Position foot in frame", color: .systemGray)
-        statusLabel.text = "Hold phone 20-40 cm above foot"
-        startPreviewSession()
-    }
-
-    private func startCoverageRenderTimer() {
-        coverageRenderTimer?.invalidate()
-        coverageRenderTimer = Timer.scheduledTimer(withTimeInterval: 1.0/15.0, repeats: true) { [weak self] _ in
-            self?.renderCoverageOverlay()
-        }
-    }
-
-    private func renderCoverageOverlay() {
-        let rows = coverageRows
-        let cols = coverageCols
-        let hits = coverageHits
-        let screenW = view.bounds.width
-        let screenH = view.bounds.height
-        let cellW = screenW / CGFloat(cols)
-        let cellH = screenH / CGFloat(rows)
-        let dotRadius = min(cellW, cellH) * 0.38
-
-        UIGraphicsBeginImageContextWithOptions(CGSize(width: screenW, height: screenH), false, 0)
-        guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return }
-
-        for r in 0..<rows {
-            for c in 0..<cols {
-                let hit = hits[r][c]
-                guard hit < coverageThreshold else { continue }
-                let progress = CGFloat(hit) / CGFloat(coverageThreshold)
-                let alpha = 0.85 - progress * 0.75
-                let cx = CGFloat(c) * cellW + cellW * 0.5
-                let cy = CGFloat(r) * cellH + cellH * 0.5
-                let dotRect = CGRect(x: cx - dotRadius, y: cy - dotRadius,
-                                     width: dotRadius * 2, height: dotRadius * 2)
-                ctx.setFillColor(UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: alpha).cgColor)
-                ctx.fillEllipse(in: dotRect)
-            }
-        }
-
-        let img = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        coverageOverlay.image = img
-    }
-
-    private func updateCoverageGrid(floats: UnsafePointer<Float>, w: Int, h: Int) {
-        let rowStep = Float(h) / Float(coverageRows)
-        let colStep = Float(w) / Float(coverageCols)
-        for gr in 0..<coverageRows {
-            for gc in 0..<coverageCols {
-                let pr = min(max(Int(Float(gr) * rowStep + rowStep * 0.5), 0), h-1)
-                let pc = min(max(Int(Float(gc) * colStep + colStep * 0.5), 0), w-1)
-                let z = floats[pr * w + pc]
-                if z >= minDepth && z <= maxDepth {
-                    let r = gr, c = gc
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self = self else { return }
-                        if self.coverageHits[r][c] < self.coverageThreshold + 1 {
-                            self.coverageHits[r][c] += 1
-                        }
-                    }
+            self.overlayUpdateCounter += 1
+            if self.overlayUpdateCounter % 10 == 0 {
+                let pts = self.voxelGrid.occupiedCentres()
+                let proj = self.projectToScreen(worldPoints: pts, frame: frame)
+                DispatchQueue.main.async { [weak self] in
+                    self?.renderLiveOverlay(screenPoints: proj)
                 }
             }
-        }
-    }
 
-    private func processAccumulatedFrames() {
-        phase = .processing
-        DispatchQueue.main.async {
-            self.statusLabel.text = "Building mesh..."
-            self.updateDistanceBadge(text: "Processing", color: .systemOrange)
-        }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            let frames = self.depthFrames
-            guard !frames.isEmpty, let cal = self.calibration else { return }
-
-            let fused = Self.medianFuse(frames: frames, width: self.depthWidth, height: self.depthHeight)
-            let points = Self.unproject(depth: fused, calibration: cal,
-                                        minD: self.minDepth, maxD: self.maxDepth,
-                                        floorMargin: self.floorMargin)
-
-            guard points.count > 500 else {
-                DispatchQueue.main.async { self.showError("Not enough geometry captured. Try again.") }
-                self.phase = .idle; return
-            }
-            guard let geometry = MeshBuilder.buildMeshFromDepth(
-                depth: fused,
-                fx: {
-                    let i = cal.intrinsicMatrix
-                    let s = Float(self.depthWidth) / Float(cal.intrinsicMatrixReferenceDimensions.width)
-                    return i[0][0] * s
-                }(),
-                fy: {
-                    let i = cal.intrinsicMatrix
-                    let s = Float(self.depthHeight) / Float(cal.intrinsicMatrixReferenceDimensions.height)
-                    return i[1][1] * s
-                }(),
-                cx: {
-                    let i = cal.intrinsicMatrix
-                    let s = Float(self.depthWidth) / Float(cal.intrinsicMatrixReferenceDimensions.width)
-                    return i[2][0] * s
-                }(),
-                cy: {
-                    let i = cal.intrinsicMatrix
-                    let s = Float(self.depthHeight) / Float(cal.intrinsicMatrixReferenceDimensions.height)
-                    return i[2][1] * s
-                }(),
-                minD: self.minDepth,
-                maxD: self.maxDepth,
-                floorMargin: self.floorMargin
-            ) else {
-                DispatchQueue.main.async { self.showError("Mesh build failed. Try again.") }
-                self.phase = .idle; return
-            }
-            DispatchQueue.main.async { self.showPreview(geometry: geometry) }
-        }
-    }
-
-    private static func medianFuse(frames: [[[Float]]], width: Int, height: Int) -> [[Float]] {
-        var result = Array(repeating: Array(repeating: Float(0), count: width), count: height)
-        for row in 0..<height {
-            for col in 0..<width {
-                var vals = [Float]()
-                vals.reserveCapacity(frames.count)
-                for frame in frames { let v = frame[row][col]; if v > 0 { vals.append(v) } }
-                if vals.isEmpty { continue }
-                vals.sort()
-                result[row][col] = vals[vals.count / 2]
+            let fc = self.frameCount
+            DispatchQueue.main.async { [weak self] in
+                self?.frameCountLabel.text = "\(fc)/\(self.maxFrames)"
             }
         }
-        return result
     }
 
-    private static func unproject(depth: [[Float]], calibration: AVCameraCalibrationData,
-                                   minD: Float, maxD: Float, floorMargin: Float) -> [SIMD3<Float>] {
-        let h = depth.count
-        guard h > 0 else { return [] }
-        let w = depth[0].count
-        let intrinsics = calibration.intrinsicMatrix
-        let refDims = calibration.intrinsicMatrixReferenceDimensions
-        let scaleX = Float(w) / Float(refDims.width)
-        let scaleY = Float(h) / Float(refDims.height)
-        let fx = intrinsics[0][0] * scaleX
-        let fy = intrinsics[1][1] * scaleY
-        let cx = intrinsics[2][0] * scaleX
-        let cy = intrinsics[2][1] * scaleY
-
-        var points = [SIMD3<Float>]()
-        points.reserveCapacity(w * h / 4)
-        for row in Int(Float(h)*0.10)..<Int(Float(h)*0.90) {
-            for col in Int(Float(w)*0.10)..<Int(Float(w)*0.90) {
-                let z = depth[row][col]
-                guard z >= minD, z <= maxD else { continue }
-                points.append(SIMD3((Float(col)-cx)*z/fx, (Float(row)-cy)*z/fy, z))
-            }
+    func session(_ session: ARSession, didFailWithError error: Error) {
+        DispatchQueue.main.async { [weak self] in
+            self?.showError("AR session failed: \(error.localizedDescription)")
         }
-        if points.isEmpty { return points }
-        let maxY = points.map { $0.y }.max()!
-        return points.filter { $0.y < (maxY - floorMargin) }
     }
 
-    private func showPreview(geometry: SCNGeometry) {
-        phase = .preview
-        session.stopRunning()
-        let scene = SCNScene()
-        let node = SCNNode(geometry: geometry)
-        let (bboxMin, bboxMax) = node.boundingBox
-        node.position = SCNVector3(-(bboxMin.x+bboxMax.x)/2, -(bboxMin.y+bboxMax.y)/2, -(bboxMin.z+bboxMax.z)/2)
-        scene.rootNode.addChildNode(node)
-        builtMeshNode = node
+    // MARK: - Depth Integration
 
-        let maxDim = Swift.max(bboxMax.x-bboxMin.x, Swift.max(bboxMax.y-bboxMin.y, bboxMax.z-bboxMin.z))
-        let camDist = maxDim * 2.5
-        let camNode = SCNNode()
-        camNode.camera = SCNCamera()
-        camNode.camera?.zNear = 0.001
-        camNode.camera?.zFar  = 10.0
-        camNode.position = SCNVector3(0, 0, camDist)
-        scene.rootNode.addChildNode(camNode)
-
-        let lightNode = SCNNode()
-        lightNode.light = SCNLight()
-        lightNode.light!.type = .omni
-        lightNode.position = SCNVector3(0, camDist, camDist)
-        scene.rootNode.addChildNode(lightNode)
-
-        sceneView.scene = scene
-        sceneView.pointOfView = camNode
-        sceneView.autoenablesDefaultLighting = true
-        sceneView.isHidden = false
-        previewLayer.isHidden = true
-        ovalGuideView.isHidden = true
-        coverageOverlay.isHidden = true
-        captureButton.isHidden = true
-        cancelButton.isHidden = true
-        submitButton.isHidden = false
-        rescanButton.isHidden = false
-        updateDistanceBadge(text: "Scan Ready", color: .systemGreen)
-        statusLabel.text = "Rotate to inspect - Save or Rescan"
-    }
-
-    private func updateDistanceBadge(text: String, color: UIColor) {
-        distanceBadge.text = text
-        distanceBadge.backgroundColor = color.withAlphaComponent(0.85)
-        distanceBadge.textColor = .white
-    }
-
-    private func showError(_ msg: String) {
-        let alert = UIAlertController(title: "Scan Error", message: msg, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in self?.rescanTapped() })
-        present(alert, animated: true)
-    }
-
-    private func makeButton(title: String, style: ButtonStyle) -> UIButton {
-        let btn = UIButton(type: .system)
-        btn.setTitle(title, for: .normal)
-        btn.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        btn.layer.cornerRadius = 12
-        btn.layer.masksToBounds = true
-        switch style {
-        case .primary:   btn.backgroundColor = .systemBlue;  btn.setTitleColor(.white, for: .normal)
-        case .secondary: btn.backgroundColor = UIColor(white: 0.2, alpha: 0.9); btn.setTitleColor(.white, for: .normal)
-        case .confirm:   btn.backgroundColor = .systemGreen; btn.setTitleColor(.white, for: .normal)
-        }
-        return btn
-    }
-
-    private enum ButtonStyle { case primary, secondary, confirm }
-}
-
-extension TrueDepthScanViewController: AVCaptureDepthDataOutputDelegate {
-
-    func depthDataOutput(_ output: AVCaptureDepthDataOutput,
-                         didOutput depthData: AVDepthData,
-                         timestamp: CMTime,
-                         connection: AVCaptureConnection) {
-
+    private func integrateFrame(depthData: AVDepthData, pose: simd_float4x4) {
         let converted = depthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)
         let pixelBuffer = converted.depthDataMap
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
@@ -506,71 +315,354 @@ extension TrueDepthScanViewController: AVCaptureDepthDataOutputDelegate {
         guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return }
         let floats = base.bindMemory(to: Float.self, capacity: w * h)
 
-        let cx = w/2, cy = h/2, patch = 20
-        var centre = [Float]()
-        for row in (cy-patch)...(cy+patch) { for col in (cx-patch)...(cx+patch) { let v = floats[row*w+col]; if v > 0 { centre.append(v) } } }
-        centre.sort()
-        let medianDist = centre.isEmpty ? Float(0) : centre[centre.count/2]
-        DispatchQueue.main.async { [weak self] in self?.updateDistanceUI(metres: medianDist) }
+        // Get intrinsics from depth data
+        guard let cal = converted.cameraCalibrationData else { return }
+        let ref = cal.intrinsicMatrixReferenceDimensions
+        let scaleX = Float(w) / Float(ref.width)
+        let scaleY = Float(h) / Float(ref.height)
+        let m = cal.intrinsicMatrix
+        let fx = m[0][0] * scaleX
+        let fy = m[1][1] * scaleY
+        let cx = m[2][0] * scaleX
+        let cy = m[2][1] * scaleY
 
-        guard phase == .scanning, isAutoCapturing else { return }
-        guard isStable else { return }
-        guard converted.depthDataAccuracy == .absolute else { return }
+        // Subsample: every 4th pixel in each axis for speed
+        let step = 4
+        for row in stride(from: 0, to: h, by: step) {
+            for col in stride(from: 0, to: w, by: step) {
+                let z = floats[row * w + col]
+                guard z >= minDepth, z <= maxDepth, z.isFinite else { continue }
 
-        updateCoverageGrid(floats: floats, w: w, h: h)
+                // Camera-space point
+                let xc = (Float(col) - cx) * z / fx
+                let yc = (Float(row) - cy) * z / fy
+                let camPt = SIMD4<Float>(xc, yc, z, 1.0)
 
-        if calibration == nil {
-            calibration = converted.cameraCalibrationData
-            depthWidth = w; depthHeight = h
+                // World-space point
+                let worldPt4 = pose * camPt
+                let worldPt = SIMD3<Float>(worldPt4.x, worldPt4.y, worldPt4.z)
+
+                voxelGrid.insert(worldPt)
+            }
+        }
+    }
+
+    // MARK: - Live Overlay
+
+    private func sampleCentreDepth(_ pixelBuffer: CVPixelBuffer) -> Float {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        let w = CVPixelBufferGetWidth(pixelBuffer)
+        let h = CVPixelBufferGetHeight(pixelBuffer)
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return 0 }
+        let floats = base.bindMemory(to: Float.self, capacity: w * h)
+        let cx = w / 2, cy = h / 2, patch = 15
+        var vals = [Float]()
+        for r in max(0, cy-patch)..<min(h, cy+patch) {
+            for c in max(0, cx-patch)..<min(w, cx+patch) {
+                let v = floats[r * w + c]
+                if v > 0 { vals.append(v) }
+            }
+        }
+        if vals.isEmpty { return 0 }
+        vals.sort()
+        return vals[vals.count / 2]
+    }
+
+    private func projectToScreen(worldPoints: [SIMD3<Float>], frame: ARFrame) -> [CGPoint] {
+        // Project world-space points to 2D screen coords using ARFrame camera
+        let viewportSize = arSceneView.bounds.size
+        guard viewportSize.width > 0, viewportSize.height > 0 else { return [] }
+
+        var result = [CGPoint]()
+        result.reserveCapacity(worldPoints.count)
+
+        let projMatrix = frame.camera.projectionMatrix(for: .portrait,
+                                                        viewportSize: viewportSize,
+                                                        zNear: 0.001, zFar: 10)
+        let viewMatrix = frame.camera.viewMatrix(for: .portrait)
+        let pvMatrix   = projMatrix * viewMatrix
+
+        for wp in worldPoints {
+            let clip = pvMatrix * SIMD4<Float>(wp.x, wp.y, wp.z, 1.0)
+            guard clip.w > 0 else { continue }
+            let ndc = SIMD2<Float>(clip.x / clip.w, clip.y / clip.w)
+            guard ndc.x >= -1, ndc.x <= 1, ndc.y >= -1, ndc.y <= 1 else { continue }
+            let sx = CGFloat((ndc.x + 1) * 0.5) * viewportSize.width
+            let sy = CGFloat((1 - (ndc.y + 1) * 0.5)) * viewportSize.height
+            result.append(CGPoint(x: sx, y: sy))
+        }
+        return result
+    }
+
+    private func renderLiveOverlay(screenPoints: [CGPoint]) {
+        let size = view.bounds.size
+        UIGraphicsBeginImageContextWithOptions(size, false, 0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return }
+
+        // Draw colored point cloud — cyan/green gradient by density
+        let dotR: CGFloat = 2.5
+        ctx.setFillColor(UIColor(red: 0.0, green: 0.95, blue: 0.75, alpha: 0.75).cgColor)
+        for pt in screenPoints {
+            ctx.fillEllipse(in: CGRect(x: pt.x - dotR, y: pt.y - dotR,
+                                       width: dotR * 2, height: dotR * 2))
         }
 
-        guard depthFrames.count < 300 else { return }
-
-        var frame = Array(repeating: Array(repeating: Float(0), count: w), count: h)
-        for row in 0..<h { for col in 0..<w { frame[row][col] = floats[row*w+col] } }
-        depthFrames.append(frame)
-
-        let count = depthFrames.count
-        DispatchQueue.main.async { [weak self] in self?.statusLabel.text = "Scanning... \(count) frames" }
+        let img = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        overlayImageView.image = img
     }
+
+    // MARK: - Scan Control
+
+    @objc private func footSelected(_ sender: UIButton) {
+        footSide = sender.tag == 0 ? "left" : "right"
+        UIView.animate(withDuration: 0.25) {
+            self.footSelectionView.alpha = 0
+        } completion: { _ in
+            self.footSelectionView.removeFromSuperview()
+        }
+        phase = .idle
+        cancelButton.isHidden  = false
+        captureButton.isHidden = false
+        let sideText = footSide.capitalized
+        updateDistanceBadge(text: "\(sideText) Foot — Position", color: .systemGray)
+        statusLabel.text = "Hold phone 15–45 cm above foot\nStart at heel, rotate around foot"
+        startARSession()
+    }
+
+    @objc private func captureTapped() {
+        if phase == .idle {
+            phase = .scanning
+            frameCount = 0
+            overlayUpdateCounter = 0
+            voxelGrid = VoxelGrid(cellSize: 0.002)
+            worldPoints = []
+
+            captureButton.setTitle("Stop Scan", for: .normal)
+            captureButton.backgroundColor = .systemRed
+            overlayImageView.isHidden = false
+            frameCountLabel.isHidden = false
+            updateDistanceBadge(text: "Scanning \(footSide.capitalized) Foot", color: .systemRed)
+            statusLabel.text = "Move around the foot slowly\nTap Stop when covered"
+
+        } else if phase == .scanning {
+            guard frameCount >= 20 else {
+                statusLabel.text = "Keep scanning — need more frames"
+                return
+            }
+            stopScanAndProcess()
+        }
+    }
+
+    private func stopScanAndProcess() {
+        phase = .processing
+        overlayImageView.isHidden = true
+        frameCountLabel.isHidden = true
+        captureButton.isEnabled = false
+        updateDistanceBadge(text: "Processing...", color: .systemOrange)
+        statusLabel.text = "Building mesh from \(frameCount) frames..."
+
+        accumQueue.async { [weak self] in
+            guard let self = self else { return }
+            let pts = self.voxelGrid.occupiedCentres()
+            guard pts.count > 500 else {
+                DispatchQueue.main.async { self.showError("Not enough geometry — rescan and move around the foot more.") }
+                return
+            }
+
+            DispatchQueue.main.async { self.statusLabel.text = "Running marching cubes..." }
+
+            let geometry = MeshBuilder.buildMeshFromPoints(pts, footSide: self.footSide)
+            guard let geo = geometry else {
+                DispatchQueue.main.async { self.showError("Mesh build failed — try scanning again.") }
+                return
+            }
+
+            DispatchQueue.main.async { self.showPreview(geometry: geo) }
+        }
+    }
+
+    @objc private func cancelTapped() {
+        arSession.pause()
+        onCancel?()
+        dismiss(animated: true)
+    }
+
+    @objc private func submitTapped() {
+        guard let node = builtMeshNode, let geo = node.geometry else { return }
+        statusLabel.text = "Exporting STL..."
+        submitButton.isEnabled = false
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            if let url = MeshBuilder.exportSTL(from: geo, footSide: self.footSide) {
+                DispatchQueue.main.async {
+                    self.onScanComplete?(url)
+                    self.dismiss(animated: true)
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.showError("STL export failed.")
+                    self.submitButton.isEnabled = true
+                }
+            }
+        }
+    }
+
+    @objc private func rescanTapped() {
+        builtMeshNode?.removeFromParentNode()
+        builtMeshNode = nil
+        sceneView.isHidden  = true
+        arSceneView.isHidden = false
+        overlayImageView.isHidden = true
+        overlayImageView.image    = nil
+        submitButton.isHidden = true
+        rescanButton.isHidden = true
+        captureButton.isHidden = false
+        captureButton.isEnabled = true
+        captureButton.setTitle("Scan Foot", for: .normal)
+        captureButton.backgroundColor = .systemBlue
+        cancelButton.isHidden = false
+        frameCountLabel.isHidden = true
+        phase = .idle
+        frameCount = 0
+        voxelGrid  = VoxelGrid(cellSize: 0.002)
+        worldPoints = []
+        let side = footSide.capitalized
+        updateDistanceBadge(text: "\(side) Foot — Position", color: .systemGray)
+        statusLabel.text = "Hold phone 15–45 cm above foot"
+        // Restart AR
+        if let cfg = arConfig { arSession.run(cfg, options: [.resetTracking]) }
+    }
+
+    // MARK: - Preview
+
+    private func showPreview(geometry: SCNGeometry) {
+        phase = .preview
+        arSession.pause()
+
+        let scene  = SCNScene()
+        let node   = SCNNode(geometry: geometry)
+        let (bMin, bMax) = node.boundingBox
+        node.position = SCNVector3(-(bMin.x + bMax.x) / 2,
+                                   -(bMin.y + bMax.y) / 2,
+                                   -(bMin.z + bMax.z) / 2)
+        scene.rootNode.addChildNode(node)
+        builtMeshNode = node
+
+        let maxDim  = Swift.max(bMax.x - bMin.x, Swift.max(bMax.y - bMin.y, bMax.z - bMin.z))
+        let camDist = maxDim * 2.5
+        let camNode = SCNNode()
+        camNode.camera        = SCNCamera()
+        camNode.camera?.zNear = 0.001
+        camNode.camera?.zFar  = 20.0
+        camNode.position = SCNVector3(0, 0, Float(camDist))
+        scene.rootNode.addChildNode(camNode)
+
+        sceneView.scene       = scene
+        sceneView.pointOfView  = camNode
+        sceneView.autoenablesDefaultLighting = true
+        sceneView.isHidden    = false
+        arSceneView.isHidden  = true
+        overlayImageView.isHidden = true
+
+        captureButton.isHidden = true
+        cancelButton.isHidden  = true
+        submitButton.isHidden  = false
+        rescanButton.isHidden  = false
+
+        updateDistanceBadge(text: "Scan Ready ✓", color: .systemGreen)
+        statusLabel.text = "Rotate to inspect — Save or Rescan"
+    }
+
+    // MARK: - Helpers
 
     private func updateDistanceUI(metres: Float) {
         guard phase == .idle || phase == .scanning else { return }
         if metres == 0 {
-            updateDistanceBadge(text: "No foot detected", color: .systemGray)
-            statusLabel.text = "Point camera at foot"
+            if phase == .idle { updateDistanceBadge(text: "No foot detected", color: .systemGray) }
         } else if metres < minDepth {
-            updateDistanceBadge(text: "Move back - too close", color: .systemRed)
-            statusLabel.text = String(format: "%.0f cm (min 15 cm)", metres*100)
+            updateDistanceBadge(text: "Too close — move back", color: .systemRed)
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm — minimum 10 cm", metres * 100) }
         } else if metres > maxDepth {
             updateDistanceBadge(text: "Move closer", color: .systemOrange)
-            statusLabel.text = String(format: "%.0f cm (max 60 cm)", metres*100)
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 45 cm", metres * 100) }
         } else if phase == .idle {
-            updateDistanceBadge(text: "Good - \(Int(metres*100)) cm", color: .systemGreen)
-            statusLabel.text = isStable ? "Tap 'Scan Foot' to begin" : "Hold steady..."
+            updateDistanceBadge(text: String(format: "✓  %.0f cm", metres * 100), color: .systemGreen)
+            statusLabel.text = "Good distance — tap Scan Foot"
+        }
+    }
+
+    private func updateDistanceBadge(text: String, color: UIColor) {
+        distanceBadge.text = text
+        distanceBadge.backgroundColor = color.withAlphaComponent(0.85)
+        distanceBadge.textColor = .white
+    }
+
+    private func showError(_ msg: String) {
+        DispatchQueue.main.async {
+            let alert = UIAlertController(title: "Scan Error", message: msg, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                self?.rescanTapped()
+            })
+            self.present(alert, animated: true)
+        }
+    }
+
+    private func makeButton(title: String, style: ButtonStyle) -> UIButton {
+        let btn = UIButton(type: .system)
+        btn.setTitle(title, for: .normal)
+        btn.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        btn.layer.cornerRadius = 12
+        btn.layer.masksToBounds = true
+        switch style {
+        case .primary:   btn.backgroundColor = .systemBlue;              btn.setTitleColor(.white, for: .normal)
+        case .secondary: btn.backgroundColor = UIColor(white:0.2,alpha:0.9); btn.setTitleColor(.white, for: .normal)
+        case .confirm:   btn.backgroundColor = .systemGreen;             btn.setTitleColor(.white, for: .normal)
+        }
+        return btn
+    }
+
+    private func makeFootButton(title: String, color: UIColor) -> UIButton {
+        let btn = UIButton(type: .system)
+        btn.setTitle(title, for: .normal)
+        btn.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        btn.backgroundColor = color
+        btn.setTitleColor(.white, for: .normal)
+        btn.layer.cornerRadius = 14
+        btn.layer.masksToBounds = true
+        return btn
+    }
+
+    private enum ButtonStyle { case primary, secondary, confirm }
+}
+
+// MARK: - VoxelGrid
+// Hash-based 3D grid for deduplicating world-space points across frames.
+// Cell size 2 mm → no two points closer than 2 mm are stored separately.
+
+struct VoxelGrid {
+    let cellSize: Float
+    private var cells = Set<SIMD3<Int32>>()
+
+    init(cellSize: Float) { self.cellSize = cellSize }
+
+    mutating func insert(_ point: SIMD3<Float>) {
+        let key = SIMD3<Int32>(
+            Int32(floor(point.x / cellSize)),
+            Int32(floor(point.y / cellSize)),
+            Int32(floor(point.z / cellSize))
+        )
+        cells.insert(key)
+    }
+
+    func occupiedCentres() -> [SIMD3<Float>] {
+        return cells.map { k in
+            SIMD3<Float>(
+                (Float(k.x) + 0.5) * cellSize,
+                (Float(k.y) + 0.5) * cellSize,
+                (Float(k.z) + 0.5) * cellSize
+            )
         }
     }
 }
-
-private extension Array where Element == Double {
-    func variance() -> Double {
-        guard count > 1 else { return 0 }
-        let mean = reduce(0, +) / Double(count)
-        return map { ($0-mean)*($0-mean) }.reduce(0, +) / Double(count)
-    }
-}
-
-private class OvalGuideView: UIView {
-    override init(frame: CGRect) { super.init(frame: frame); backgroundColor = .clear }
-    required init?(coder: NSCoder) { fatalError() }
-    override func draw(_ rect: CGRect) {
-        let ovalRect = CGRect(x: rect.width*0.10, y: rect.height*0.25, width: rect.width*0.80, height: rect.height*0.50)
-        let path = UIBezierPath(ovalIn: ovalRect)
-        let outer = UIBezierPath(rect: rect); outer.append(path); outer.usesEvenOddFillRule = true
-        UIColor.black.withAlphaComponent(0.45).setFill(); outer.fill()
-        UIColor.white.withAlphaComponent(0.9).setStroke(); path.lineWidth = 2.5; path.stroke()
-        let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: UIColor.white.withAlphaComponent(0.7)]
-        ("Align foot/ankle within oval" as NSString).draw(at: CGPoint(x: ovalRect.midX-95, y: ovalRect.maxY+8), withAttributes: attrs)
-    }
-}
-
