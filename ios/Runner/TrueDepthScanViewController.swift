@@ -271,8 +271,6 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         }
 
         guard let depthData = frame.capturedDepthData else { return }
-        guard depthData.depthDataAccuracy == .absolute else { return }
-
         let cameraPose = frame.camera.transform  // camera-to-world 4x4
 
         accumQueue.async { [weak self] in
@@ -667,6 +665,7 @@ struct VoxelGrid {
         }
     }
 }
+
 
 
 
