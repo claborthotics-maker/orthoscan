@@ -25,7 +25,7 @@ struct MeshBuilder {
         var allNormals = [SIMD3<Float>]()
         var allIndices = [UInt32]()
 
-        let mergeRadius: Float = 0.005
+        let mergeRadius: Float = 0.003
         var vertexHash = [SIMD3<Int32>: UInt32]()
 
         func hashKey(_ p: SIMD3<Float>) -> SIMD3<Int32> {
@@ -44,7 +44,7 @@ struct MeshBuilder {
             return idx
         }
 
-        let maxEdge: Float = 0.007
+        let maxEdge: Float = 0.010
 
         for frame in frames {
             let w = frame.width, h = frame.height
