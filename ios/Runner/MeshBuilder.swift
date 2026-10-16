@@ -47,13 +47,17 @@ struct MeshBuilder {
 
         func idx(_ ix: Int, _ iy: Int, _ iz: Int) -> Int { ix + nx * (iy + ny * iz) }
 
-        // Mark occupied cells — exact cell only, no dilation
+        // Mark occupied cells — dilate by 1 face-adjacent cell to close gaps
         for p in points {
             let ix = Int((p.x - minPt.x) / res)
             let iy = Int((p.y - minPt.y) / res)
             let iz = Int((p.z - minPt.z) / res)
-            guard ix >= 0, ix < nx, iy >= 0, iy < ny, iz >= 0, iz < nz else { continue }
-            occ[idx(ix, iy, iz)] = true
+            let neighbors = [(0,0,0),(1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)]
+            for (dx,dy,dz) in neighbors {
+                let jx = ix+dx, jy = iy+dy, jz = iz+dz
+                guard jx >= 0, jx < nx, jy >= 0, jy < ny, jz >= 0, jz < nz else { continue }
+                occ[idx(jx, jy, jz)] = true
+            }
         }
 
         // 3. Marching cubes on the occupancy field
@@ -540,4 +544,5 @@ struct MarchingCubesTables {
         [-1]
     ]
 }
+
 
