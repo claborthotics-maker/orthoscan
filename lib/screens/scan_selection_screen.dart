@@ -12,8 +12,8 @@ class ScanSelectionScreen extends StatelessWidget {
 
   const ScanSelectionScreen({super.key, required this.patient});
 
-  void _startScan(BuildContext context, ScanType scanType) {
-    Navigator.push(
+  Future<void> _startScan(BuildContext context, ScanType scanType) async {
+    final filePath = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (_) => ScanScreen(
@@ -22,6 +22,9 @@ class ScanSelectionScreen extends StatelessWidget {
         ),
       ),
     );
+    if (filePath != null && context.mounted) {
+      Navigator.pop(context, filePath);
+    }
   }
 
   @override

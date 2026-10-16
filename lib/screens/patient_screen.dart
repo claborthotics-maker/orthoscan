@@ -7,6 +7,7 @@ import '../services/database_service.dart';
 import '../utils/input_formatters.dart';
 import '../services/database_service.dart';
 import 'scan_selection_screen.dart';
+import 'package:share_plus/share_plus.dart';
 import 'work_order_screen.dart';
 import '../services/clinician_service.dart';
 
@@ -58,13 +59,20 @@ class _PatientScreenState extends State<PatientScreen> {
     }
   }
 
-  void _startScan() {
-    Navigator.push(
+  Future<void> _startScan() async {
+    final filePath = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (_) => ScanSelectionScreen(patient: widget.patient),
       ),
     );
+    if (filePath != null && mounted) {
+      setState(() { widget.patient.scanFiles.add(filePath); });
+      await _db.updatePatient(widget.patient);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Scan saved to patient record')),
+      );
+    }
   }
 
   void _newWorkOrder() {
@@ -437,11 +445,33 @@ class _PatientScreenState extends State<PatientScreen> {
               icon: Icons.radar,
               child: Column(
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('No scans yet',
-                        style: TextStyle(color: Colors.white54)),
-                  ),
+                  if (widget.patient.scanFiles.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('No scans yet',
+                          style: TextStyle(color: Colors.white54)),
+                    )
+                  else
+                    ...widget.patient.scanFiles.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final path = entry.value;
+                      final name = path.split('/').last;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.insert_drive_file, color: Color(0xFF4FC3F7)),
+                        title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        subtitle: Text('Scan ${i + 1}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.share, color: Colors.white54, size: 20),
+                          onPressed: () async {
+                            final box = context.findRenderObject() as RenderBox?;
+                            await Share.shareXFiles([XFile(path)],
+                              subject: 'Scan – ${widget.patient.fullName}',
+                              sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size);
+                          },
+                        ),
+                      );
+                    }),
                   const SizedBox(height: 8),
                   SizedBox(
                     width: double.infinity,

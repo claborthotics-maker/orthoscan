@@ -48,9 +48,7 @@ class _ScanScreenState extends State<ScanScreen> {
         _isScanning = false;
       });
       if (filePath != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Scan captured successfully!')),
-        );
+        Navigator.pop(context, filePath);
       }
     } catch (e) {
       setState(() => _isScanning = false);
