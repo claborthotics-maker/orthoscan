@@ -56,6 +56,37 @@ struct MeshBuilder {
             occ[idx(ix, iy, iz)] = true
         }
 
+
+        // 2b. Flood-fill from boundary to find exterior cells
+        // Any cell not reachable from outside = interior → mark occupied (solid fill)
+        var exterior = [Bool](repeating: false, count: nx * ny * nz)
+        var queue = [(Int, Int, Int)]()
+        for iz2 in 0..<nz { for iy2 in 0..<ny {
+            if !occ[idx(0,    iy2, iz2)] && !exterior[idx(0,    iy2, iz2)] { exterior[idx(0,    iy2, iz2)] = true; queue.append((0,    iy2, iz2)) }
+            if !occ[idx(nx-1, iy2, iz2)] && !exterior[idx(nx-1, iy2, iz2)] { exterior[idx(nx-1, iy2, iz2)] = true; queue.append((nx-1, iy2, iz2)) }
+        }}
+        for iz2 in 0..<nz { for ix2 in 0..<nx {
+            if !occ[idx(ix2, 0,    iz2)] && !exterior[idx(ix2, 0,    iz2)] { exterior[idx(ix2, 0,    iz2)] = true; queue.append((ix2, 0,    iz2)) }
+            if !occ[idx(ix2, ny-1, iz2)] && !exterior[idx(ix2, ny-1, iz2)] { exterior[idx(ix2, ny-1, iz2)] = true; queue.append((ix2, ny-1, iz2)) }
+        }}
+        for iy2 in 0..<ny { for ix2 in 0..<nx {
+            if !occ[idx(ix2, iy2, 0   )] && !exterior[idx(ix2, iy2, 0   )] { exterior[idx(ix2, iy2, 0   )] = true; queue.append((ix2, iy2, 0   )) }
+            if !occ[idx(ix2, iy2, nz-1)] && !exterior[idx(ix2, iy2, nz-1)] { exterior[idx(ix2, iy2, nz-1)] = true; queue.append((ix2, iy2, nz-1)) }
+        }}
+        var head = 0
+        while head < queue.count {
+            let (qx, qy, qz) = queue[head]; head += 1
+            let neighbors6 = [(qx-1,qy,qz),(qx+1,qy,qz),(qx,qy-1,qz),(qx,qy+1,qz),(qx,qy,qz-1),(qx,qy,qz+1)]
+            for (nx2, ny2, nz2) in neighbors6 {
+                guard nx2 >= 0, nx2 < nx, ny2 >= 0, ny2 < ny, nz2 >= 0, nz2 < nz else { continue }
+                let ni = idx(nx2, ny2, nz2)
+                if !occ[ni] && !exterior[ni] { exterior[ni] = true; queue.append((nx2, ny2, nz2)) }
+            }
+        }
+        for i2 in 0..<(nx * ny * nz) {
+            if !exterior[i2] { occ[i2] = true }
+        }
+
         // 3. Marching cubes on the occupancy field
         var vertices = [SIMD3<Float>]()
         var indices  = [UInt32]()
