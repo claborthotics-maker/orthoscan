@@ -289,6 +289,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
                     let proj = self.projectToScreen(worldPoints: pts, frame: currentFrame)
                     print("OVERLAY: \(pts.count) pts, \(proj.count) projected, viewport=\(self.arSceneView.bounds.size)")
                     self.renderLiveOverlay(screenPoints: proj)
+                }
             }
             let fc = self.frameCount
             DispatchQueue.main.async { [weak self] in
