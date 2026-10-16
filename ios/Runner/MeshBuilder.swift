@@ -139,7 +139,7 @@ struct MeshBuilder {
                 }
             }
         }}}
-        let occ = dilated
+        occ = dilated
 
         // Laplacian smoothing — 3 passes
         var smoothed = vertices
@@ -574,6 +574,7 @@ struct MarchingCubesTables {
         [-1]
     ]
 }
+
 
 
 
