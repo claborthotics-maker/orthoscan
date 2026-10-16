@@ -32,7 +32,7 @@ struct MeshBuilder {
         maxPt += SIMD3<Float>(repeating: pad)
 
         // 2. Build occupancy grid at 3 mm resolution
-        let res: Float = 0.003
+        let res: Float = 0.002
         let nx = max(2, Int(ceil((maxPt.x - minPt.x) / res)))
         let ny = max(2, Int(ceil((maxPt.y - minPt.y) / res)))
         let nz = max(2, Int(ceil((maxPt.z - minPt.z) / res)))
@@ -47,20 +47,13 @@ struct MeshBuilder {
 
         func idx(_ ix: Int, _ iy: Int, _ iz: Int) -> Int { ix + nx * (iy + ny * iz) }
 
-        // Mark occupied cells — dilate by 1 cell for watertightness
+        // Mark occupied cells — exact cell only, no dilation
         for p in points {
             let ix = Int((p.x - minPt.x) / res)
             let iy = Int((p.y - minPt.y) / res)
             let iz = Int((p.z - minPt.z) / res)
-            for dx in -1...1 {
-                for dy in -1...1 {
-                    for dz in -1...1 {
-                        let jx = ix + dx, jy = iy + dy, jz = iz + dz
-                        guard jx >= 0, jx < nx, jy >= 0, jy < ny, jz >= 0, jz < nz else { continue }
-                        occ[idx(jx, jy, jz)] = true
-                    }
-                }
-            }
+            guard ix >= 0, ix < nx, iy >= 0, iy < ny, iz >= 0, iz < nz else { continue }
+            occ[idx(ix, iy, iz)] = true
         }
 
         // 3. Marching cubes on the occupancy field
@@ -547,3 +540,4 @@ struct MarchingCubesTables {
         [-1]
     ]
 }
+
