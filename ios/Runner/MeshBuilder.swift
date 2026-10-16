@@ -32,7 +32,7 @@ struct MeshBuilder {
         maxPt += SIMD3<Float>(repeating: pad)
 
         // 2. Build occupancy grid at 3 mm resolution
-        let res: Float = 0.004
+        let res: Float = 0.002
         let nx = max(2, Int(ceil((maxPt.x - minPt.x) / res)))
         let ny = max(2, Int(ceil((maxPt.y - minPt.y) / res)))
         let nz = max(2, Int(ceil((maxPt.z - minPt.z) / res)))
