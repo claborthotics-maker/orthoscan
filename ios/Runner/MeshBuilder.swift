@@ -303,57 +303,6 @@ struct MeshBuilder {
         }}
         guard !idxs.isEmpty else { return nil }
 
-        // 5. Hole filling — find boundary edges, trace loops, fan-triangulate
-        var edgeCount = [String: Int]()
-        var edgeTriangle = [String: (Int,Int,Int)]()
-        let tCount = smoothed.count / 3
-        for t in 0..<tCount {
-            let a = Int(indices[t*3]), b = Int(indices[t*3+1]), c = Int(indices[t*3+2])
-            for (p,q) in [(a,b),(b,c),(c,a)] {
-                let key = "\(min(p,q))-\(max(p,q))"
-                edgeCount[key, default: 0] += 1
-                edgeTriangle[key] = (a,b,c)
-            }
-        }
-        // Boundary edges: appear only once
-        var boundaryAdj = [Int: [Int]]()
-        for (key, count) in edgeCount where count == 1 {
-            let parts = key.split(separator: "-").compactMap { Int($0) }
-            guard parts.count == 2 else { continue }
-            boundaryAdj[parts[0], default: []].append(parts[1])
-            boundaryAdj[parts[1], default: []].append(parts[0])
-        }
-        // Trace boundary loops
-        var visited = Set<Int>()
-        var loops = [[Int]]()
-        for startV in boundaryAdj.keys where !visited.contains(startV) {
-            var loop = [Int]()
-            var cur = startV
-            var prev = -1
-            while true {
-                visited.insert(cur)
-                loop.append(cur)
-                let neighbors = boundaryAdj[cur] ?? []
-                if let next = neighbors.first(where: { $0 != prev && !visited.contains($0) }) {
-                    prev = cur; cur = next
-                } else { break }
-            }
-            if loop.count >= 3 { loops.append(loop) }
-        }
-        // Fan-triangulate each loop from centroid
-        var filledIdx = Array(indices)
-        for loop in loops {
-            let centroid = loop.reduce(SIMD3<Float>(0,0,0)) { acc, vi in acc + smoothed[vi] } / Float(loop.count)
-            let cIdx = UInt32(smoothed.count)
-            smoothed.append(centroid)
-            for i in 0..<loop.count {
-                let a = UInt32(loop[i])
-                let b = UInt32(loop[(i+1) % loop.count])
-                filledIdx.append(contentsOf: [cIdx, a, b])
-            }
-        }
-        indices = filledIdx
-
         return buildSCNGeometry(vertices: verts, indices: idxs)
     }
 
