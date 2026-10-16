@@ -127,6 +127,20 @@ struct MeshBuilder {
 
         guard vertices.count > 10, !indices.isEmpty else { return nil }
 
+        // Single dilation pass on completed occupancy grid to close gaps
+        var dilated = occ
+        for iz2 in 0..<nz { for iy2 in 0..<ny { for ix2 in 0..<nx {
+            if occ[idx(ix2,iy2,iz2)] {
+                let nb2 = [(1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)]
+                for (dx,dy,dz) in nb2 {
+                    let jx=ix2+dx,jy=iy2+dy,jz=iz2+dz
+                    guard jx>=0,jx<nx,jy>=0,jy<ny,jz>=0,jz<nz else { continue }
+                    dilated[idx(jx,jy,jz)] = true
+                }
+            }
+        }}}
+        let occ = dilated
+
         // Laplacian smoothing — 3 passes
         var smoothed = vertices
         for _ in 0..<3 {
@@ -560,6 +574,7 @@ struct MarchingCubesTables {
         [-1]
     ]
 }
+
 
 
 
