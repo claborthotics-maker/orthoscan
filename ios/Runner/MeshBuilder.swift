@@ -57,35 +57,63 @@ struct MeshBuilder {
         }
 
 
-        // 2b. Flood-fill from boundary to find exterior cells
-        // Any cell not reachable from outside = interior → mark occupied (solid fill)
+
+        // 2b. Morphological closing (dilate r=3, erode r=3) to seal shell gaps,
+        //     then flood-fill from boundary to solidify interior.
+        let r = 3
+        // --- Dilation ---
+        var dilated = [Bool](repeating: false, count: nx * ny * nz)
+        for iz2 in 0..<nz { for iy2 in 0..<ny { for ix2 in 0..<nx {
+            if occ[idx(ix2,iy2,iz2)] {
+                for dz in -r...r { for dy in -r...r { for dx in -r...r {
+                    let jx=ix2+dx, jy=iy2+dy, jz=iz2+dz
+                    guard jx>=0,jx<nx,jy>=0,jy<ny,jz>=0,jz<nz else { continue }
+                    dilated[idx(jx,jy,jz)] = true
+                }}}
+            }
+        }}}
+        // --- Erosion ---
+        var closed = [Bool](repeating: false, count: nx * ny * nz)
+        for iz2 in 0..<nz { for iy2 in 0..<ny { for ix2 in 0..<nx {
+            if dilated[idx(ix2,iy2,iz2)] {
+                var keep = true
+                outer: for dz in -r...r { for dy in -r...r { for dx in -r...r {
+                    let jx=ix2+dx, jy=iy2+dy, jz=iz2+dz
+                    if jx<0||jx>=nx||jy<0||jy>=ny||jz<0||jz>=nz { keep=false; break outer }
+                    if !dilated[idx(jx,jy,jz)] { keep=false; break outer }
+                }}}
+                closed[idx(ix2,iy2,iz2)] = keep
+            }
+        }}}
+        occ = closed
+        // --- Flood-fill exterior ---
         var exterior = [Bool](repeating: false, count: nx * ny * nz)
-        var queue = [(Int, Int, Int)]()
+        var queue = [(Int,Int,Int)]()
         for iz2 in 0..<nz { for iy2 in 0..<ny {
-            if !occ[idx(0,    iy2, iz2)] && !exterior[idx(0,    iy2, iz2)] { exterior[idx(0,    iy2, iz2)] = true; queue.append((0,    iy2, iz2)) }
-            if !occ[idx(nx-1, iy2, iz2)] && !exterior[idx(nx-1, iy2, iz2)] { exterior[idx(nx-1, iy2, iz2)] = true; queue.append((nx-1, iy2, iz2)) }
+            for bx in [0, nx-1] {
+                let i2=idx(bx,iy2,iz2); if !occ[i2]&&!exterior[i2] { exterior[i2]=true; queue.append((bx,iy2,iz2)) }
+            }
         }}
         for iz2 in 0..<nz { for ix2 in 0..<nx {
-            if !occ[idx(ix2, 0,    iz2)] && !exterior[idx(ix2, 0,    iz2)] { exterior[idx(ix2, 0,    iz2)] = true; queue.append((ix2, 0,    iz2)) }
-            if !occ[idx(ix2, ny-1, iz2)] && !exterior[idx(ix2, ny-1, iz2)] { exterior[idx(ix2, ny-1, iz2)] = true; queue.append((ix2, ny-1, iz2)) }
+            for by in [0, ny-1] {
+                let i2=idx(ix2,by,iz2); if !occ[i2]&&!exterior[i2] { exterior[i2]=true; queue.append((ix2,by,iz2)) }
+            }
         }}
         for iy2 in 0..<ny { for ix2 in 0..<nx {
-            if !occ[idx(ix2, iy2, 0   )] && !exterior[idx(ix2, iy2, 0   )] { exterior[idx(ix2, iy2, 0   )] = true; queue.append((ix2, iy2, 0   )) }
-            if !occ[idx(ix2, iy2, nz-1)] && !exterior[idx(ix2, iy2, nz-1)] { exterior[idx(ix2, iy2, nz-1)] = true; queue.append((ix2, iy2, nz-1)) }
+            for bz in [0, nz-1] {
+                let i2=idx(ix2,iy2,bz); if !occ[i2]&&!exterior[i2] { exterior[i2]=true; queue.append((ix2,iy2,bz)) }
+            }
         }}
         var head = 0
         while head < queue.count {
-            let (qx, qy, qz) = queue[head]; head += 1
-            let neighbors6 = [(qx-1,qy,qz),(qx+1,qy,qz),(qx,qy-1,qz),(qx,qy+1,qz),(qx,qy,qz-1),(qx,qy,qz+1)]
-            for (nx2, ny2, nz2) in neighbors6 {
-                guard nx2 >= 0, nx2 < nx, ny2 >= 0, ny2 < ny, nz2 >= 0, nz2 < nz else { continue }
-                let ni = idx(nx2, ny2, nz2)
-                if !occ[ni] && !exterior[ni] { exterior[ni] = true; queue.append((nx2, ny2, nz2)) }
+            let (qx,qy,qz) = queue[head]; head += 1
+            for (ax,ay,az) in [(qx-1,qy,qz),(qx+1,qy,qz),(qx,qy-1,qz),(qx,qy+1,qz),(qx,qy,qz-1),(qx,qy,qz+1)] {
+                guard ax>=0,ax<nx,ay>=0,ay<ny,az>=0,az<nz else { continue }
+                let ni=idx(ax,ay,az)
+                if !occ[ni]&&!exterior[ni] { exterior[ni]=true; queue.append((ax,ay,az)) }
             }
         }
-        for i2 in 0..<(nx * ny * nz) {
-            if !exterior[i2] { occ[i2] = true }
-        }
+        for i2 in 0..<(nx*ny*nz) { if !exterior[i2] { occ[i2]=true } }
 
         // 3. Marching cubes on the occupancy field
         var vertices = [SIMD3<Float>]()
