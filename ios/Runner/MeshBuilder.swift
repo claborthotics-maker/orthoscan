@@ -182,7 +182,7 @@ struct MeshBuilder {
         }
 
         // Gentle smoothing: 2 iterations, lambda 0.2 — blends cell boundaries without collapsing
-        let smoothedVerts = laplacianSmooth(vertices: allVerts, indices: allIndices, iterations: 2, lambda: 0.2)
+        let smoothedVerts = laplacianSmooth(vertices: allVerts, indices: allIndices, iterations: 5, lambda: 0.3)
         var smoothedNormals = [SIMD3<Float>](repeating: .zero, count: smoothedVerts.count)
         let triTotal2 = allIndices.count / 3
         for t in 0..<triTotal2 {
