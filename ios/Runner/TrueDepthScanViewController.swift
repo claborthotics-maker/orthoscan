@@ -18,7 +18,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private var frameCount     = 0
     private let maxFrames      = 300
     private let captureStep    = 2
-    private let frameStride    = 3
+    private let frameStride    = 1
     private var arFrameCounter = 0
     private var overlayUpdateCounter = 0
 
@@ -261,9 +261,9 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             self.frameCount += 1
 
             self.overlayUpdateCounter += 1
-            if self.overlayUpdateCounter % 3 == 0 {
+            if self.overlayUpdateCounter % 1 == 0 {
                 let allPts = self.voxelGrid.occupiedCentres()
-                let pts = stride(from: 0, to: allPts.count, by: 8).map { allPts[$0] }
+                let pts = stride(from: 0, to: allPts.count, by: 2).map { allPts[$0] }
                 let currentFrame = frame
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
