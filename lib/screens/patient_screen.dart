@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
 import '../models/work_order.dart';
@@ -74,6 +75,129 @@ class _PatientScreenState extends State<PatientScreen> {
       );
     }
   }
+
+  void _showScanOptions(BuildContext context, int index, String path) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text('Scan Options', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit, color: Color(0xFF4FC3F7)),
+              title: const Text('Rename', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _renameScan(context, index, path);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.redAccent),
+              title: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteScan(context, index, path);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _renameScan(BuildContext context, int index, String path) {
+    final dir = path.substring(0, path.lastIndexOf('/'));
+    final oldName = path.split('/').last;
+    final ext = oldName.contains('.') ? '.${oldName.split('.').last}' : '';
+    final nameWithoutExt = ext.isNotEmpty ? oldName.substring(0, oldName.length - ext.length) : oldName;
+    final controller = TextEditingController(text: nameWithoutExt);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text('Rename Scan', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white38)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF4FC3F7))),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            onPressed: () => Navigator.pop(dialogContext),
+          ),
+          TextButton(
+            child: const Text('Rename', style: TextStyle(color: Color(0xFF4FC3F7))),
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isEmpty) return;
+              final newPath = '$dir/$newName$ext';
+              try {
+                Navigator.pop(dialogContext);
+                await File(path).rename(newPath);
+                setState(() {
+                  final files = List<String>.from(widget.patient.scanFiles);
+                  files[index] = newPath;
+                  widget.patient.scanFiles = files;
+                });
+                await DatabaseService().updatePatient(widget.patient);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Rename failed: \$e')));
+                }
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteScan(BuildContext context, int index, String path) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text('Delete Scan?', style: TextStyle(color: Colors.white)),
+        content: const Text('This cannot be undone.', style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            onPressed: () => Navigator.pop(context),
+          ),
+          TextButton(
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+            onPressed: () async {
+              try {
+                final file = File(path);
+                if (await file.exists()) await file.delete();
+                setState(() {
+                  final files = List<String>.from(widget.patient.scanFiles);
+                  files.removeAt(index);
+                  widget.patient.scanFiles = files;
+                });
+                await DatabaseService().updatePatient(widget.patient);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Delete failed: \$e')));
+                }
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
 
   void _newWorkOrder() {
     showModalBottomSheet(
@@ -456,19 +580,22 @@ class _PatientScreenState extends State<PatientScreen> {
                       final i = entry.key;
                       final path = entry.value;
                       final name = path.split('/').last;
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.insert_drive_file, color: Color(0xFF4FC3F7)),
-                        title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                        subtitle: Text('Scan ${i + 1}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.share, color: Colors.white54, size: 20),
-                          onPressed: () async {
-                            final box = context.findRenderObject() as RenderBox?;
-                            await Share.shareXFiles([XFile(path)],
-                              subject: 'Scan – ${widget.patient.fullName}',
-                              sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size);
-                          },
+                      return GestureDetector(
+                        onLongPress: () => _showScanOptions(context, i, path),
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.insert_drive_file, color: Color(0xFF4FC3F7)),
+                          title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                          subtitle: Text('Scan \${i + 1}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.share, color: Colors.white54, size: 20),
+                            onPressed: () async {
+                              final box = context.findRenderObject() as RenderBox?;
+                              await Share.shareXFiles([XFile(path)],
+                                subject: 'Scan – \${widget.patient.fullName}',
+                                sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size);
+                            },
+                          ),
                         ),
                       );
                     }),
