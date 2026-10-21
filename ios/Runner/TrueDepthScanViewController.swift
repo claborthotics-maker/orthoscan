@@ -25,8 +25,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private enum ScanPhase { case footSelection, idle, scanning, processing, preview }
     private var phase: ScanPhase = .footSelection
 
-    private let minDepth: Float = 0.10
-    private let maxDepth: Float = 0.45
+    private let minDepth: Float = 0.28
+    private let maxDepth: Float = 0.42
 
     private var arSceneView:       ARSCNView!
     private var overlayImageView:  UIImageView!
