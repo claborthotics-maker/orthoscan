@@ -261,7 +261,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             self.frameCount += 1
 
             self.overlayUpdateCounter += 1
-            if self.overlayUpdateCounter % 10 == 0 {
+            if self.overlayUpdateCounter % 3 == 0 {
                 let allPts = self.voxelGrid.occupiedCentres()
                 let pts = stride(from: 0, to: allPts.count, by: 8).map { allPts[$0] }
                 let currentFrame = frame
