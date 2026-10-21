@@ -64,7 +64,7 @@ class OptionRow extends StatelessWidget {
       onTap: () => onTap(label),
       child: Container(
         padding: const EdgeInsets.symmetric(
-            horizontal: 10, vertical: 8),
+            horizontal: 6, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFF0F3460)
@@ -79,7 +79,7 @@ class OptionRow extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
                 color: isSelected ? Colors.white : Colors.white54,
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: isSelected
                     ? FontWeight.bold
                     : FontWeight.normal)),
@@ -179,7 +179,7 @@ class FootAccommodationRow extends StatelessWidget {
                                     color: sizeValue == o
                                         ? Colors.white
                                         : Colors.white54,
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     fontWeight: sizeValue == o
                                         ? FontWeight.bold
                                         : FontWeight.normal)),

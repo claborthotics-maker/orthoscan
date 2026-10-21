@@ -127,7 +127,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             distanceBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 160),
             distanceBadge.heightAnchor.constraint(equalToConstant: 36),
 
-            statusLabel.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -16),
+            statusLabel.bottomAnchor.constraint(equalTo: rescanButton.topAnchor, constant: -16),
             statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
 
@@ -318,6 +318,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
                 guard z >= minDepth, z <= maxDepth, z.isFinite else { continue }
                 let xc = (Float(col) - cx) * z / fx
                 let yc = -(Float(row) - cy) * z / fy
+                let angle = atan2(sqrt(xc*xc + yc*yc), z)
+                guard angle < 0.5 else { continue }
                 let cam = SIMD4<Float>(xc, yc, -z, 1.0)
                 let world = pose * cam
                 voxelGrid.insert(SIMD3<Float>(world.x, world.y, world.z))
@@ -371,7 +373,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return }
         ctx.setFillColor(UIColor(red: 0.0, green: 0.95, blue: 0.75, alpha: 0.75).cgColor)
         for pt in screenPoints {
-            ctx.fillEllipse(in: CGRect(x: pt.x - 2.5, y: pt.y - 2.5, width: 5, height: 5))
+            ctx.fillEllipse(in: CGRect(x: pt.x - 1.25, y: pt.y - 1.25, width: 2.5, height: 2.5))
         }
         overlayImageView.image = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()

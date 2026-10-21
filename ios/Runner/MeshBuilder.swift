@@ -58,6 +58,8 @@ struct MeshBuilder {
                 guard z > 0.05, z < 0.60, z.isFinite else { return nil }
                 let xc = (Float(col) - cx) * z / fx
                 let yc = -(Float(row) - cy) * z / fy
+                let angle = atan2(sqrt(xc*xc + yc*yc), z)
+                guard angle < 0.5 else { return nil }
                 let cam = SIMD4<Float>(xc, yc, -z, 1.0)
                 let world = pose * cam
                 return SIMD3<Float>(world.x, world.y, world.z)
