@@ -52,7 +52,7 @@ struct MeshBuilder {
 
             func unproject(col: Int, row: Int) -> SIMD3<Float>? {
                 let z = pixels[row * w + col]
-                guard z > 0.05, z < 0.60, z.isFinite else { return nil }
+                guard z > 0.05, z < 0.40, z.isFinite else { return nil }
                 let xc = (Float(col) - cx) * z / fx
                 let yc = -(Float(row) - cy) * z / fy
                 let angle = atan2(sqrt(xc*xc + yc*yc), z)
@@ -90,7 +90,7 @@ struct MeshBuilder {
         var allVerts = [SIMD3<Float>]()
 
         for (key, acc) in cellMap {
-            guard acc.count >= 1 else { continue }
+            guard acc.count >= 2 else { continue }
             let avgPos = acc.sum / Float(acc.count)
             let idx = UInt32(allVerts.count)
             allVerts.append(avgPos)
@@ -193,7 +193,24 @@ struct MeshBuilder {
             smoothedNormals[i2] = smoothedNormals[i2] + n
         }
         smoothedNormals = smoothedNormals.map { n in let l = simd_length(n); return l > 1e-9 ? n / l : SIMD3<Float>(0, 1, 0) }
-        return buildSCNGeometry(vertices: smoothedVerts, normals: smoothedNormals, indices: allIndices)
+        // Cap the open boundary to make watertight mesh
+        var cappedVerts = smoothedVerts
+        var cappedIndices = allIndices
+        capOpenBoundary(vertices: &cappedVerts, indices: &cappedIndices)
+
+        // Recompute normals after capping
+        var cappedNormals = [SIMD3<Float>](repeating: .zero, count: cappedVerts.count)
+        let triTotal3 = cappedIndices.count / 3
+        for t in 0..<triTotal3 {
+            let i0 = Int(cappedIndices[t*3]), i1 = Int(cappedIndices[t*3+1]), i2 = Int(cappedIndices[t*3+2])
+            let n = triNormal(cappedVerts[i0], cappedVerts[i1], cappedVerts[i2])
+            cappedNormals[i0] = cappedNormals[i0] + n
+            cappedNormals[i1] = cappedNormals[i1] + n
+            cappedNormals[i2] = cappedNormals[i2] + n
+        }
+        cappedNormals = cappedNormals.map { n in let l = simd_length(n); return l > 1e-9 ? n / l : SIMD3<Float>(0, 1, 0) }
+
+        return buildSCNGeometry(vertices: cappedVerts, normals: cappedNormals, indices: cappedIndices)
     }
 
     // MARK: - Triangle normal
@@ -232,6 +249,89 @@ struct MeshBuilder {
         let n = simd_cross(b - a, c - a)
         let l = simd_length(n)
         return l > 1e-9 ? n / l : SIMD3<Float>(0, 1, 0)
+    }
+
+
+    // MARK: - Cap open boundary
+    // Finds the largest open boundary loop and closes it with a flat fan cap
+    private static func capOpenBoundary(vertices: inout [SIMD3<Float>], indices: inout [UInt32]) {
+        // Build edge->triangle count map
+        var edgeCount = [SIMD2<Int32>: Int]()
+        let triCount = indices.count / 3
+        for t in 0..<triCount {
+            let i0 = Int32(indices[t*3]), i1 = Int32(indices[t*3+1]), i2 = Int32(indices[t*3+2])
+            let edges = [SIMD2<Int32>(min(i0,i1), max(i0,i1)),
+                         SIMD2<Int32>(min(i1,i2), max(i1,i2)),
+                         SIMD2<Int32>(min(i0,i2), max(i0,i2))]
+            for e in edges { edgeCount[e, default: 0] += 1 }
+        }
+
+        // Collect boundary edges (shared by only 1 triangle)
+        var boundaryEdges = [(Int32, Int32)]()
+        for (e, c) in edgeCount where c == 1 {
+            boundaryEdges.append((e.x, e.y))
+        }
+        guard boundaryEdges.count > 2 else { return }
+
+        // Build adjacency for boundary loop walking
+        var adj = [Int32: [Int32]]()
+        for (a, b) in boundaryEdges {
+            adj[a, default: []].append(b)
+            adj[b, default: []].append(a)
+        }
+
+        // Walk largest boundary loop
+        var loops = [[Int32]]()
+        var visited = Set<Int32>()
+        for (start, _) in adj where !visited.contains(start) {
+            var loop = [Int32]()
+            var cur = start
+            var prev: Int32 = -1
+            while true {
+                if visited.contains(cur) { break }
+                visited.insert(cur)
+                loop.append(cur)
+                let neighbors = adj[cur] ?? []
+                let next = neighbors.first { $0 != prev }
+                if next == nil { break }
+                prev = cur
+                cur = next!
+            }
+            if loop.count > 2 { loops.append(loop) }
+        }
+        guard let loop = loops.max(by: { $0.count < $1.count }), loop.count > 2 else { return }
+
+        // Compute centroid of loop
+        var centroid = SIMD3<Float>.zero
+        for idx in loop { centroid = centroid + vertices[Int(idx)] }
+        centroid = centroid / Float(loop.count)
+
+        // Add centroid as new vertex
+        let capIdx = UInt32(vertices.count)
+        vertices.append(centroid)
+
+        // Fan triangulate — determine winding by checking normal faces outward
+        let i0 = loop[0], i1 = loop[1]
+        let v0 = vertices[Int(i0)], v1 = vertices[Int(i1)]
+        let edge = v1 - v0
+        let toCenter = centroid - v0
+        let testNormal = simd_cross(edge, toCenter)
+        // We want cap normal pointing away from mesh center
+        var meshCenter = SIMD3<Float>.zero
+        for v in vertices { meshCenter = meshCenter + v }
+        meshCenter = meshCenter / Float(vertices.count)
+        let outward = centroid - meshCenter
+        let flip = simd_dot(testNormal, outward) < 0
+
+        for i in 0..<loop.count {
+            let a = loop[i]
+            let b = loop[(i + 1) % loop.count]
+            if flip {
+                indices.append(contentsOf: [capIdx, UInt32(b), UInt32(a)])
+            } else {
+                indices.append(contentsOf: [capIdx, UInt32(a), UInt32(b)])
+            }
+        }
     }
 
     // MARK: - Build SCNGeometry
