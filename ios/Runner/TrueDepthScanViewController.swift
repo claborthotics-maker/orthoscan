@@ -263,7 +263,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             self.overlayUpdateCounter += 1
             if self.overlayUpdateCounter % 1 == 0 {
                 let allPts = self.voxelGrid.occupiedCentres()
-                let pts = stride(from: 0, to: allPts.count, by: 2).map { allPts[$0] }
+                let pts = stride(from: 0, to: allPts.count, by: 6).map { allPts[$0] }
                 let currentFrame = frame
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
@@ -373,7 +373,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return }
         ctx.setFillColor(UIColor(red: 0.0, green: 0.95, blue: 0.75, alpha: 0.75).cgColor)
         for pt in screenPoints {
-            ctx.fillEllipse(in: CGRect(x: pt.x - 1.25, y: pt.y - 1.25, width: 2.5, height: 2.5))
+            ctx.fillEllipse(in: CGRect(x: pt.x - 0.5, y: pt.y - 0.5, width: 1.0, height: 1.0))
         }
         overlayImageView.image = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
