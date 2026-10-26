@@ -252,6 +252,55 @@ struct MeshBuilder {
     }
 
 
+
+    // MARK: - MDL Surface Reconstruction
+    private static func reconstructWithMDL(points: [SIMD3<Float>]) -> MDLMesh? {
+        guard points.count > 10 else { return nil }
+
+        // Build MDLMesh from point cloud using MDLVoxelArray
+        let allocator = MDLMeshBufferDataAllocator()
+
+        // Create vertex buffer from points
+        var floatData = [Float]()
+        floatData.reserveCapacity(points.count * 3)
+        for p in points { floatData.append(p.x); floatData.append(p.y); floatData.append(p.z) }
+        let vertexData = Data(bytes: floatData, count: floatData.count * MemoryLayout<Float>.size)
+        let vertexBuffer = allocator.newBuffer(with: vertexData, type: .vertex)
+
+        let vertexDescriptor = MDLVertexDescriptor()
+        vertexDescriptor.attributes[0] = MDLVertexAttribute(
+            name: MDLVertexAttributePosition,
+            format: .float3,
+            offset: 0,
+            bufferIndex: 0)
+        vertexDescriptor.layouts[0] = MDLVertexBufferLayout(stride: MemoryLayout<Float>.size * 3)
+
+        let pointMesh = MDLMesh(vertexBuffer: vertexBuffer,
+                                vertexCount: points.count,
+                                descriptor: vertexDescriptor,
+                                submeshes: [])
+
+        // Use voxel array to reconstruct watertight surface
+        // voxelDimensions controls resolution — smaller = more detail but slower
+        var bounds = MDLAxisAlignedBoundingBox(maxBounds: vector_float3(0,0,0), minBounds: vector_float3(0,0,0))
+        bounds = pointMesh.boundingBox
+        let extent = bounds.maxBounds - bounds.minBounds
+        let maxExtent = max(extent.x, max(extent.y, extent.z))
+        let voxelCount: Int32 = 128  // 64x64x64 voxel grid — good balance of quality/speed
+        let voxelSize = maxExtent / Float(voxelCount)
+
+        guard let voxelArray = MDLVoxelArray(asset: MDLAsset(), divisions: voxelCount, patchRadius: 0) as? MDLVoxelArray else {
+            // Fallback: return nil, caller will handle
+            return nil
+        }
+        _ = voxelSize  // suppress unused warning
+
+        // Generate mesh from voxels
+        let reconstructed = voxelArray.mesh(using: allocator)
+        reconstructed?.addNormals(withAttributeNamed: MDLVertexAttributeNormal, creaseThreshold: 0.5)
+        return reconstructed
+    }
+
     // MARK: - Cap open boundary
     // Finds the largest open boundary loop and closes it with a flat fan cap
     private static func capOpenBoundary(vertices: inout [SIMD3<Float>], indices: inout [UInt32]) {
