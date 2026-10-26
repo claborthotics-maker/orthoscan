@@ -14,7 +14,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
     private let accumQueue = DispatchQueue(label: "com.clab.accum", qos: .userInteractive)
     private var capturedFrames = [DepthFrame]()
-    private var voxelGrid      = VoxelGrid(cellSize: 0.003)
+    private var voxelGrid      = VoxelGrid(cellSize: 0.0015)
     private var frameCount     = 0
     private let maxFrames      = 300
     private let captureStep    = 2
@@ -398,7 +398,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             arFrameCounter = 0
             overlayUpdateCounter = 0
             capturedFrames = []
-            voxelGrid = VoxelGrid(cellSize: 0.003)
+            voxelGrid = VoxelGrid(cellSize: 0.0015)
             captureButton.setTitle("Stop Scan", for: .normal)
             captureButton.backgroundColor = .systemRed
             overlayImageView.isHidden = false
@@ -464,7 +464,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         captureButton.backgroundColor = .systemBlue
         cancelButton.isHidden = false; frameCountLabel.isHidden = true
         phase = .idle; frameCount = 0; capturedFrames = []
-        voxelGrid = VoxelGrid(cellSize: 0.003)
+        voxelGrid = VoxelGrid(cellSize: 0.0015)
         updateDistanceBadge(text: "\(footSide.capitalized) Foot — Position", color: .systemGray)
         statusLabel.text = "Hold phone 15–45 cm above foot"
         if let cfg = arConfig { arSession.run(cfg, options: [.resetTracking]) }

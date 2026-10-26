@@ -23,7 +23,7 @@ struct MeshBuilder {
     // 0.002 = 2mm (maximum detail, some noise)
     // 0.0025 = 2.5mm (default — good balance for foot scanning)
     // 0.003 = 3mm (smoother, slight detail loss)
-    static let fusionRadius: Float = 0.002
+    static let fusionRadius: Float = 0.0015
 
     static func buildMesh(from frames: [DepthFrame],
                           step: Int = 2,
@@ -90,7 +90,7 @@ struct MeshBuilder {
         var allVerts = [SIMD3<Float>]()
 
         for (key, acc) in cellMap {
-            guard acc.count >= 2 else { continue }
+            guard acc.count >= 1 else { continue }
             let avgPos = acc.sum / Float(acc.count)
             let idx = UInt32(allVerts.count)
             allVerts.append(avgPos)
