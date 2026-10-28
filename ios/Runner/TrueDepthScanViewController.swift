@@ -13,14 +13,15 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private var arConfig: ARFaceTrackingConfiguration?
 
     private let accumQueue = DispatchQueue(label: "com.clab.accum", qos: .userInteractive)
-    private var capturedFrames = [DepthFrame]()
-    private var voxelGrid      = VoxelGrid(cellSize: 0.0015)
-    private var frameCount     = 0
-    private let maxFrames      = 300
-    private let captureStep    = 2
-    private let frameStride    = 1
-    private var arFrameCounter = 0
-    private var overlayUpdateCounter = 0
+    private var liveTSDF   = LiveTSDF()
+    private var seedFrames = [DepthFrame]()
+    private var seedImages = [CVPixelBuffer]()
+    private var frameCount = 0
+    private let maxFrames  = 300
+    private let seedCount  = 5
+    private var arFrameCounter  = 0
+    private var meshUpdateCounter = 0
+    private var liveMeshNode: SCNNode?
 
     private enum ScanPhase { case footSelection, idle, scanning, processing, preview }
     private var phase: ScanPhase = .footSelection
@@ -29,7 +30,6 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private let maxDepth: Float = 0.35
 
     private var arSceneView:       ARSCNView!
-    private var overlayImageView:  UIImageView!
     private var sceneView:         SCNView!
     private var distanceBadge:     UILabel!
     private var statusLabel:       UILabel!
@@ -58,12 +58,6 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         arSceneView.automaticallyUpdatesLighting = true
         arSceneView.scene = SCNScene()
         view.addSubview(arSceneView)
-
-        overlayImageView = UIImageView(frame: view.bounds)
-        overlayImageView.contentMode = .scaleToFill
-        overlayImageView.isUserInteractionEnabled = false
-        overlayImageView.isHidden = true
-        view.addSubview(overlayImageView)
 
         sceneView = SCNView(frame: view.bounds)
         sceneView.backgroundColor = UIColor(white: 0.08, alpha: 1)
@@ -249,28 +243,62 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             }
             return
         }
+        guard liveTSDF.initialised || seedFrames.count < seedCount else { return }
 
         arFrameCounter += 1
-        guard arFrameCounter % frameStride == 0 else { return }
         guard let depthData = frame.capturedDepthData else { return }
-        let cameraPose = frame.camera.transform
+        // Use real camera pose for multi-view TSDF integration
+        let cameraPose  = frame.camera.transform
+        if frameCount % 10 == 0 {
+            let t = cameraPose.columns.3
+            let forward = cameraPose.columns.2
+            print("[POSE] frame=\(frameCount) pos=(\(String(format:"%.3f",t.x)),\(String(format:"%.3f",t.y)),\(String(format:"%.3f",t.z))) fwd=(\(String(format:"%.2f",forward.x)),\(String(format:"%.2f",forward.y)),\(String(format:"%.2f",forward.z)))")
+        }
+        let colorImage  = frame.capturedImage
+
+        let depthFrame = makeDepthFrame(depthData: depthData, pose: cameraPose)
+        guard let df = depthFrame else { return }
 
         accumQueue.async { [weak self] in
             guard let self = self else { return }
-            self.captureDepthFrame(depthData: depthData, pose: cameraPose)
+            if !self.liveTSDF.initialised {
+                self.seedFrames.append(df)
+                self.seedImages.append(colorImage)
+                print("[SCAN] seed \(self.seedFrames.count)/\(self.seedCount)")
+                if self.seedFrames.count >= self.seedCount {
+                    print("[SCAN] initialising TSDF...")
+                    self.liveTSDF.initialise(frames: self.seedFrames)
+                    print("[SCAN] TSDF initialised=\(self.liveTSDF.initialised)")
+                    for (sf, si) in zip(self.seedFrames, self.seedImages) {
+                        self.liveTSDF.integrate(frame: sf, colorImage: si)
+                    }
+                    self.seedFrames = []
+                    self.seedImages = []
+                    print("[SCAN] seed integration done")
+                }
+            } else {
+                self.liveTSDF.integrate(frame: df, colorImage: colorImage)
+            }
             self.frameCount += 1
+            self.meshUpdateCounter += 1
+            print("[SCAN] frame=\(self.frameCount) meshCounter=\(self.meshUpdateCounter) initialised=\(self.liveTSDF.initialised)")
 
-            self.overlayUpdateCounter += 1
-            if self.overlayUpdateCounter % 1 == 0 {
-                let allPts = self.voxelGrid.occupiedCentres()
-                let pts = stride(from: 0, to: allPts.count, by: 6).map { allPts[$0] }
-                let currentFrame = frame
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
-                    let proj = self.projectToScreen(worldPoints: pts, frame: currentFrame)
-                    self.renderLiveOverlay(screenPoints: proj)
+            if self.liveTSDF.initialised && self.meshUpdateCounter >= 5 {
+                self.meshUpdateCounter = 0
+                if let geo = self.liveTSDF.extractMesh() {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        if let existing = self.liveMeshNode {
+                            existing.geometry = geo
+                        } else {
+                            let node = SCNNode(geometry: geo)
+                            self.arSceneView.scene.rootNode.addChildNode(node)
+                            self.liveMeshNode = node
+                        }
+                    }
                 }
             }
+
             let fc = self.frameCount
             DispatchQueue.main.async { [weak self] in
                 self?.frameCountLabel.text = "\(fc)/\(self?.maxFrames ?? 300)"
@@ -284,21 +312,27 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         }
     }
 
-    private func captureDepthFrame(depthData: AVDepthData, pose: simd_float4x4) {
+    private func makeDepthFrame(depthData: AVDepthData, pose: simd_float4x4) -> DepthFrame? {
         let converted = depthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)
         let pixelBuffer = converted.depthDataMap
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-
         let w = CVPixelBufferGetWidth(pixelBuffer)
         let h = CVPixelBufferGetHeight(pixelBuffer)
-        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return }
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
         let floats = base.bindMemory(to: Float.self, capacity: w * h)
-
         var pixels = [Float](repeating: 0, count: w * h)
         for i in 0..<(w * h) { pixels[i] = floats[i] }
-
-        guard let cal = converted.cameraCalibrationData else { return }
+        // One-time diagnostic
+        if let b = CVPixelBufferGetBaseAddress(pixelBuffer) {
+            let f = b.bindMemory(to: Float.self, capacity: w * h)
+            var mn: Float = 9999, mx: Float = 0, validCount = 0
+            for i in 0..<min(w*h, 1000) {
+                let v = f[i]; if v > 0.01 && v < 2.0 { mn = Swift.min(mn,v); mx = Swift.max(mx,v); validCount += 1 }
+            }
+            print("[DEPTH] w=\(w) h=\(h) validPx=\(validCount)/1000 depthRange=\(mn)..\(mx)m pose_t=\(pose.columns.3)")
+        }
+        guard let cal = converted.cameraCalibrationData else { return nil }
         let ref = cal.intrinsicMatrixReferenceDimensions
         let scaleX = Float(w) / Float(ref.width)
         let scaleY = Float(h) / Float(ref.height)
@@ -307,24 +341,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         let fy = m[1][1] * scaleY
         let cx = m[2][0] * scaleX
         let cy = m[2][1] * scaleY
-
-        capturedFrames.append(DepthFrame(width: w, height: h, pixels: pixels,
-                                          pose: pose, fx: fx, fy: fy, cx: cx, cy: cy))
-
-        let step = captureStep
-        for row in stride(from: 0, to: h, by: step) {
-            for col in stride(from: 0, to: w, by: step) {
-                let z = pixels[row * w + col]
-                guard z >= minDepth, z <= maxDepth, z.isFinite else { continue }
-                let xc = (Float(col) - cx) * z / fx
-                let yc = -(Float(row) - cy) * z / fy
-                let angle = atan2(sqrt(xc*xc + yc*yc), z)
-                guard angle < 0.5 else { continue }
-                let cam = SIMD4<Float>(xc, yc, -z, 1.0)
-                let world = pose * cam
-                voxelGrid.insert(SIMD3<Float>(world.x, world.y, world.z))
-            }
-        }
+        return DepthFrame(width: w, height: h, pixels: pixels, pose: pose, fx: fx, fy: fy, cx: cx, cy: cy)
     }
 
     private func sampleCentreDepth(_ pixelBuffer: CVPixelBuffer) -> Float {
@@ -347,38 +364,6 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         return vals[vals.count / 2]
     }
 
-    private func projectToScreen(worldPoints: [SIMD3<Float>], frame: ARFrame) -> [CGPoint] {
-        let viewportSize = arSceneView.bounds.size
-        guard viewportSize.width > 0, viewportSize.height > 0 else { return [] }
-        var result = [CGPoint]()
-        result.reserveCapacity(worldPoints.count)
-        let projMatrix = frame.camera.projectionMatrix(for: .portrait, viewportSize: viewportSize, zNear: 0.001, zFar: 10)
-        let viewMatrix = frame.camera.viewMatrix(for: .portrait)
-        let pvMatrix   = projMatrix * viewMatrix
-        for wp in worldPoints {
-            let clip = pvMatrix * SIMD4<Float>(wp.x, wp.y, wp.z, 1.0)
-            guard clip.w > 0 else { continue }
-            let ndc = SIMD2<Float>(clip.x / clip.w, clip.y / clip.w)
-            guard ndc.x >= -1, ndc.x <= 1, ndc.y >= -1, ndc.y <= 1 else { continue }
-            let sx = CGFloat((ndc.x + 1) * 0.5) * viewportSize.width
-            let sy = CGFloat((1 - (ndc.y + 1) * 0.5)) * viewportSize.height
-            result.append(CGPoint(x: sx, y: sy))
-        }
-        return result
-    }
-
-    private func renderLiveOverlay(screenPoints: [CGPoint]) {
-        let size = view.bounds.size
-        UIGraphicsBeginImageContextWithOptions(size, false, 0)
-        guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return }
-        ctx.setFillColor(UIColor(red: 0.0, green: 0.95, blue: 0.75, alpha: 0.75).cgColor)
-        for pt in screenPoints {
-            ctx.fillEllipse(in: CGRect(x: pt.x - 0.5, y: pt.y - 0.5, width: 1.0, height: 1.0))
-        }
-        overlayImageView.image = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-    }
-
     @objc private func footSelected(_ sender: UIButton) {
         footSide = sender.tag == 0 ? "left" : "right"
         UIView.animate(withDuration: 0.25) { self.footSelectionView.alpha = 0 }
@@ -396,12 +381,14 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             phase = .scanning
             frameCount = 0
             arFrameCounter = 0
-            overlayUpdateCounter = 0
-            capturedFrames = []
-            voxelGrid = VoxelGrid(cellSize: 0.0015)
+            meshUpdateCounter = 0
+            seedFrames = []
+            seedImages = []
+            liveTSDF.reset()
+            liveMeshNode?.removeFromParentNode()
+            liveMeshNode = nil
             captureButton.setTitle("Stop Scan", for: .normal)
             captureButton.backgroundColor = .systemRed
-            overlayImageView.isHidden = false
             frameCountLabel.isHidden = false
             updateDistanceBadge(text: "Scanning \(footSide.capitalized) Foot", color: .systemRed)
             statusLabel.text = "Move around the foot slowly\nTap Stop when covered"
@@ -413,26 +400,23 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
     private func stopScanAndProcess() {
         phase = .processing
-        overlayImageView.isHidden = true
         frameCountLabel.isHidden = true
         captureButton.isEnabled = false
-        updateDistanceBadge(text: "Processing...", color: .systemOrange)
-        statusLabel.text = "Triangulating \(frameCount) frames..."
+        updateDistanceBadge(text: "Finishing...", color: .systemOrange)
+        statusLabel.text = "Finalizing mesh..."
 
         accumQueue.async { [weak self] in
             guard let self = self else { return }
-            let frames = self.capturedFrames
-            guard frames.count >= 10 else {
+            guard self.liveTSDF.initialised else {
                 DispatchQueue.main.async { self.showError("Not enough frames — rescan.") }
                 return
             }
-            DispatchQueue.main.async { self.statusLabel.text = "Building mesh..." }
-            let geometry = MeshBuilder.buildMesh(from: frames, step: self.captureStep, footSide: self.footSide)
-            guard let geo = geometry else {
+            let geo = self.liveTSDF.extractMesh()
+            guard let finalGeo = geo else {
                 DispatchQueue.main.async { self.showError("Mesh build failed — try scanning again.") }
                 return
             }
-            DispatchQueue.main.async { self.showPreview(geometry: geo) }
+            DispatchQueue.main.async { self.showPreview(geometry: finalGeo) }
         }
     }
 
@@ -456,15 +440,16 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
     @objc private func rescanTapped() {
         builtMeshNode?.removeFromParentNode(); builtMeshNode = nil
+        liveMeshNode?.removeFromParentNode(); liveMeshNode = nil
         sceneView.isHidden = true; arSceneView.isHidden = false
-        overlayImageView.isHidden = true; overlayImageView.image = nil
         submitButton.isHidden = true; rescanButton.isHidden = true
         captureButton.isHidden = false; captureButton.isEnabled = true
         captureButton.setTitle("Scan Foot", for: .normal)
         captureButton.backgroundColor = .systemBlue
         cancelButton.isHidden = false; frameCountLabel.isHidden = true
-        phase = .idle; frameCount = 0; capturedFrames = []
-        voxelGrid = VoxelGrid(cellSize: 0.0015)
+        phase = .idle; frameCount = 0
+        seedFrames = []; seedImages = []
+        liveTSDF.reset()
         updateDistanceBadge(text: "\(footSide.capitalized) Foot — Position", color: .systemGray)
         statusLabel.text = "Hold phone 15–45 cm above foot"
         if let cfg = arConfig { arSession.run(cfg, options: [.resetTracking]) }
@@ -473,6 +458,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private func showPreview(geometry: SCNGeometry) {
         phase = .preview
         arSession.pause()
+        liveMeshNode?.removeFromParentNode(); liveMeshNode = nil
         let scene = SCNScene()
         let node  = SCNNode(geometry: geometry)
         let (bMin, bMax) = node.boundingBox
@@ -487,7 +473,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         scene.rootNode.addChildNode(camNode)
         sceneView.scene = scene; sceneView.pointOfView = camNode
         sceneView.autoenablesDefaultLighting = true
-        sceneView.isHidden = false; arSceneView.isHidden = true; overlayImageView.isHidden = true
+        sceneView.isHidden = false; arSceneView.isHidden = true
         captureButton.isHidden = true; cancelButton.isHidden = true
         submitButton.isHidden = false; rescanButton.isHidden = false
         updateDistanceBadge(text: "Scan Ready ✓", color: .systemGreen)
@@ -500,10 +486,10 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             if phase == .idle { updateDistanceBadge(text: "No foot detected", color: .systemGray) }
         } else if metres < minDepth {
             updateDistanceBadge(text: "Too close — move back", color: .systemRed)
-            if phase == .idle { statusLabel.text = String(format: "%.0f cm — minimum 10 cm", metres*100) }
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm — minimum 20 cm", metres*100) }
         } else if metres > maxDepth {
             updateDistanceBadge(text: "Move closer", color: .systemOrange)
-            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 45 cm", metres*100) }
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 35 cm", metres*100) }
         } else if phase == .idle {
             updateDistanceBadge(text: String(format: "✓  %.0f cm", metres*100), color: .systemGreen)
             statusLabel.text = "Good distance — tap Scan Foot"
@@ -547,20 +533,4 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     }
 
     private enum ButtonStyle { case primary, secondary, confirm }
-}
-
-struct VoxelGrid {
-    let cellSize: Float
-    private var cells = Set<SIMD3<Int32>>()
-    init(cellSize: Float) { self.cellSize = cellSize }
-    mutating func insert(_ point: SIMD3<Float>) {
-        cells.insert(SIMD3<Int32>(Int32(floor(point.x/cellSize)),
-                                   Int32(floor(point.y/cellSize)),
-                                   Int32(floor(point.z/cellSize))))
-    }
-    func occupiedCentres() -> [SIMD3<Float>] {
-        cells.map { k in SIMD3<Float>((Float(k.x)+0.5)*cellSize,
-                                       (Float(k.y)+0.5)*cellSize,
-                                       (Float(k.z)+0.5)*cellSize) }
-    }
 }
