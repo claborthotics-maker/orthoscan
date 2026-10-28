@@ -1,9 +1,7 @@
 import SceneKit
-import ModelIO
 import ARKit
 import simd
 
-// MARK: - DepthFrame
 struct DepthFrame {
     let width:  Int
     let height: Int
@@ -15,482 +13,604 @@ struct DepthFrame {
     let cy: Float
 }
 
-// MARK: - MeshBuilder
+// KinectFusion-style projective TSDF
+// For each voxel, project into camera, look up depth, compute SDF
+// Based on Newcombe et al. 2011 and Curless & Levoy 1996
+class LiveTSDF {
+
+    // Faithful port of andyzeng/tsdf-fusion-python (TSDFVolume.integrate + marching cubes at level 0).
+    private(set) var voxelSize: Float = 0.003
+    private var truncMargin: Float = 0.015
+    private var zMin: Float = 0.10
+    private var zMax: Float = 0.45
+    private let obsWeight: Float = 1.0
+
+    private var tsdf:    [Float] = []
+    private var weights: [Float] = []
+    private var colors:  [SIMD3<Float>] = []
+    private var nx = 0, ny = 0, nz = 0
+    private var volOrigin = SIMD3<Float>.zero
+    private(set) var initialised = false
+    private(set) var lastGeometry: SCNGeometry?
+
+    func initialise(frames: [DepthFrame], step: Int = 2) {
+        var samples = [Float]()
+        for f in frames {
+            let w = f.width, h = f.height
+            for r in (h * 3 / 8)..<(h * 5 / 8) {
+                for c in (w * 3 / 8)..<(w * 5 / 8) {
+                    let z = f.pixels[r * w + c]
+                    if z > 0.15, z < 0.60, z.isFinite { samples.append(z) }
+                }
+            }
+        }
+        guard samples.count > 200 else {
+            print("[TSDF] init FAILED: only \(samples.count) valid centre pixels (need >200). Hold 20-35cm, foot centred.")
+            initialised = false; return
+        }
+        samples.sort()
+        let ref = samples[samples.count / 2]
+        zMin = max(0.10, ref - 0.08)
+        zMax = ref + 0.12
+
+        var lo = SIMD3<Float>(repeating:  Float.greatestFiniteMagnitude)
+        var hi = SIMD3<Float>(repeating: -Float.greatestFiniteMagnitude)
+        for f in frames {
+            let w = Float(f.width), h = Float(f.height)
+            let pix: [(Float, Float)] = [(0, 0), (w, 0), (0, h), (w, h)]
+            for z in [zMin, zMax] {
+                for (u, v) in pix {
+                    let xc =  (u - f.cx) * z / f.fx
+                    let yc = -(v - f.cy) * z / f.fy
+                    let wp = f.pose * SIMD4<Float>(xc, yc, -z, 1.0)
+                    let p = SIMD3<Float>(wp.x, wp.y, wp.z)
+                    lo = simd_min(lo, p); hi = simd_max(hi, p)
+                }
+            }
+        }
+        let extent = hi - lo
+        var vs: Float = 0.003
+        func gridDims(_ v: Float) -> (Int, Int, Int) {
+            return (max(2, Int(ceil(extent.x / v))), max(2, Int(ceil(extent.y / v))), max(2, Int(ceil(extent.z / v))))
+        }
+        var d = gridDims(vs)
+        while d.0 * d.1 * d.2 > 6_000_000 { vs *= 1.15; d = gridDims(vs) }
+        voxelSize = vs
+        truncMargin = 5.0 * vs
+        nx = d.0; ny = d.1; nz = d.2
+        volOrigin = lo
+        let count = nx * ny * nz
+        tsdf    = [Float](repeating: 1.0, count: count)
+        weights = [Float](repeating: 0.0, count: count)
+        colors  = [SIMD3<Float>](repeating: SIMD3<Float>(0.8, 0.8, 0.8), count: count)
+        print("[TSDF] ref=\(String(format: "%.3f", ref))m window=[\(String(format: "%.3f", zMin)),\(String(format: "%.3f", zMax))] voxel=\(String(format: "%.4f", vs)) grid=\(nx)x\(ny)x\(nz) count=\(count) extent=(\(String(format: "%.3f", extent.x)),\(String(format: "%.3f", extent.y)),\(String(format: "%.3f", extent.z)))")
+        initialised = true
+    }
+
+    func integrate(frame: DepthFrame, colorImage: CVPixelBuffer?, step: Int = 2) {
+        guard initialised else { return }
+        integrateFrame(frame, colorBuffer: colorImage)
+    }
+
+    private func integrateFrame(_ frame: DepthFrame, colorBuffer: CVPixelBuffer?) {
+        let w = frame.width, h = frame.height
+        let fx = frame.fx, fy = frame.fy, cx = frame.cx, cy = frame.cy
+        let invPose = simd_inverse(frame.pose)
+
+        var yBase:    UnsafeMutablePointer<UInt8>? = nil
+        var cbcrBase: UnsafeMutablePointer<UInt8>? = nil
+        var colorW = 0, colorH = 0, yBPR = 0, cbcrBPR = 0
+        if let cb = colorBuffer {
+            CVPixelBufferLockBaseAddress(cb, .readOnly)
+            colorW = CVPixelBufferGetWidth(cb)
+            colorH = CVPixelBufferGetHeight(cb)
+            if CVPixelBufferGetPlaneCount(cb) >= 2 {
+                if let p0 = CVPixelBufferGetBaseAddressOfPlane(cb, 0) { yBase    = p0.assumingMemoryBound(to: UInt8.self) }
+                if let p1 = CVPixelBufferGetBaseAddressOfPlane(cb, 1) { cbcrBase = p1.assumingMemoryBound(to: UInt8.self) }
+                yBPR    = CVPixelBufferGetBytesPerRowOfPlane(cb, 0)
+                cbcrBPR = CVPixelBufferGetBytesPerRowOfPlane(cb, 1)
+            }
+        }
+        defer { if let cb = colorBuffer { CVPixelBufferUnlockBaseAddress(cb, .readOnly) } }
+        let haveColor = (yBase != nil && cbcrBase != nil && colorW > 0)
+        let sx = haveColor ? Float(colorW) / Float(w) : 0
+        let sy = haveColor ? Float(colorH) / Float(h) : 0
+
+        var touched = 0
+        for iz in 0..<nz {
+            for iy in 0..<ny {
+                for ix in 0..<nx {
+                    let wp = volOrigin + voxelSize * SIMD3<Float>(Float(ix), Float(iy), Float(iz))
+                    let ch = invPose * SIMD4<Float>(wp.x, wp.y, wp.z, 1.0)
+                    let pixZ = -ch.z
+                    if pixZ < 0.001 { continue }
+                    let pu = Int((fx * ch.x / pixZ + cx).rounded())
+                    let pv = Int((-fy * ch.y / pixZ + cy).rounded())
+                    if pu < 0 || pu >= w || pv < 0 || pv >= h { continue }
+
+                    let depthVal = frame.pixels[pv * w + pu]
+                    if !(depthVal >= zMin && depthVal <= zMax) { continue }
+
+                    let depthDiff = depthVal - pixZ
+                    if depthDiff < -truncMargin { continue }
+                    let dist = min(1.0, depthDiff / truncMargin)
+
+                    let i = ix + iy * nx + iz * nx * ny
+                    let wOld = weights[i]
+                    let wNew = wOld + obsWeight
+                    tsdf[i]    = (wOld * tsdf[i] + obsWeight * dist) / wNew
+                    weights[i] = wNew
+                    touched += 1
+
+                    if haveColor, let yB = yBase, let cbB = cbcrBase {
+                        let imgX = min(colorW - 1, max(0, Int(Float(pu) * sx)))
+                        let imgY = min(colorH - 1, max(0, Int(Float(pv) * sy)))
+                        let yVal  = Float(yB[imgY * yBPR + imgX]) / 255.0
+                        let cbVal = Float(cbB[(imgY / 2) * cbcrBPR + (imgX & ~1)    ]) / 255.0 - 0.5
+                        let crVal = Float(cbB[(imgY / 2) * cbcrBPR + (imgX & ~1) + 1]) / 255.0 - 0.5
+                        let nc = SIMD3<Float>(
+                            max(0, min(1, yVal + 1.402 * crVal)),
+                            max(0, min(1, yVal - 0.344136 * cbVal - 0.714136 * crVal)),
+                            max(0, min(1, yVal + 1.772 * cbVal)))
+                        colors[i] = (wOld * colors[i] + obsWeight * nc) / wNew
+                    }
+                }
+            }
+        }
+        if touched == 0 { print("[TSDF] integrate: 0 voxels updated this frame (pose/projection mismatch, or nothing inside the depth window)") }
+    }
+
+    func extractMesh() -> SCNGeometry? {
+        guard initialised else { return nil }
+        var verts      = [SIMD3<Float>]()
+        var normals    = [SIMD3<Float>]()
+        var vertColors = [SIMD3<Float>]()
+        var indices    = [UInt32]()
+        MeshBuilder.marchingCubesFaithful(
+            tsdf: tsdf, colors: colors, nx: nx, ny: ny, nz: nz,
+            origin: volOrigin, voxelSize: voxelSize,
+            verts: &verts, normals: &normals, vertColors: &vertColors, indices: &indices)
+        var obs = 0, neg = 0
+        for i in 0..<weights.count where weights[i] > 0 { obs += 1; if tsdf[i] < 0 { neg += 1 } }
+        print("[MESH] verts=\(verts.count) tris=\(indices.count / 3) observedVoxels=\(obs) negativeVoxels=\(neg)")
+        guard verts.count > 10, indices.count > 0 else { return nil }
+        let geo = MeshBuilder.buildSCNGeometryColored(
+            vertices: verts, normals: normals, vertColors: vertColors, indices: indices)
+        lastGeometry = geo
+        return geo
+    }
+
+    func reset() {
+        tsdf = []; weights = []; colors = []
+        nx = 0; ny = 0; nz = 0; volOrigin = .zero; initialised = false; lastGeometry = nil
+    }
+}
+
 struct MeshBuilder {
 
-    // fusionRadius: world-space cell size in metres.
-    // All depth readings within the same cell are averaged into one vertex.
-    // 0.002 = 2mm (maximum detail, some noise)
-    // 0.0025 = 2.5mm (default — good balance for foot scanning)
-    // 0.003 = 3mm (smoother, slight detail loss)
-    static let fusionRadius: Float = 0.0015
-
-    static func buildMesh(from frames: [DepthFrame],
-                          step: Int = 2,
-                          footSide: String = "left") -> SCNGeometry? {
-        guard !frames.isEmpty else { return nil }
-
-        struct Accumulator {
-            var sum: SIMD3<Float>
-            var count: Int
+    static func marchingCubesColored(
+        tsdf: [Float], weights: [Float], voxelColors: [SIMD3<Float>],
+        nx: Int, ny: Int, nz: Int,
+        minPt: SIMD3<Float>, voxelSize: Float,
+        verts: inout [SIMD3<Float>], vertColors: inout [SIMD3<Float>],
+        indices: inout [UInt32])
+    {
+        let isoVal: Float = 0.0
+        func idx(_ x:Int,_ y:Int,_ z:Int)->Int { x + y*nx + z*nx*ny }
+        func voxColor(_ x:Int,_ y:Int,_ z:Int)->SIMD3<Float> {
+            let i=idx(x,y,z); return voxelColors.indices.contains(i) ? voxelColors[i] : .zero
         }
-        var cellMap = [SIMD3<Int32>: Accumulator]()
-
-        func hashKey(_ p: SIMD3<Float>) -> SIMD3<Int32> {
-            SIMD3<Int32>(Int32(floor(p.x / fusionRadius)),
-                         Int32(floor(p.y / fusionRadius)),
-                         Int32(floor(p.z / fusionRadius)))
+        var edgeTable = [Int](repeating:0, count:256)
+        var triTable  = [[Int]](repeating:[], count:256)
+        buildMarchingCubesTables(edgeTable: &edgeTable, triTable: &triTable)
+        var edgeVerts = [String: UInt32]()
+        func getOrAdd(_ p0: SIMD3<Float>,_ p1: SIMD3<Float>,_ c0: SIMD3<Float>,_ c1: SIMD3<Float>,_ v0: Float,_ v1: Float) -> UInt32 {
+            let key = "\(p0.x),\(p0.y),\(p0.z)-\(p1.x),\(p1.y),\(p1.z)"
+            if let existing = edgeVerts[key] { return existing }
+            let denom = v1 - v0
+            let t: Float = abs(denom) > 1e-9 ? (isoVal - v0) / denom : 0.5
+            let pt = p0 + t * (p1 - p0)
+            let cl = c0 + t * (c1 - c0)
+            let idx32 = UInt32(verts.count)
+            verts.append(pt); vertColors.append(cl)
+            edgeVerts[key] = idx32
+            return idx32
         }
-
-        // Pass 1: accumulate all depth readings into cells
-        for frame in frames {
-            let w = frame.width, h = frame.height
-            let pixels = frame.pixels
-            let pose   = frame.pose
-            let fx = frame.fx, fy = frame.fy
-            let cx = frame.cx, cy = frame.cy
-
-            func unproject(col: Int, row: Int) -> SIMD3<Float>? {
-                let z = pixels[row * w + col]
-                guard z > 0.05, z < 0.40, z.isFinite else { return nil }
-                let xc = (Float(col) - cx) * z / fx
-                let yc = -(Float(row) - cy) * z / fy
-                let angle = atan2(sqrt(xc*xc + yc*yc), z)
-                guard angle < 0.5 else { return nil }
-                let cam = SIMD4<Float>(xc, yc, -z, 1.0)
-                let world = pose * cam
-                return SIMD3<Float>(world.x, world.y, world.z)
-            }
-
-            var r = 0
-            while r < h {
-                var c = 0
-                while c < w {
-                    if let p = unproject(col: c, row: r) {
-                        let key = hashKey(p)
-                        if var acc = cellMap[key] {
-                            acc.sum = acc.sum + p
-                            acc.count += 1
-                            cellMap[key] = acc
-                        } else {
-                            cellMap[key] = Accumulator(sum: p, count: 1)
+        for iz in 0..<(nz-1) {
+            for iy in 0..<(ny-1) {
+                for ix in 0..<(nx-1) {
+                    let corners: [(Int,Int,Int)] = [
+                        (ix,iy,iz),(ix+1,iy,iz),(ix+1,iy+1,iz),(ix,iy+1,iz),
+                        (ix,iy,iz+1),(ix+1,iy,iz+1),(ix+1,iy+1,iz+1),(ix,iy+1,iz+1)]
+                    // Only triangulate where at least one corner is observed AND has negative TSDF
+                    // Require at least one corner with weight>=2 and negative TSDF
+                    // AND at least one corner with positive TSDF (real zero crossing)
+                    var hasNeg = false; var hasPos = false; var hasUnobs = false
+                    for (_,(cx,cy,cz)) in corners.enumerated() {
+                        let ii = idx(cx,cy,cz)
+                        if weights[ii] == 0 { hasUnobs = true }
+                        if weights[ii] >= 1 && tsdf[ii] < -0.0005 { hasNeg = true }
+                        if weights[ii] >= 1 && tsdf[ii] > 0.0005 { hasPos = true }
+                    }
+                    guard hasNeg && hasPos && !hasUnobs else { continue }
+                    var cubeIdx = 0
+                    for (i,(cx,cy,cz)) in corners.enumerated() {
+                        let ii = idx(cx,cy,cz)
+                        if weights[ii] >= 2 && tsdf[ii] < isoVal { cubeIdx |= (1<<i) }
+                    }
+                    if edgeTable[cubeIdx] == 0 { continue }
+                    let pts = corners.map { (cx,cy,cz) -> SIMD3<Float> in
+                        minPt + SIMD3<Float>(Float(cx)*voxelSize, Float(cy)*voxelSize, Float(cz)*voxelSize)
+                    }
+                    let vals = corners.map { (cx,cy,cz) -> Float in tsdf[idx(cx,cy,cz)] }
+                    let cols = corners.map { (cx,cy,cz) -> SIMD3<Float> in voxColor(cx,cy,cz) }
+                    let edgePairs = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),(0,4),(1,5),(2,6),(3,7)]
+                    var ev = [UInt32](repeating: 0, count: 12)
+                    for (e,(a,b)) in edgePairs.enumerated() {
+                        if edgeTable[cubeIdx] & (1<<e) != 0 {
+                            ev[e] = getOrAdd(pts[a],pts[b],cols[a],cols[b],vals[a],vals[b])
                         }
                     }
-                    c += step
-                }
-                r += step
-            }
-        }
-
-        guard cellMap.count > 10 else { return nil }
-
-        // Pass 2: averaged vertex positions
-        // Require at least 2 observations to filter single-frame noise spikes
-        var cellVertices = [SIMD3<Int32>: UInt32]()
-        var allVerts = [SIMD3<Float>]()
-
-        for (key, acc) in cellMap {
-            guard acc.count >= 2 else { continue }
-            let avgPos = acc.sum / Float(acc.count)
-            let idx = UInt32(allVerts.count)
-            allVerts.append(avgPos)
-            cellVertices[key] = idx
-        }
-
-        guard allVerts.count > 10 else { return nil }
-
-        // Pass 3: triangulate by connecting adjacent occupied cells
-        let maxEdge: Float = fusionRadius * 4.0
-        var allIndices = [UInt32]()
-
-        // Walk all occupied cells, emit triangles with right/down/diagonal neighbors
-        for (key, i0) in cellVertices {
-            let right    = SIMD3<Int32>(key.x + 1, key.y,     key.z)
-            let down     = SIMD3<Int32>(key.x,     key.y + 1, key.z)
-            let diagRD   = SIMD3<Int32>(key.x + 1, key.y + 1, key.z)
-            let diagFwd  = SIMD3<Int32>(key.x,     key.y,     key.z + 1)
-            let rightFwd = SIMD3<Int32>(key.x + 1, key.y,     key.z + 1)
-            let downFwd  = SIMD3<Int32>(key.x,     key.y + 1, key.z + 1)
-
-            let p0 = allVerts[Int(i0)]
-
-            // XY plane triangles (main scan surface)
-            if let i1 = cellVertices[right], let i2 = cellVertices[down] {
-                let p1 = allVerts[Int(i1)], p2 = allVerts[Int(i2)]
-                if simd_distance(p0,p1) < maxEdge && simd_distance(p0,p2) < maxEdge && simd_distance(p1,p2) < maxEdge {
-                    allIndices.append(contentsOf: [i0, i1, i2])
-                }
-            }
-            if let i1 = cellVertices[right], let i2 = cellVertices[diagRD], let i3 = cellVertices[down] {
-                let p1 = allVerts[Int(i1)], p2 = allVerts[Int(i2)], p3 = allVerts[Int(i3)]
-                if simd_distance(p1,p2) < maxEdge && simd_distance(p2,p3) < maxEdge && simd_distance(p1,p3) < maxEdge {
-                    allIndices.append(contentsOf: [i1, i2, i3])
-                }
-            }
-
-            // XZ plane triangles (side surfaces)
-            if let i1 = cellVertices[right], let i2 = cellVertices[diagFwd] {
-                let p1 = allVerts[Int(i1)], p2 = allVerts[Int(i2)]
-                if simd_distance(p0,p1) < maxEdge && simd_distance(p0,p2) < maxEdge && simd_distance(p1,p2) < maxEdge {
-                    allIndices.append(contentsOf: [i0, i1, i2])
-                }
-            }
-            if let i1 = cellVertices[diagFwd], let i2 = cellVertices[rightFwd] {
-                let _ = allVerts[Int(i1)], _ = allVerts[Int(i2)]
-                if let i3 = cellVertices[right] {
-                    let p1 = allVerts[Int(i1)], p2 = allVerts[Int(i2)], p3 = allVerts[Int(i3)]
-                    if simd_distance(p1,p2) < maxEdge && simd_distance(p2,p3) < maxEdge && simd_distance(p1,p3) < maxEdge {
-                        allIndices.append(contentsOf: [i1, i2, i3])
-                    }
-                }
-            }
-
-            // YZ plane triangles
-            if let i1 = cellVertices[down], let i2 = cellVertices[diagFwd] {
-                let p1 = allVerts[Int(i1)], p2 = allVerts[Int(i2)]
-                if simd_distance(p0,p1) < maxEdge && simd_distance(p0,p2) < maxEdge && simd_distance(p1,p2) < maxEdge {
-                    allIndices.append(contentsOf: [i0, i1, i2])
-                }
-            }
-            if let i1 = cellVertices[diagFwd], let i2 = cellVertices[downFwd] {
-                if let i3 = cellVertices[down] {
-                    let p1 = allVerts[Int(i1)], p2 = allVerts[Int(i2)], p3 = allVerts[Int(i3)]
-                    if simd_distance(p1,p2) < maxEdge && simd_distance(p2,p3) < maxEdge && simd_distance(p1,p3) < maxEdge {
-                        allIndices.append(contentsOf: [i1, i2, i3])
+                    let tris = triTable[cubeIdx]
+                    var t = 0
+                    while t < tris.count {
+                        indices.append(ev[tris[t]]); indices.append(ev[tris[t+1]]); indices.append(ev[tris[t+2]])
+                        t += 3
                     }
                 }
             }
         }
-
-        guard allIndices.count > 0 else { return nil }
-
-        // Compute normals
-        var allNormals = [SIMD3<Float>](repeating: .zero, count: allVerts.count)
-        let triTotal = allIndices.count / 3
-        for t in 0..<triTotal {
-            let i0 = Int(allIndices[t*3])
-            let i1 = Int(allIndices[t*3+1])
-            let i2 = Int(allIndices[t*3+2])
-            let n = triNormal(allVerts[i0], allVerts[i1], allVerts[i2])
-            allNormals[i0] = allNormals[i0] + n
-            allNormals[i1] = allNormals[i1] + n
-            allNormals[i2] = allNormals[i2] + n
-        }
-        allNormals = allNormals.map { n in
-            let l = simd_length(n)
-            return l > 1e-9 ? n / l : SIMD3<Float>(0, 1, 0)
-        }
-
-        // Gentle smoothing: 2 iterations, lambda 0.2 — blends cell boundaries without collapsing
-        let smoothedVerts = laplacianSmooth(vertices: allVerts, indices: allIndices, iterations: 7, lambda: 0.35)
-        var smoothedNormals = [SIMD3<Float>](repeating: .zero, count: smoothedVerts.count)
-        let triTotal2 = allIndices.count / 3
-        for t in 0..<triTotal2 {
-            let i0 = Int(allIndices[t*3]), i1 = Int(allIndices[t*3+1]), i2 = Int(allIndices[t*3+2])
-            let n = triNormal(smoothedVerts[i0], smoothedVerts[i1], smoothedVerts[i2])
-            smoothedNormals[i0] = smoothedNormals[i0] + n
-            smoothedNormals[i1] = smoothedNormals[i1] + n
-            smoothedNormals[i2] = smoothedNormals[i2] + n
-        }
-        smoothedNormals = smoothedNormals.map { n in let l = simd_length(n); return l > 1e-9 ? n / l : SIMD3<Float>(0, 1, 0) }
-        // Cap the open boundary to make watertight mesh
-        var cappedVerts = smoothedVerts
-        var cappedIndices = allIndices
-        capOpenBoundary(vertices: &cappedVerts, indices: &cappedIndices)
-
-        // Recompute normals after capping
-        var cappedNormals = [SIMD3<Float>](repeating: .zero, count: cappedVerts.count)
-        let triTotal3 = cappedIndices.count / 3
-        for t in 0..<triTotal3 {
-            let i0 = Int(cappedIndices[t*3]), i1 = Int(cappedIndices[t*3+1]), i2 = Int(cappedIndices[t*3+2])
-            let n = triNormal(cappedVerts[i0], cappedVerts[i1], cappedVerts[i2])
-            cappedNormals[i0] = cappedNormals[i0] + n
-            cappedNormals[i1] = cappedNormals[i1] + n
-            cappedNormals[i2] = cappedNormals[i2] + n
-        }
-        cappedNormals = cappedNormals.map { n in let l = simd_length(n); return l > 1e-9 ? n / l : SIMD3<Float>(0, 1, 0) }
-
-        return buildSCNGeometry(vertices: cappedVerts, normals: cappedNormals, indices: cappedIndices)
     }
 
-    // MARK: - Triangle normal
-    private static func laplacianSmooth(vertices: [SIMD3<Float>], indices: [UInt32], iterations: Int, lambda: Float) -> [SIMD3<Float>] {
-        let vCount = vertices.count
-        var verts = vertices
-        var neighbours = [[Int]](repeating: [], count: vCount)
-        let triTotal = indices.count / 3
-        for t in 0..<triTotal {
-            let i0 = Int(indices[t*3]), i1 = Int(indices[t*3+1]), i2 = Int(indices[t*3+2])
-            if !neighbours[i0].contains(i1) { neighbours[i0].append(i1) }
-            if !neighbours[i0].contains(i2) { neighbours[i0].append(i2) }
-            if !neighbours[i1].contains(i0) { neighbours[i1].append(i0) }
-            if !neighbours[i1].contains(i2) { neighbours[i1].append(i2) }
-            if !neighbours[i2].contains(i0) { neighbours[i2].append(i0) }
-            if !neighbours[i2].contains(i1) { neighbours[i2].append(i1) }
+    // Plain marching cubes at level 0 over the WHOLE volume (skimage.measure.marching_cubes, as in andyzeng's get_mesh)
+    static func marchingCubesFaithful(
+        tsdf: [Float], colors: [SIMD3<Float>],
+        nx: Int, ny: Int, nz: Int,
+        origin: SIMD3<Float>, voxelSize: Float,
+        verts: inout [SIMD3<Float>], normals: inout [SIMD3<Float>],
+        vertColors: inout [SIMD3<Float>], indices: inout [UInt32])
+    {
+        var edgeTable = [Int](repeating: 0, count: 256)
+        var triTable  = [[Int]](repeating: [], count: 256)
+        buildMarchingCubesTables(edgeTable: &edgeTable, triTable: &triTable)
+
+        let cox: [Int] = [0, 1, 1, 0, 0, 1, 1, 0]
+        let coy: [Int] = [0, 0, 1, 1, 0, 0, 1, 1]
+        let coz: [Int] = [0, 0, 0, 0, 1, 1, 1, 1]
+        let ea:  [Int] = [0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3]
+        let eb:  [Int] = [1, 2, 3, 0, 5, 6, 7, 4, 4, 5, 6, 7]
+        let slab = nx * ny
+        func vi(_ x: Int, _ y: Int, _ z: Int) -> Int { return x + y * nx + z * slab }
+        func grad(_ x: Int, _ y: Int, _ z: Int) -> SIMD3<Float> {
+            let x0 = max(x - 1, 0), x1 = min(x + 1, nx - 1)
+            let y0 = max(y - 1, 0), y1 = min(y + 1, ny - 1)
+            let z0 = max(z - 1, 0), z1 = min(z + 1, nz - 1)
+            return SIMD3<Float>(tsdf[vi(x1, y, z)] - tsdf[vi(x0, y, z)],
+                                tsdf[vi(x, y1, z)] - tsdf[vi(x, y0, z)],
+                                tsdf[vi(x, y, z1)] - tsdf[vi(x, y, z0)])
         }
-        for _ in 0..<iterations {
-            var next = verts
-            for i in 0..<vCount {
-                let nb = neighbours[i]
-                guard !nb.isEmpty else { continue }
-                var avg = SIMD3<Float>.zero
-                for j in nb { avg = avg + verts[j] }
-                avg = avg / Float(nb.count)
-                next[i] = verts[i] + lambda * (avg - verts[i])
+
+        var edgeVert = [Int: UInt32]()
+        var ev = [UInt32](repeating: 0, count: 12)
+        var val = [Float](repeating: 0, count: 8)
+
+        for z in 0..<(nz - 1) {
+            for y in 0..<(ny - 1) {
+                for x in 0..<(nx - 1) {
+                    var cubeIdx = 0
+                    for c in 0..<8 {
+                        let v = tsdf[vi(x + cox[c], y + coy[c], z + coz[c])]
+                        val[c] = v
+                        if v < 0 { cubeIdx |= (1 << c) }
+                    }
+                    let edges = edgeTable[cubeIdx]
+                    if edges == 0 { continue }
+
+                    for e in 0..<12 where (edges & (1 << e)) != 0 {
+                        let a = ea[e], b = eb[e]
+                        let ax = x + cox[a], ay = y + coy[a], az = z + coz[a]
+                        let bx = x + cox[b], by = y + coy[b], bz = z + coz[b]
+                        let lx = min(ax, bx), ly = min(ay, by), lz = min(az, bz)
+                        let axis = (ax != bx) ? 0 : ((ay != by) ? 1 : 2)
+                        let key = vi(lx, ly, lz) * 3 + axis
+                        if let existing = edgeVert[key] { ev[e] = existing; continue }
+
+                        let v0 = val[a], v1 = val[b]
+                        let denom = v1 - v0
+                        let t: Float = abs(denom) > 1e-9 ? (0 - v0) / denom : 0.5
+                        let pa = SIMD3<Float>(Float(ax), Float(ay), Float(az))
+                        let pb = SIMD3<Float>(Float(bx), Float(by), Float(bz))
+                        let pos = origin + voxelSize * (pa + t * (pb - pa))
+                        let ga = grad(ax, ay, az), gb = grad(bx, by, bz)
+                        var n = ga + t * (gb - ga)
+                        let nl = simd_length(n)
+                        n = nl > 1e-9 ? n / nl : SIMD3<Float>(0, 1, 0)
+                        let nearest = t < 0.5 ? vi(ax, ay, az) : vi(bx, by, bz)
+
+                        let id = UInt32(verts.count)
+                        verts.append(pos); normals.append(n); vertColors.append(colors[nearest])
+                        edgeVert[key] = id
+                        ev[e] = id
+                    }
+
+                    let tri = triTable[cubeIdx]
+                    var k = 0
+                    while k + 2 < tri.count {
+                        let i0 = ev[tri[k]], i1 = ev[tri[k + 1]], i2 = ev[tri[k + 2]]
+                        k += 3
+                        if i0 == i1 || i1 == i2 || i0 == i2 { continue }
+                        let p0 = verts[Int(i0)], p1 = verts[Int(i1)], p2 = verts[Int(i2)]
+                        let gn = simd_cross(p1 - p0, p2 - p0)
+                        let vn = normals[Int(i0)] + normals[Int(i1)] + normals[Int(i2)]
+                        if simd_dot(gn, vn) >= 0 {
+                            indices.append(i0); indices.append(i1); indices.append(i2)
+                        } else {
+                            indices.append(i0); indices.append(i2); indices.append(i1)
+                        }
+                    }
+                }
             }
-            verts = next
         }
-        return verts
     }
 
-    private static func triNormal(_ a: SIMD3<Float>,
-                                   _ b: SIMD3<Float>,
-                                   _ c: SIMD3<Float>) -> SIMD3<Float> {
-        let n = simd_cross(b - a, c - a)
-        let l = simd_length(n)
-        return l > 1e-9 ? n / l : SIMD3<Float>(0, 1, 0)
-    }
-
-
-
-    // MARK: - MDL Surface Reconstruction
-    private static func reconstructWithMDL(points: [SIMD3<Float>]) -> MDLMesh? {
-        guard points.count > 10 else { return nil }
-
-        // Build MDLMesh from point cloud using MDLVoxelArray
-        let allocator = MDLMeshBufferDataAllocator()
-
-        // Create vertex buffer from points
-        var floatData = [Float]()
-        floatData.reserveCapacity(points.count * 3)
-        for p in points { floatData.append(p.x); floatData.append(p.y); floatData.append(p.z) }
-        let vertexData = Data(bytes: floatData, count: floatData.count * MemoryLayout<Float>.size)
-        let vertexBuffer = allocator.newBuffer(with: vertexData, type: .vertex)
-
-        let vertexDescriptor = MDLVertexDescriptor()
-        vertexDescriptor.attributes[0] = MDLVertexAttribute(
-            name: MDLVertexAttributePosition,
-            format: .float3,
-            offset: 0,
-            bufferIndex: 0)
-        vertexDescriptor.layouts[0] = MDLVertexBufferLayout(stride: MemoryLayout<Float>.size * 3)
-
-        let pointMesh = MDLMesh(vertexBuffer: vertexBuffer,
-                                vertexCount: points.count,
-                                descriptor: vertexDescriptor,
-                                submeshes: [])
-
-        // Use voxel array to reconstruct watertight surface
-        // voxelDimensions controls resolution — smaller = more detail but slower
-        var bounds = MDLAxisAlignedBoundingBox(maxBounds: vector_float3(0,0,0), minBounds: vector_float3(0,0,0))
-        bounds = pointMesh.boundingBox
-        let extent = bounds.maxBounds - bounds.minBounds
-        let maxExtent = max(extent.x, max(extent.y, extent.z))
-        let voxelCount: Int32 = 128  // 64x64x64 voxel grid — good balance of quality/speed
-        let voxelSize = maxExtent / Float(voxelCount)
-
-        guard let voxelArray = MDLVoxelArray(asset: MDLAsset(), divisions: voxelCount, patchRadius: 0) as? MDLVoxelArray else {
-            // Fallback: return nil, caller will handle
-            return nil
+    static func capOpenBoundaryPublic(vertices: inout [SIMD3<Float>], indices: inout [UInt32]) {
+        var edgeCount = [String: Int]()
+        var edgeVerts  = [String: (UInt32,UInt32)]()
+        for t in 0..<(indices.count/3) {
+            let a=indices[t*3],b=indices[t*3+1],c=indices[t*3+2]
+            for (e0,e1) in [(a,b),(b,c),(c,a)] {
+                let k = e0<e1 ? "\(e0)-\(e1)" : "\(e1)-\(e0)"
+                edgeCount[k, default:0] += 1
+                edgeVerts[k] = (e0,e1)
+            }
         }
-        _ = voxelSize  // suppress unused warning
-
-        // Generate mesh from voxels
-        let reconstructed = voxelArray.mesh(using: allocator)
-        reconstructed?.addNormals(withAttributeNamed: MDLVertexAttributeNormal, creaseThreshold: 0.5)
-        return reconstructed
-    }
-
-    // MARK: - Cap open boundary
-    // Finds the largest open boundary loop and closes it with a flat fan cap
-    private static func capOpenBoundary(vertices: inout [SIMD3<Float>], indices: inout [UInt32]) {
-        // Build edge->triangle count map
-        var edgeCount = [SIMD2<Int32>: Int]()
-        let triCount = indices.count / 3
-        for t in 0..<triCount {
-            let i0 = Int32(indices[t*3]), i1 = Int32(indices[t*3+1]), i2 = Int32(indices[t*3+2])
-            let edges = [SIMD2<Int32>(min(i0,i1), max(i0,i1)),
-                         SIMD2<Int32>(min(i1,i2), max(i1,i2)),
-                         SIMD2<Int32>(min(i0,i2), max(i0,i2))]
-            for e in edges { edgeCount[e, default: 0] += 1 }
+        var boundaryAdj = [UInt32:[UInt32]]()
+        for (k,cnt) in edgeCount where cnt==1 {
+            let (a,b) = edgeVerts[k]!
+            boundaryAdj[a, default:[]].append(b)
+            boundaryAdj[b, default:[]].append(a)
         }
-
-        // Collect boundary edges (shared by only 1 triangle)
-        var boundaryEdges = [(Int32, Int32)]()
-        for (e, c) in edgeCount where c == 1 {
-            boundaryEdges.append((e.x, e.y))
-        }
-        guard boundaryEdges.count > 2 else { return }
-
-        // Build adjacency for boundary loop walking
-        var adj = [Int32: [Int32]]()
-        for (a, b) in boundaryEdges {
-            adj[a, default: []].append(b)
-            adj[b, default: []].append(a)
-        }
-
-        // Walk largest boundary loop
-        var loops = [[Int32]]()
-        var visited = Set<Int32>()
-        for (start, _) in adj where !visited.contains(start) {
-            var loop = [Int32]()
-            var cur = start
-            var prev: Int32 = -1
+        guard !boundaryAdj.isEmpty else { return }
+        var visited = Set<UInt32>()
+        var loops = [[UInt32]]()
+        for start in boundaryAdj.keys {
+            guard !visited.contains(start) else { continue }
+            var loop=[UInt32](); var cur=start; var prev: UInt32? = nil
             while true {
-                if visited.contains(cur) { break }
-                visited.insert(cur)
-                loop.append(cur)
-                let neighbors = adj[cur] ?? []
-                let next = neighbors.first { $0 != prev }
-                if next == nil { break }
-                prev = cur
-                cur = next!
+                loop.append(cur); visited.insert(cur)
+                guard let neighbors=boundaryAdj[cur] else { break }
+                let nxt = neighbors.first(where:{$0 != prev && !visited.contains($0)})
+                if let n=nxt { prev=cur; cur=n } else { break }
             }
             if loop.count > 2 { loops.append(loop) }
         }
-        guard let loop = loops.max(by: { $0.count < $1.count }), loop.count > 2 else { return }
-
-        // Compute centroid of loop
+        guard let bigLoop = loops.max(by:{$0.count < $1.count}) else { return }
         var centroid = SIMD3<Float>.zero
-        for idx in loop { centroid = centroid + vertices[Int(idx)] }
-        centroid = centroid / Float(loop.count)
-
-        // Add centroid as new vertex
-        let capIdx = UInt32(vertices.count)
+        for i in bigLoop { centroid += vertices[Int(i)] }
+        centroid /= Float(bigLoop.count)
+        let cIdx = UInt32(vertices.count)
         vertices.append(centroid)
-
-        // Fan triangulate — determine winding by checking normal faces outward
-        let i0 = loop[0], i1 = loop[1]
-        let v0 = vertices[Int(i0)], v1 = vertices[Int(i1)]
-        let edge = v1 - v0
-        let toCenter = centroid - v0
-        let testNormal = simd_cross(edge, toCenter)
-        // We want cap normal pointing away from mesh center
-        var meshCenter = SIMD3<Float>.zero
-        for v in vertices { meshCenter = meshCenter + v }
-        meshCenter = meshCenter / Float(vertices.count)
-        let outward = centroid - meshCenter
-        let flip = simd_dot(testNormal, outward) < 0
-
-        for i in 0..<loop.count {
-            let a = loop[i]
-            let b = loop[(i + 1) % loop.count]
-            if flip {
-                indices.append(contentsOf: [capIdx, UInt32(b), UInt32(a)])
-            } else {
-                indices.append(contentsOf: [capIdx, UInt32(a), UInt32(b)])
-            }
+        for i in 0..<bigLoop.count {
+            let a=bigLoop[i], b=bigLoop[(i+1)%bigLoop.count]
+            indices.append(a); indices.append(cIdx); indices.append(b)
         }
     }
 
-    // MARK: - Build SCNGeometry
-    private static func buildSCNGeometry(vertices: [SIMD3<Float>],
-                                          normals:  [SIMD3<Float>],
-                                          indices:  [UInt32]) -> SCNGeometry {
-        let vStride = MemoryLayout<SIMD3<Float>>.stride
+    static func triNormalPublic(_ a: SIMD3<Float>,_ b: SIMD3<Float>,_ c: SIMD3<Float>) -> SIMD3<Float> {
+        simd_normalize(simd_cross(b-a, c-a))
+    }
 
-        let vertData = Data(bytes: vertices, count: vertices.count * vStride)
-        let vertSrc  = SCNGeometrySource(data: vertData,
-                                         semantic: .vertex,
-                                         vectorCount: vertices.count,
-                                         usesFloatComponents: true,
-                                         componentsPerVector: 3,
-                                         bytesPerComponent: 4,
-                                         dataOffset: 0,
-                                         dataStride: vStride)
-
-        let normList = normals.map { n -> SIMD3<Float> in n.z < 0 ? -n : n }
-        let normData = Data(bytes: normList, count: normList.count * vStride)
-        let normSrc  = SCNGeometrySource(data: normData,
-                                         semantic: .normal,
-                                         vectorCount: normList.count,
-                                         usesFloatComponents: true,
-                                         componentsPerVector: 3,
-                                         bytesPerComponent: 4,
-                                         dataOffset: 0,
-                                         dataStride: vStride)
-
-        let idxData = Data(bytes: indices, count: indices.count * MemoryLayout<UInt32>.size)
-        let element = SCNGeometryElement(data: idxData,
-                                         primitiveType: .triangles,
-                                         primitiveCount: indices.count / 3,
-                                         bytesPerIndex: MemoryLayout<UInt32>.size)
-
-        let geo = SCNGeometry(sources: [vertSrc, normSrc], elements: [element])
-        let mat = SCNMaterial()
-        mat.diffuse.contents  = UIColor(red: 0.93, green: 0.82, blue: 0.72, alpha: 1)
-        mat.specular.contents = UIColor.white
-        mat.shininess         = 0.3
-        mat.isDoubleSided     = true
+    static func buildSCNGeometryColored(
+        vertices: [SIMD3<Float>], normals: [SIMD3<Float>],
+        vertColors: [SIMD3<Float>], indices: [UInt32]) -> SCNGeometry
+    {
+        // SIMD3<Float> is 16 bytes in memory (x,y,z + padding) but SceneKit is told 12 bytes per vertex,
+        // so pack tightly as x,y,z floats.
+        func pack(_ a: [SIMD3<Float>]) -> Data {
+            var f = [Float]()
+            f.reserveCapacity(a.count * 3)
+            for v in a { f.append(v.x); f.append(v.y); f.append(v.z) }
+            return f.withUnsafeBytes { Data($0) }
+        }
+        let vData = pack(vertices)
+        let nData = pack(normals)
+        let cData = pack(vertColors)
+        let iData = indices.withUnsafeBytes   { Data($0) }
+        let vSrc  = SCNGeometrySource(data:vData, semantic:.vertex,   vectorCount:vertices.count,  usesFloatComponents:true, componentsPerVector:3, bytesPerComponent:4, dataOffset:0, dataStride:12)
+        let nSrc  = SCNGeometrySource(data:nData, semantic:.normal,   vectorCount:normals.count,   usesFloatComponents:true, componentsPerVector:3, bytesPerComponent:4, dataOffset:0, dataStride:12)
+        let cSrc  = SCNGeometrySource(data:cData, semantic:.color,    vectorCount:vertColors.count,usesFloatComponents:true, componentsPerVector:3, bytesPerComponent:4, dataOffset:0, dataStride:12)
+        let elem  = SCNGeometryElement(data:iData, primitiveType:.triangles, primitiveCount:indices.count/3, bytesPerIndex:4)
+        let geo   = SCNGeometry(sources:[vSrc,nSrc,cSrc], elements:[elem])
+        let mat   = SCNMaterial()
+        mat.lightingModel = .physicallyBased
+        mat.diffuse.contents  = UIColor.white
+        mat.roughness.contents = 0.6
+        mat.metalness.contents = 0.0
         geo.materials = [mat]
         return geo
     }
 
-    // MARK: - STL Export
-    static func exportSTL(from geometry: SCNGeometry, footSide: String = "left") -> URL? {
-        guard let vertSrc = geometry.sources(for: .vertex).first,
-              let element = geometry.elements.first else { return nil }
-
-        let vCount = vertSrc.vectorCount
-        var verts  = [SIMD3<Float>](repeating: .zero, count: vCount)
-        vertSrc.data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) in
-            let floats = ptr.bindMemory(to: Float.self)
-            let stride = vertSrc.dataStride / MemoryLayout<Float>.size
-            let offset = vertSrc.dataOffset / MemoryLayout<Float>.size
-            for i in 0..<vCount {
-                let base = offset + i * stride
-                verts[i] = SIMD3(floats[base], floats[base+1], floats[base+2])
+    static func exportSTL(from geometry: SCNGeometry, footSide: String) -> URL? {
+        guard let vSrc = geometry.sources(for:.vertex).first,
+              let elem  = geometry.elements.first else { return nil }
+        var verts = [SIMD3<Float>]()
+        let vData  = vSrc.data
+        let stride = vSrc.dataStride, offset = vSrc.dataOffset
+        for i in 0..<vSrc.vectorCount {
+            let base = i*stride+offset
+            var v = SIMD3<Float>.zero
+            vData.withUnsafeBytes { ptr in
+                v.x = ptr.load(fromByteOffset:base,   as:Float.self)
+                v.y = ptr.load(fromByteOffset:base+4, as:Float.self)
+                v.z = ptr.load(fromByteOffset:base+8, as:Float.self)
             }
+            verts.append(v)
         }
-
-        var triangles = [(SIMD3<Float>, SIMD3<Float>, SIMD3<Float>)]()
-        element.data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) in
-            if element.bytesPerIndex == 4 {
-                let idx = ptr.bindMemory(to: UInt32.self)
-                for t in 0..<element.primitiveCount {
-                    let a = Int(idx[t*3]), b = Int(idx[t*3+1]), c = Int(idx[t*3+2])
-                    if a < verts.count && b < verts.count && c < verts.count {
-                        triangles.append((verts[a], verts[b], verts[c]))
-                    }
-                }
-            } else if element.bytesPerIndex == 2 {
-                let idx = ptr.bindMemory(to: UInt16.self)
-                for t in 0..<element.primitiveCount {
-                    let a = Int(idx[t*3]), b = Int(idx[t*3+1]), c = Int(idx[t*3+2])
-                    if a < verts.count && b < verts.count && c < verts.count {
-                        triangles.append((verts[a], verts[b], verts[c]))
-                    }
+        var tris = [SIMD3<UInt32>]()
+        let iData = elem.data; let bpi = elem.bytesPerIndex
+        for t in 0..<elem.primitiveCount {
+            var tri = SIMD3<UInt32>.zero
+            iData.withUnsafeBytes { ptr in
+                if bpi==4 {
+                    tri.x = ptr.load(fromByteOffset:(t*3+0)*4, as:UInt32.self)
+                    tri.y = ptr.load(fromByteOffset:(t*3+1)*4, as:UInt32.self)
+                    tri.z = ptr.load(fromByteOffset:(t*3+2)*4, as:UInt32.self)
+                } else {
+                    tri.x = UInt32(ptr.load(fromByteOffset:(t*3+0)*2, as:UInt16.self))
+                    tri.y = UInt32(ptr.load(fromByteOffset:(t*3+1)*2, as:UInt16.self))
+                    tri.z = UInt32(ptr.load(fromByteOffset:(t*3+2)*2, as:UInt16.self))
                 }
             }
+            tris.append(tri)
         }
-        guard !triangles.isEmpty else { return nil }
-
-        let ts  = Int(Date().timeIntervalSince1970)
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let url = dir.appendingPathComponent("scan_\(footSide)_\(ts).stl")
-
-        var data = Data(count: 80)
-        var count = UInt32(triangles.count)
-        withUnsafeBytes(of: &count) { data.append(contentsOf: $0) }
-
-        func appendFloat(_ f: Float) {
-            var v = f; withUnsafeBytes(of: &v) { data.append(contentsOf: $0) }
+        var stl = "solid foot\n"
+        for tri in tris {
+            let a=verts[Int(tri.x)],b=verts[Int(tri.y)],c=verts[Int(tri.z)]
+            let n=simd_normalize(simd_cross(b-a,c-a))
+            stl += "  facet normal \(n.x) \(n.y) \(n.z)\n    outer loop\n"
+            stl += "      vertex \(a.x) \(a.y) \(a.z)\n"
+            stl += "      vertex \(b.x) \(b.y) \(b.z)\n"
+            stl += "      vertex \(c.x) \(c.y) \(c.z)\n"
+            stl += "    endloop\n  endfacet\n"
         }
-        for (a, b, c) in triangles {
-            let raw = simd_cross(b - a, c - a)
-            let len = simd_length(raw)
-            let n   = len > 0 ? raw / len : SIMD3<Float>(0, 0, 1)
-            for v in [n, a, b, c] { appendFloat(v.x); appendFloat(v.y); appendFloat(v.z) }
-            var attr: UInt16 = 0
-            withUnsafeBytes(of: &attr) { data.append(contentsOf: $0) }
-        }
+        stl += "endsolid foot\n"
+        let dir = FileManager.default.urls(for:.documentDirectory, in:.userDomainMask)[0]
+        let url = dir.appendingPathComponent("scan_\(footSide).stl")
+        try? stl.write(to:url, atomically:true, encoding:.utf8)
+        return url
+    }
 
-        do {
-            try data.write(to: url)
-            return url
-        } catch {
-            print("STL write error: \(error)")
-            return nil
-        }
+    private static func buildMarchingCubesTables(edgeTable: inout [Int], triTable: inout [[Int]]) {
+        edgeTable[0]=0x000;edgeTable[1]=0x109;edgeTable[2]=0x203;edgeTable[3]=0x30a
+        edgeTable[4]=0x406;edgeTable[5]=0x50f;edgeTable[6]=0x605;edgeTable[7]=0x70c
+        edgeTable[8]=0x80c;edgeTable[9]=0x905;edgeTable[10]=0xa0f;edgeTable[11]=0xb06
+        edgeTable[12]=0xc0a;edgeTable[13]=0xd03;edgeTable[14]=0xe09;edgeTable[15]=0xf00
+        edgeTable[16]=0x190;edgeTable[17]=0x099;edgeTable[18]=0x393;edgeTable[19]=0x29a
+        edgeTable[20]=0x596;edgeTable[21]=0x49f;edgeTable[22]=0x795;edgeTable[23]=0x69c
+        edgeTable[24]=0x99c;edgeTable[25]=0x895;edgeTable[26]=0xb9f;edgeTable[27]=0xa96
+        edgeTable[28]=0xd9a;edgeTable[29]=0xc93;edgeTable[30]=0xf99;edgeTable[31]=0xe90
+        edgeTable[32]=0x230;edgeTable[33]=0x339;edgeTable[34]=0x033;edgeTable[35]=0x13a
+        edgeTable[36]=0x636;edgeTable[37]=0x73f;edgeTable[38]=0x435;edgeTable[39]=0x53c
+        edgeTable[40]=0xa3c;edgeTable[41]=0xb35;edgeTable[42]=0x83f;edgeTable[43]=0x936
+        edgeTable[44]=0xe3a;edgeTable[45]=0xf33;edgeTable[46]=0xc39;edgeTable[47]=0xd30
+        edgeTable[48]=0x3a0;edgeTable[49]=0x2a9;edgeTable[50]=0x1a3;edgeTable[51]=0x0aa
+        edgeTable[52]=0x7a6;edgeTable[53]=0x6af;edgeTable[54]=0x5a5;edgeTable[55]=0x4ac
+        edgeTable[56]=0xbac;edgeTable[57]=0xaa5;edgeTable[58]=0x9af;edgeTable[59]=0x8a6
+        edgeTable[60]=0xfaa;edgeTable[61]=0xea3;edgeTable[62]=0xda9;edgeTable[63]=0xca0
+        edgeTable[64]=0x460;edgeTable[65]=0x569;edgeTable[66]=0x663;edgeTable[67]=0x76a
+        edgeTable[68]=0x066;edgeTable[69]=0x16f;edgeTable[70]=0x265;edgeTable[71]=0x36c
+        edgeTable[72]=0xc6c;edgeTable[73]=0xd65;edgeTable[74]=0xe6f;edgeTable[75]=0xf66
+        edgeTable[76]=0x86a;edgeTable[77]=0x963;edgeTable[78]=0xa69;edgeTable[79]=0xb60
+        edgeTable[80]=0x5f0;edgeTable[81]=0x4f9;edgeTable[82]=0x7f3;edgeTable[83]=0x6fa
+        edgeTable[84]=0x1f6;edgeTable[85]=0x0ff;edgeTable[86]=0x3f5;edgeTable[87]=0x2fc
+        edgeTable[88]=0xdfc;edgeTable[89]=0xcf5;edgeTable[90]=0xfff;edgeTable[91]=0xef6
+        edgeTable[92]=0x9fa;edgeTable[93]=0x8f3;edgeTable[94]=0xbf9;edgeTable[95]=0xaf0
+        edgeTable[96]=0x650;edgeTable[97]=0x759;edgeTable[98]=0x453;edgeTable[99]=0x55a
+        edgeTable[100]=0x256;edgeTable[101]=0x35f;edgeTable[102]=0x055;edgeTable[103]=0x15c
+        edgeTable[104]=0xe5c;edgeTable[105]=0xf55;edgeTable[106]=0xc5f;edgeTable[107]=0xd56
+        edgeTable[108]=0xa5a;edgeTable[109]=0xb53;edgeTable[110]=0x859;edgeTable[111]=0x950
+        edgeTable[112]=0x7c0;edgeTable[113]=0x6c9;edgeTable[114]=0x5c3;edgeTable[115]=0x4ca
+        edgeTable[116]=0x3c6;edgeTable[117]=0x2cf;edgeTable[118]=0x1c5;edgeTable[119]=0x0cc
+        edgeTable[120]=0xfcc;edgeTable[121]=0xec5;edgeTable[122]=0xdcf;edgeTable[123]=0xcc6
+        edgeTable[124]=0xbca;edgeTable[125]=0xac3;edgeTable[126]=0x9c9;edgeTable[127]=0x8c0
+        edgeTable[128]=0x8c0;edgeTable[129]=0x9c9;edgeTable[130]=0xac3;edgeTable[131]=0xbca
+        edgeTable[132]=0xcc6;edgeTable[133]=0xdcf;edgeTable[134]=0xec5;edgeTable[135]=0xfcc
+        edgeTable[136]=0x0cc;edgeTable[137]=0x1c5;edgeTable[138]=0x2cf;edgeTable[139]=0x3c6
+        edgeTable[140]=0x4ca;edgeTable[141]=0x5c3;edgeTable[142]=0x6c9;edgeTable[143]=0x7c0
+        edgeTable[144]=0x950;edgeTable[145]=0x859;edgeTable[146]=0xb53;edgeTable[147]=0xa5a
+        edgeTable[148]=0xd56;edgeTable[149]=0xc5f;edgeTable[150]=0xf55;edgeTable[151]=0xe5c
+        edgeTable[152]=0x15c;edgeTable[153]=0x055;edgeTable[154]=0x35f;edgeTable[155]=0x256
+        edgeTable[156]=0x55a;edgeTable[157]=0x453;edgeTable[158]=0x759;edgeTable[159]=0x650
+        edgeTable[160]=0xaf0;edgeTable[161]=0xbf9;edgeTable[162]=0x8f3;edgeTable[163]=0x9fa
+        edgeTable[164]=0xef6;edgeTable[165]=0xfff;edgeTable[166]=0xcf5;edgeTable[167]=0xdfc
+        edgeTable[168]=0x2fc;edgeTable[169]=0x3f5;edgeTable[170]=0x0ff;edgeTable[171]=0x1f6
+        edgeTable[172]=0x6fa;edgeTable[173]=0x7f3;edgeTable[174]=0x4f9;edgeTable[175]=0x5f0
+        edgeTable[176]=0xb60;edgeTable[177]=0xa69;edgeTable[178]=0x963;edgeTable[179]=0x86a
+        edgeTable[180]=0xf66;edgeTable[181]=0xe6f;edgeTable[182]=0xd65;edgeTable[183]=0xc6c
+        edgeTable[184]=0x36c;edgeTable[185]=0x265;edgeTable[186]=0x16f;edgeTable[187]=0x066
+        edgeTable[188]=0x76a;edgeTable[189]=0x663;edgeTable[190]=0x569;edgeTable[191]=0x460
+        edgeTable[192]=0xca0;edgeTable[193]=0xda9;edgeTable[194]=0xea3;edgeTable[195]=0xfaa
+        edgeTable[196]=0x8a6;edgeTable[197]=0x9af;edgeTable[198]=0xaa5;edgeTable[199]=0xbac
+        edgeTable[200]=0x4ac;edgeTable[201]=0x5a5;edgeTable[202]=0x6af;edgeTable[203]=0x7a6
+        edgeTable[204]=0x0aa;edgeTable[205]=0x1a3;edgeTable[206]=0x2a9;edgeTable[207]=0x3a0
+        edgeTable[208]=0xd30;edgeTable[209]=0xc39;edgeTable[210]=0xf33;edgeTable[211]=0xe3a
+        edgeTable[212]=0x936;edgeTable[213]=0x83f;edgeTable[214]=0xb35;edgeTable[215]=0xa3c
+        edgeTable[216]=0x53c;edgeTable[217]=0x435;edgeTable[218]=0x73f;edgeTable[219]=0x636
+        edgeTable[220]=0x13a;edgeTable[221]=0x033;edgeTable[222]=0x339;edgeTable[223]=0x230
+        edgeTable[224]=0xe90;edgeTable[225]=0xf99;edgeTable[226]=0xc93;edgeTable[227]=0xd9a
+        edgeTable[228]=0xa96;edgeTable[229]=0xb9f;edgeTable[230]=0x895;edgeTable[231]=0x99c
+        edgeTable[232]=0x69c;edgeTable[233]=0x795;edgeTable[234]=0x49f;edgeTable[235]=0x596
+        edgeTable[236]=0x29a;edgeTable[237]=0x393;edgeTable[238]=0x099;edgeTable[239]=0x190
+        edgeTable[240]=0xf00;edgeTable[241]=0xe09;edgeTable[242]=0xd03;edgeTable[243]=0xc0a
+        edgeTable[244]=0xb06;edgeTable[245]=0xa0f;edgeTable[246]=0x905;edgeTable[247]=0x80c
+        edgeTable[248]=0x70c;edgeTable[249]=0x605;edgeTable[250]=0x50f;edgeTable[251]=0x406
+        edgeTable[252]=0x30a;edgeTable[253]=0x203;edgeTable[254]=0x109;edgeTable[255]=0x000
+        let rawTri: [[Int]] = [
+            [],[0,8,3],[0,1,9],[1,8,3,9,8,1],
+            [1,2,10],[0,8,3,1,2,10],[9,2,10,0,2,9],[2,8,3,2,10,8,10,9,8],
+            [3,11,2],[0,11,2,8,11,0],[1,9,0,2,3,11],[1,11,2,1,9,11,9,8,11],
+            [3,10,1,11,10,3],[0,10,1,0,8,10,8,11,10],[3,9,0,3,11,9,11,10,9],[9,8,10,10,8,11],
+            [4,7,8],[4,3,0,7,3,4],[0,1,9,8,4,7],[4,1,9,4,7,1,7,3,1],
+            [1,2,10,8,4,7],[3,4,7,3,0,4,1,2,10],[9,2,10,9,0,2,8,4,7],[2,10,9,2,9,7,2,7,3,7,9,4],
+            [8,4,7,3,11,2],[11,4,7,11,2,4,2,0,4],[9,0,1,8,4,7,2,3,11],[4,7,11,9,4,11,9,11,2,9,2,1],
+            [3,10,1,3,11,10,7,8,4],[1,11,10,1,4,11,1,0,4,7,11,4],[4,7,8,9,0,11,9,11,10,11,0,3],[4,7,11,4,11,9,9,11,10],
+            [9,5,4],[9,5,4,0,8,3],[0,5,4,1,5,0],[8,5,4,8,3,5,3,1,5],
+            [1,2,10,9,5,4],[3,0,8,1,2,10,4,9,5],[5,2,10,5,4,2,4,0,2],[2,10,5,3,2,5,3,5,4,3,4,8],
+            [9,5,4,2,3,11],[0,11,2,0,8,11,4,9,5],[0,5,4,0,1,5,2,3,11],[2,1,5,2,5,8,2,8,11,4,8,5],
+            [10,3,11,10,1,3,9,5,4],[4,9,5,0,8,1,8,10,1,8,11,10],[5,4,0,5,0,11,5,11,10,11,0,3],[5,4,8,5,8,10,10,8,11],
+            [9,7,8,5,7,9],[9,3,0,9,5,3,5,7,3],[0,7,8,0,1,7,1,5,7],[1,5,3,3,5,7],
+            [9,7,8,9,5,7,10,1,2],[10,1,2,9,5,0,5,3,0,5,7,3],[8,0,2,8,2,5,8,5,7,10,5,2],[2,10,5,2,5,3,3,5,7],
+            [7,9,5,7,8,9,3,11,2],[9,5,7,9,7,2,9,2,0,2,7,11],[2,3,11,0,1,8,1,7,8,1,5,7],[11,2,1,11,1,7,7,1,5],
+            [9,5,8,8,5,7,10,1,3,10,3,11],[5,7,0,5,0,9,7,11,0,1,0,10,11,10,0],[11,10,0,11,0,3,10,5,0,8,0,7,5,7,0],[11,10,5,7,11,5],
+            [10,6,5],[0,8,3,5,10,6],[9,0,1,5,10,6],[1,8,3,1,9,8,5,10,6],
+            [1,6,5,2,6,1],[1,6,5,1,2,6,3,0,8],[9,6,5,9,0,6,0,2,6],[5,9,8,5,8,2,5,2,6,3,2,8],
+            [2,3,11,10,6,5],[11,0,8,11,2,0,10,6,5],[0,1,9,2,3,11,5,10,6],[5,10,6,1,9,2,9,11,2,9,8,11],
+            [6,3,11,6,5,3,5,1,3],[0,8,11,0,11,5,0,5,1,5,11,6],[3,11,6,0,3,6,0,6,5,0,5,9],[6,5,9,6,9,11,11,9,8],
+            [5,10,6,4,7,8],[4,3,0,4,7,3,6,5,10],[1,9,0,5,10,6,8,4,7],[10,6,5,1,9,7,1,7,3,7,9,4],
+            [6,1,2,6,5,1,4,7,8],[1,2,5,5,2,6,3,0,4,3,4,7],[8,4,7,9,0,5,0,6,5,0,2,6],[7,3,9,7,9,4,3,2,9,5,9,6,2,6,9],
+            [3,11,2,7,8,4,10,6,5],[5,10,6,4,7,2,4,2,0,2,7,11],[0,1,9,4,7,8,2,3,11,5,10,6],[9,2,1,9,11,2,9,4,11,7,11,4,5,10,6],
+            [8,4,7,3,11,5,3,5,1,5,11,6],[5,1,11,5,11,6,1,0,11,7,11,4,0,4,11],[0,5,9,0,6,5,0,3,6,11,6,3,8,4,7],[6,5,9,6,9,11,4,7,9,7,11,9],
+            [10,4,9,6,4,10],[4,10,6,4,9,10,0,8,3],[10,0,1,10,6,0,6,4,0],[8,3,1,8,1,6,8,6,4,6,1,10],
+            [1,4,9,1,2,4,2,6,4],[3,0,8,1,2,9,2,4,9,2,6,4],[0,2,4,4,2,6],[8,3,2,8,2,4,4,2,6],
+            [10,4,9,10,6,4,11,2,3],[0,8,2,2,8,11,4,9,10,4,10,6],[3,11,2,0,1,6,0,6,4,6,1,10],[6,4,1,6,1,10,4,8,1,2,1,11,8,11,1],
+            [9,6,4,9,3,6,9,1,3,11,6,3],[8,11,1,8,1,0,11,6,1,9,1,4,6,4,1],[3,11,6,3,6,0,0,6,4],[6,4,8,11,6,8],
+            [7,10,6,7,8,10,8,9,10],[0,7,3,0,10,7,0,9,10,6,7,10],[10,6,7,1,10,7,1,7,8,1,8,0],[10,6,7,10,7,1,1,7,3],
+            [1,2,6,1,6,8,1,8,9,8,6,7],[2,6,9,2,9,1,6,7,9,0,9,3,7,3,9],[7,8,0,7,0,6,6,0,2],[7,3,2,6,7,2],
+            [2,3,11,10,6,8,10,8,9,8,6,7],[2,0,7,2,7,11,0,9,7,6,7,10,9,10,7],[1,8,0,1,7,8,1,10,7,6,7,10,2,3,11],[11,2,1,11,1,7,10,6,1,6,7,1],
+            [8,9,6,8,6,7,9,1,6,11,6,3,1,3,6],[0,9,1,11,6,7],[7,8,0,7,0,6,3,11,0,11,6,0],[7,11,6],
+            [7,6,11],[3,0,8,11,7,6],[0,1,9,11,7,6],[8,1,9,8,3,1,11,7,6],
+            [10,1,2,6,11,7],[1,2,10,3,0,8,6,11,7],[2,9,0,2,10,9,6,11,7],[6,11,7,2,10,3,10,8,3,10,9,8],
+            [7,2,3,6,2,7],[7,0,8,7,6,0,6,2,0],[2,7,6,2,3,7,0,1,9],[1,6,2,1,8,6,1,9,8,8,7,6],
+            [10,7,6,10,1,7,1,3,7],[10,7,6,1,7,10,1,8,7,1,0,8],[0,3,7,0,7,10,0,10,9,6,10,7],[7,6,10,7,10,8,8,10,9],
+            [6,8,4,11,8,6],[3,6,11,3,0,6,0,4,6],[8,6,11,8,4,6,9,0,1],[9,4,6,9,6,3,9,3,1,11,3,6],
+            [6,8,4,6,11,8,2,10,1],[1,2,10,3,0,11,0,6,11,0,4,6],[4,11,8,4,6,11,0,2,9,2,10,9],[10,9,3,10,3,2,9,4,3,11,3,6,4,6,3],
+            [8,2,3,8,4,2,4,6,2],[0,4,2,4,6,2],[1,9,0,2,3,4,2,4,6,4,3,8],[1,9,4,1,4,2,2,4,6],
+            [8,1,3,8,6,1,8,4,6,6,10,1],[10,1,0,10,0,6,6,0,4],[4,6,3,4,3,8,6,10,3,0,3,9,10,9,3],[10,9,4,6,10,4],
+            [4,9,5,7,6,11],[0,8,3,4,9,5,11,7,6],[5,0,1,5,4,0,7,6,11],[11,7,6,8,3,4,3,5,4,3,1,5],
+            [9,5,4,10,1,2,7,6,11],[6,11,7,1,2,10,0,8,3,4,9,5],[7,6,11,5,4,10,4,2,10,4,0,2],[3,4,8,3,5,4,3,2,5,10,5,2,11,7,6],
+            [7,2,3,7,6,2,5,4,9],[9,5,4,0,8,6,0,6,2,6,8,7],[3,6,2,3,7,6,1,5,0,5,4,0],[6,2,8,6,8,7,2,1,8,4,8,5,1,5,8],
+            [9,5,4,10,1,6,1,7,6,1,3,7],[1,6,10,1,7,6,1,0,7,8,7,0,9,5,4],[4,0,10,4,10,5,0,3,10,6,10,7,3,7,10],[7,6,10,7,10,8,5,4,10,4,8,10],
+            [6,9,5,6,11,9,11,8,9],[3,6,11,0,6,3,0,5,6,0,9,5],[0,11,8,0,5,11,0,1,5,5,6,11],[6,11,3,6,3,5,5,3,1],
+            [1,2,10,9,5,11,9,11,8,11,5,6],[0,11,3,0,6,11,0,9,6,5,6,9,1,2,10],[11,8,5,11,5,6,8,0,5,10,5,2,0,2,5],[6,11,3,6,3,5,2,10,3,10,5,3],
+            [5,8,9,5,2,8,5,6,2,3,8,2],[9,5,6,9,6,0,0,6,2],[1,5,8,1,8,0,5,6,8,3,8,2,6,2,8],[1,5,6,2,1,6],
+            [1,3,6,1,6,10,3,8,6,5,6,9,8,9,6],[10,1,0,10,0,6,9,5,0,5,6,0],[0,3,8,5,6,10],[10,5,6],
+            [11,5,10,7,5,11],[11,5,10,11,7,5,8,3,0],[5,11,7,5,10,11,1,9,0],[10,7,5,10,11,7,9,8,1,8,3,1],
+            [11,1,2,11,7,1,7,5,1],[0,8,3,1,2,7,1,7,5,7,2,11],[9,7,5,9,2,7,9,0,2,2,11,7],[7,5,2,7,2,11,5,9,2,3,2,8,9,8,2],
+            [2,5,10,2,3,5,3,7,5],[8,2,0,8,5,2,8,7,5,10,2,5],[9,0,1,5,10,3,5,3,7,3,10,2],[9,8,2,9,2,1,8,7,2,10,2,5,7,5,2],
+            [1,3,5,3,7,5],[0,8,7,0,7,1,1,7,5],[9,0,3,9,3,5,5,3,7],[9,8,7,5,9,7],
+            [5,8,4,5,10,8,10,11,8],[5,0,4,5,11,0,5,10,11,11,3,0],[0,1,9,8,4,10,8,10,11,10,4,5],[10,11,4,10,4,5,11,3,4,9,4,1,3,1,4],
+            [2,5,1,2,8,5,2,11,8,4,5,8],[0,4,11,0,11,3,4,5,11,2,11,1,5,1,11],[0,2,5,0,5,9,2,11,5,4,5,8,11,8,5],[9,4,5,2,11,3],
+            [2,5,10,3,5,2,3,4,5,3,8,4],[5,10,2,5,2,4,4,2,0],[3,10,2,3,5,10,3,8,5,4,5,8,0,1,9],[5,10,2,5,2,4,1,9,2,9,4,2],
+            [8,4,5,8,5,3,3,5,1],[0,4,5,1,0,5],[8,4,5,8,5,3,9,0,5,0,3,5],[9,4,5],
+            [4,11,7,4,9,11,9,10,11],[0,8,3,4,9,7,9,11,7,9,10,11],[1,10,11,1,11,4,1,4,0,7,4,11],[3,1,4,3,4,8,1,10,4,7,4,11,10,11,4],
+            [4,11,7,9,11,4,9,2,11,9,1,2],[9,7,4,9,11,7,9,1,11,2,11,1,0,8,3],[11,7,4,11,4,2,2,4,0],[11,7,4,11,4,2,8,3,4,3,2,4],
+            [2,9,10,2,7,9,2,3,7,7,4,9],[9,10,7,9,7,4,10,2,7,8,7,0,2,0,7],[3,7,10,3,10,2,7,4,10,1,10,0,4,0,10],[1,10,2,8,7,4],
+            [4,9,1,4,1,7,7,1,3],[4,9,1,4,1,7,0,8,1,8,7,1],[4,0,3,7,4,3],[4,8,7],
+            [9,10,8,10,11,8],[3,0,9,3,9,11,11,9,10],[0,1,10,0,10,8,8,10,11],[3,1,10,11,3,10],
+            [1,2,11,1,11,9,9,11,8],[3,0,9,3,9,11,1,2,9,2,11,9],[0,2,11,8,0,11],[3,2,11],
+            [2,3,8,2,8,10,10,8,9],[9,10,2,0,9,2],[2,3,8,2,8,10,0,1,8,1,10,8],[1,10,2],
+            [1,3,8,9,1,8],[0,9,1],[0,3,8],[],
+        ]
+        for (i,t) in rawTri.enumerated() { triTable[i] = t }
     }
 }
