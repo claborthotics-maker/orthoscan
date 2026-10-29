@@ -24,12 +24,19 @@ class LiveTSDF {
     private var zMin: Float = 0.10
     private var zMax: Float = 0.45
     private let obsWeight: Float = 1.0
+    // Clutter filters (added on top of the reference algorithm; tune these two numbers)
+    private let minWeight: Float = 3.0          // voxels observed fewer times than this count as empty
+    private let minPieceFraction: Float = 0.08  // drop mesh pieces smaller than this fraction of the largest piece
+    // Depth clean-up / confidence weighting (added on top of the reference algorithm)
+    private let depthEdgeSpread: Float = 0.015  // reject a pixel if its 3x3 window spans more than this (metres)
+    private let minAngleWeight: Float = 0.15    // floor for the viewing-angle weight
 
     private var tsdf:    [Float] = []
     private var weights: [Float] = []
     private var colors:  [SIMD3<Float>] = []
     private var nx = 0, ny = 0, nz = 0
     private var volOrigin = SIMD3<Float>.zero
+    private var dbgCount = 0
     private(set) var initialised = false
     private(set) var lastGeometry: SCNGeometry?
 
@@ -84,6 +91,8 @@ class LiveTSDF {
         weights = [Float](repeating: 0.0, count: count)
         colors  = [SIMD3<Float>](repeating: SIMD3<Float>(0.8, 0.8, 0.8), count: count)
         print("[TSDF] ref=\(String(format: "%.3f", ref))m window=[\(String(format: "%.3f", zMin)),\(String(format: "%.3f", zMax))] voxel=\(String(format: "%.4f", vs)) grid=\(nx)x\(ny)x\(nz) count=\(count) extent=(\(String(format: "%.3f", extent.x)),\(String(format: "%.3f", extent.y)),\(String(format: "%.3f", extent.z)))")
+        let dbgMax = volOrigin + vs * SIMD3<Float>(Float(nx), Float(ny), Float(nz))
+        print("[VOL] init min=(\(String(format: "%.3f", volOrigin.x)),\(String(format: "%.3f", volOrigin.y)),\(String(format: "%.3f", volOrigin.z))) max=(\(String(format: "%.3f", dbgMax.x)),\(String(format: "%.3f", dbgMax.y)),\(String(format: "%.3f", dbgMax.z)))")
         initialised = true
     }
 
@@ -96,6 +105,8 @@ class LiveTSDF {
         let w = frame.width, h = frame.height
         let fx = frame.fx, fy = frame.fy, cx = frame.cx, cy = frame.cy
         let invPose = simd_inverse(frame.pose)
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let (depthPx, weightPx) = prepareDepth(frame)
 
         var yBase:    UnsafeMutablePointer<UInt8>? = nil
         var cbcrBase: UnsafeMutablePointer<UInt8>? = nil
@@ -116,60 +127,193 @@ class LiveTSDF {
         let sx = haveColor ? Float(colorW) / Float(w) : 0
         let sy = haveColor ? Float(colorH) / Float(h) : 0
 
-        var touched = 0
-        for iz in 0..<nz {
-            for iy in 0..<ny {
-                for ix in 0..<nx {
-                    let wp = volOrigin + voxelSize * SIMD3<Float>(Float(ix), Float(iy), Float(iz))
-                    let ch = invPose * SIMD4<Float>(wp.x, wp.y, wp.z, 1.0)
-                    let pixZ = -ch.z
-                    if pixZ < 0.001 { continue }
-                    let pu = Int((fx * ch.x / pixZ + cx).rounded())
-                    let pv = Int((-fy * ch.y / pixZ + cy).rounded())
-                    if pu < 0 || pu >= w || pv < 0 || pv >= h { continue }
+        // Voxel update, run in parallel over z-slices (every voxel is written by exactly one slice).
+        let gnx = nx, gny = ny, gnz = nz
+        let gOrigin = volOrigin, gVoxel = voxelSize, gTrunc = truncMargin
+        let gZMin = zMin, gZMax = zMax
+        let yB0 = yBase, cb0 = cbcrBase
+        let cW = colorW, cH = colorH, yRow = yBPR, cbRow = cbcrBPR
+        var perSlice = [Int](repeating: 0, count: gnz)
+        tsdf.withUnsafeMutableBufferPointer { tsdfP in
+            weights.withUnsafeMutableBufferPointer { wtsP in
+                colors.withUnsafeMutableBufferPointer { colP in
+                    perSlice.withUnsafeMutableBufferPointer { cntP in
+                        depthPx.withUnsafeBufferPointer { dP in
+                            weightPx.withUnsafeBufferPointer { oP in
+                                DispatchQueue.concurrentPerform(iterations: gnz) { (iz: Int) in
+                                    var cnt = 0
+                                    for iy in 0..<gny {
+                                        for ix in 0..<gnx {
+                                            // andyzeng vox2world: world = vol_origin + voxel_size * voxel_index
+                                            let wp = gOrigin + gVoxel * SIMD3<Float>(Float(ix), Float(iy), Float(iz))
+                                            // andyzeng: cam_pts = inv(cam_pose) @ world_pt
+                                            let ch = invPose * SIMD4<Float>(wp.x, wp.y, wp.z, 1.0)
+                                            // ARKit camera looks down -Z  =>  depth along the optical axis is -z
+                                            let pixZ = -ch.z
+                                            if pixZ < 0.001 { continue }
+                                            // andyzeng cam2pix, with image-v pointing down while ARKit camera-y points up
+                                            let pu = Int((fx * ch.x / pixZ + cx).rounded())
+                                            let pv = Int((-fy * ch.y / pixZ + cy).rounded())
+                                            if pu < 0 || pu >= w || pv < 0 || pv >= h { continue }
 
-                    let depthVal = frame.pixels[pv * w + pu]
-                    if !(depthVal >= zMin && depthVal <= zMax) { continue }
+                                            let depthVal = dP[pv * w + pu]
+                                            // 0 = no reading; the window rejects floor/background (NaN fails both tests)
+                                            if (depthVal >= gZMin && depthVal <= gZMax) == false { continue }
 
-                    let depthDiff = depthVal - pixZ
-                    if depthDiff < -truncMargin { continue }
-                    let dist = min(1.0, depthDiff / truncMargin)
+                                            let depthDiff = depthVal - pixZ
+                                            if depthDiff < -gTrunc { continue }
+                                            let dist = min(1.0, depthDiff / gTrunc)
 
-                    let i = ix + iy * nx + iz * nx * ny
-                    let wOld = weights[i]
-                    let wNew = wOld + obsWeight
-                    tsdf[i]    = (wOld * tsdf[i] + obsWeight * dist) / wNew
-                    weights[i] = wNew
-                    touched += 1
+                                            let i = ix + iy * gnx + iz * gnx * gny
+                                            let obsW = oP[pv * w + pu]
+                                            let wOld = wtsP[i]
+                                            let wNew = wOld + obsW
+                                            tsdfP[i] = (wOld * tsdfP[i] + obsW * dist) / wNew
+                                            wtsP[i] = wNew
+                                            cnt += 1
 
-                    if haveColor, let yB = yBase, let cbB = cbcrBase {
-                        let imgX = min(colorW - 1, max(0, Int(Float(pu) * sx)))
-                        let imgY = min(colorH - 1, max(0, Int(Float(pv) * sy)))
-                        let yVal  = Float(yB[imgY * yBPR + imgX]) / 255.0
-                        let cbVal = Float(cbB[(imgY / 2) * cbcrBPR + (imgX & ~1)    ]) / 255.0 - 0.5
-                        let crVal = Float(cbB[(imgY / 2) * cbcrBPR + (imgX & ~1) + 1]) / 255.0 - 0.5
-                        let nc = SIMD3<Float>(
-                            max(0, min(1, yVal + 1.402 * crVal)),
-                            max(0, min(1, yVal - 0.344136 * cbVal - 0.714136 * crVal)),
-                            max(0, min(1, yVal + 1.772 * cbVal)))
-                        colors[i] = (wOld * colors[i] + obsWeight * nc) / wNew
+                                            if haveColor, let yB = yB0, let cbB = cb0 {
+                                                let imgX = min(cW - 1, max(0, Int(Float(pu) * sx)))
+                                                let imgY = min(cH - 1, max(0, Int(Float(pv) * sy)))
+                                                let yVal  = Float(yB[imgY * yRow + imgX]) / 255.0
+                                                let cbVal = Float(cbB[(imgY / 2) * cbRow + (imgX & ~1)    ]) / 255.0 - 0.5
+                                                let crVal = Float(cbB[(imgY / 2) * cbRow + (imgX & ~1) + 1]) / 255.0 - 0.5
+                                                let nc = SIMD3<Float>(
+                                                    max(0, min(1, yVal + 1.402 * crVal)),
+                                                    max(0, min(1, yVal - 0.344136 * cbVal - 0.714136 * crVal)),
+                                                    max(0, min(1, yVal + 1.772 * cbVal)))
+                                                colP[i] = (wOld * colP[i] + obsW * nc) / wNew
+                                            }
+                                        }
+                                    }
+                                    cntP[iz] = cnt
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+        let touched = perSlice.reduce(0, +)
+        dbgCount += 1
+        if dbgCount % 10 == 1 {
+            let vmin = volOrigin
+            let vmax = volOrigin + voxelSize * SIMD3<Float>(Float(nx), Float(ny), Float(nz))
+            var nValid = 0, nWin = 0, nIn = 0
+            var py = 0
+            while py < h {
+                var px = 0
+                while px < w {
+                    let d = frame.pixels[py * w + px]
+                    if d > 0 {
+                        nValid += 1
+                        if d >= zMin && d <= zMax {
+                            nWin += 1
+                            let pc = SIMD4<Float>((Float(px) - cx) * d / fx, -(Float(py) - cy) * d / fy, -d, 1.0)
+                            let pw = frame.pose * pc
+                            if pw.x >= vmin.x && pw.x <= vmax.x && pw.y >= vmin.y && pw.y <= vmax.y && pw.z >= vmin.z && pw.z <= vmax.z { nIn += 1 }
+                        }
+                    }
+                    px += 4
+                }
+                py += 4
+            }
+            let rawPx = frame.pixels.reduce(0) { $0 + ($1 > 0 ? 1 : 0) }
+            let keptPx = depthPx.reduce(0) { $0 + ($1 > 0 ? 1 : 0) }
+            print("[VOL] f=\(dbgCount) valid=\(nValid) inWindow=\(nWin) inVolume=\(nIn) touched=\(touched) rawPx=\(rawPx) keptPx=\(keptPx) ms=\(Int((CFAbsoluteTimeGetCurrent() - t0) * 1000))")
+        }
         if touched == 0 { print("[TSDF] integrate: 0 voxels updated this frame (pose/projection mismatch, or nothing inside the depth window)") }
+    }
+
+    // Per-frame depth clean-up and per-pixel confidence (added on top of the reference algorithm):
+    //  - 3x3 median over valid neighbours; a pixel with fewer than 4 valid neighbours, or whose 3x3 window spans
+    //    more than depthEdgeSpread (depth edge / flying pixel), is rejected (set to 0 = no reading).
+    //  - weight = (refZ / z)^2 (depth noise grows with distance, capped at 4) * viewing-angle term
+    //    |cos(angle between view ray and surface normal)| (normal from +-5 px neighbours, floor minAngleWeight).
+    private func prepareDepth(_ frame: DepthFrame) -> ([Float], [Float]) {
+        let w = frame.width, h = frame.height
+        let fx = frame.fx, fy = frame.fy, cx = frame.cx, cy = frame.cy
+        let src = frame.pixels
+        var out = [Float](repeating: 0, count: w * h)
+        var wt  = [Float](repeating: 0, count: w * h)
+        if w < 12 || h < 12 { return (src, [Float](repeating: obsWeight, count: w * h)) }
+
+        var win = [Float](repeating: 0, count: 9)
+        for y in 1..<(h - 1) {
+            for x in 1..<(w - 1) {
+                if src[y * w + x] <= 0 { continue }
+                var k = 0
+                for dy in -1...1 {
+                    for dx in -1...1 {
+                        let v = src[(y + dy) * w + (x + dx)]
+                        if v > 0 {
+                            var j = k
+                            while j > 0 && win[j - 1] > v { win[j] = win[j - 1]; j -= 1 }
+                            win[j] = v
+                            k += 1
+                        }
+                    }
+                }
+                if k < 5 { continue }
+                if win[k - 1] - win[0] > depthEdgeSpread { continue }
+                out[y * w + x] = win[k / 2]
+            }
+        }
+
+        let refZ = zMax - 0.12
+        let s = 5
+        for y in 1..<(h - 1) {
+            for x in 1..<(w - 1) {
+                let d = out[y * w + x]
+                if d <= 0 { continue }
+                var cosT: Float = 1.0
+                if x >= s && x < w - s && y >= s && y < h - s {
+                    let dl = out[y * w + x - s], dr = out[y * w + x + s]
+                    let dUp = out[(y - s) * w + x], dDown = out[(y + s) * w + x]
+                    if dl > 0 && dr > 0 && dUp > 0 && dDown > 0 {
+                        // camera-space points (ARKit camera looks down -Z, +Y up, image v points down)
+                        let pL = SIMD3<Float>((Float(x - s) - cx) * dl / fx, -(Float(y) - cy) * dl / fy, -dl)
+                        let pR = SIMD3<Float>((Float(x + s) - cx) * dr / fx, -(Float(y) - cy) * dr / fy, -dr)
+                        let pU = SIMD3<Float>((Float(x) - cx) * dUp / fx, -(Float(y - s) - cy) * dUp / fy, -dUp)
+                        let pD = SIMD3<Float>((Float(x) - cx) * dDown / fx, -(Float(y + s) - cy) * dDown / fy, -dDown)
+                        let nrm = simd_cross(pR - pL, pD - pU)
+                        let nl = simd_length(nrm)
+                        if nl > 1e-12 {
+                            let ray = SIMD3<Float>((Float(x) - cx) * d / fx, -(Float(y) - cy) * d / fy, -d)
+                            cosT = abs(simd_dot(nrm / nl, ray / simd_length(ray)))
+                        }
+                    }
+                }
+                let ratio = refZ / d
+                wt[y * w + x] = min(4.0, ratio * ratio) * max(minAngleWeight, cosT)
+            }
+        }
+        return (out, wt)
     }
 
     func extractMesh() -> SCNGeometry? {
         guard initialised else { return nil }
+        let tm0 = CFAbsoluteTimeGetCurrent()
         var verts      = [SIMD3<Float>]()
         var normals    = [SIMD3<Float>]()
         var vertColors = [SIMD3<Float>]()
         var indices    = [UInt32]()
+        var filtered = tsdf
+        var weightDropped = 0
+        for i in 0..<filtered.count {
+            if weights[i] < minWeight && filtered[i] < 1.0 { filtered[i] = 1.0; weightDropped += 1 }
+        }
+        let tm1 = CFAbsoluteTimeGetCurrent()
         MeshBuilder.marchingCubesFaithful(
-            tsdf: tsdf, colors: colors, nx: nx, ny: ny, nz: nz,
+            tsdf: filtered, colors: colors, nx: nx, ny: ny, nz: nz,
             origin: volOrigin, voxelSize: voxelSize,
             verts: &verts, normals: &normals, vertColors: &vertColors, indices: &indices)
+        let tm2 = CFAbsoluteTimeGetCurrent()
+        let trisBefore = indices.count / 3
+        MeshBuilder.keepMainPieces(verts: &verts, normals: &normals, vertColors: &vertColors,
+                                   indices: &indices, minFraction: minPieceFraction)
+        print("[CLEAN] weightDropped=\(weightDropped) trisBefore=\(trisBefore) trisAfter=\(indices.count / 3)")
+        let tm3 = CFAbsoluteTimeGetCurrent()
         var obs = 0, neg = 0
         for i in 0..<weights.count where weights[i] > 0 { obs += 1; if tsdf[i] < 0 { neg += 1 } }
         print("[MESH] verts=\(verts.count) tris=\(indices.count / 3) observedVoxels=\(obs) negativeVoxels=\(neg)")
@@ -177,12 +321,16 @@ class LiveTSDF {
         let geo = MeshBuilder.buildSCNGeometryColored(
             vertices: verts, normals: normals, vertColors: vertColors, indices: indices)
         lastGeometry = geo
+        let tm4 = CFAbsoluteTimeGetCurrent()
+        func ms(_ a: Double, _ b: Double) -> Int { return Int((b - a) * 1000) }
+        print("[TIME] mesh total=\(ms(tm0, tm4)) weightCopy=\(ms(tm0, tm1)) marching=\(ms(tm1, tm2)) clean=\(ms(tm2, tm3)) build=\(ms(tm3, tm4)) (ms)")
         return geo
     }
 
     func reset() {
         tsdf = []; weights = []; colors = []
         nx = 0; ny = 0; nz = 0; volOrigin = .zero; initialised = false; lastGeometry = nil
+        dbgCount = 0
     }
 }
 
@@ -262,6 +410,57 @@ struct MeshBuilder {
         }
     }
 
+    // Keeps connected mesh pieces with at least minFraction of the largest piece's triangles
+    // (never fewer than 100 unless the whole mesh is smaller) and compacts the vertex arrays.
+    static func keepMainPieces(
+        verts: inout [SIMD3<Float>], normals: inout [SIMD3<Float>],
+        vertColors: inout [SIMD3<Float>], indices: inout [UInt32], minFraction: Float)
+    {
+        let triCount = indices.count / 3
+        if triCount == 0 || verts.isEmpty { return }
+        var parent = [Int](repeating: 0, count: verts.count)
+        for i in 0..<verts.count { parent[i] = i }
+        func find(_ a: Int) -> Int {
+            var x = a
+            while true {
+                let p = parent[x]
+                if p == x { return x }
+                let g = parent[p]
+                parent[x] = g
+                x = g
+            }
+        }
+        for t in 0..<triCount {
+            let ra = find(Int(indices[t * 3]))
+            let rb = find(Int(indices[t * 3 + 1]))
+            if ra == rb { } else { parent[rb] = ra }
+            let rc = find(Int(indices[t * 3 + 2]))
+            if rc == ra { } else { parent[rc] = ra }
+        }
+        var triPerRoot = [Int](repeating: 0, count: verts.count)
+        for t in 0..<triCount { triPerRoot[find(Int(indices[t * 3]))] += 1 }
+        let largest = triPerRoot.max() ?? 0
+        let threshold = min(largest, max(100, Int(Float(largest) * minFraction)))
+
+        var remap = [Int32](repeating: -1, count: verts.count)
+        var nv = [SIMD3<Float>](), nn = [SIMD3<Float>](), nc = [SIMD3<Float>]()
+        var ni = [UInt32]()
+        ni.reserveCapacity(indices.count)
+        func emit(_ i: Int) {
+            if remap[i] < 0 {
+                remap[i] = Int32(nv.count)
+                nv.append(verts[i]); nn.append(normals[i]); nc.append(vertColors[i])
+            }
+            ni.append(UInt32(remap[i]))
+        }
+        for t in 0..<triCount {
+            let i0 = Int(indices[t * 3]), i1 = Int(indices[t * 3 + 1]), i2 = Int(indices[t * 3 + 2])
+            if triPerRoot[find(i0)] < threshold { continue }
+            emit(i0); emit(i1); emit(i2)
+        }
+        verts = nv; normals = nn; vertColors = nc; indices = ni
+    }
+
     // Plain marching cubes at level 0 over the WHOLE volume (skimage.measure.marching_cubes, as in andyzeng's get_mesh)
     static func marchingCubesFaithful(
         tsdf: [Float], colors: [SIMD3<Float>],
@@ -290,13 +489,33 @@ struct MeshBuilder {
                                 tsdf[vi(x, y, z1)] - tsdf[vi(x, y, z0)])
         }
 
+        // Only cubes touching at least one inside (negative) voxel can contain surface. Flag those cubes first so the
+        // main loop skips empty space with one byte read. The triangles produced are exactly the same as before.
+        var cubeFlag = [Bool](repeating: false, count: nx * ny * nz)
+        for z in 0..<nz {
+            for y in 0..<ny {
+                for x in 0..<nx {
+                    if tsdf[vi(x, y, z)] < 0 {
+                        for qz in max(0, z - 1)...min(z, nz - 2) {
+                            for qy in max(0, y - 1)...min(y, ny - 2) {
+                                for qx in max(0, x - 1)...min(x, nx - 2) {
+                                    cubeFlag[vi(qx, qy, qz)] = true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         var edgeVert = [Int: UInt32]()
+        edgeVert.reserveCapacity(150_000)
         var ev = [UInt32](repeating: 0, count: 12)
         var val = [Float](repeating: 0, count: 8)
 
         for z in 0..<(nz - 1) {
             for y in 0..<(ny - 1) {
                 for x in 0..<(nx - 1) {
+                    if cubeFlag[vi(x, y, z)] == false { continue }
                     var cubeIdx = 0
                     for c in 0..<8 {
                         let v = tsdf[vi(x + cox[c], y + coy[c], z + coz[c])]
