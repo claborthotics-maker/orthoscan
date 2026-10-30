@@ -32,6 +32,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
     private let minDepth: Float = 0.20
     private let maxDepth: Float = 0.40
+    private let mirrorFinalMesh = true   // flip the finished mesh left-to-right (preview + STL). The live overlay is not flipped.
 
     private var arSceneView:       ARSCNView!
     private var sceneView:         SCNView!
@@ -419,7 +420,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
                 DispatchQueue.main.async { self.showError("Not enough frames — rescan.") }
                 return
             }
-            let geo = self.liveTSDF.extractMesh()
+            let geo = self.liveTSDF.extractMesh(mirror: self.mirrorFinalMesh)
             guard let finalGeo = geo else {
                 DispatchQueue.main.async { self.showError("Mesh build failed — try scanning again.") }
                 return
