@@ -45,6 +45,23 @@ class LiveTSDF {
     private var lastPose = matrix_identity_float4x4
     private var hasLastPose = false
     private var jumpCount = 0
+    // Frame-to-surface alignment: each new frame is nudged onto the surface already in the volume before it is added.
+    private let registrationEnabled = true       // set false to turn alignment off
+    private let regStartFrames = 10              // integrated frames before alignment starts (a surface has to exist first)
+    private let regStride = 8                    // every 8th depth pixel is an alignment point
+    private let regMinPoints = 600               // fewer usable points than this = alignment failed, frame skipped
+    private let regIterations = 4
+    private let regMaxPhi: Float = 0.8           // only points within about 12 mm of the surface take part
+    private let regMinVoxelWeight: Float = 1.0
+    private let regMaxShift: Float = 0.03        // metres: a correction bigger than this in one frame counts as failed
+    private let regMaxAngle: Float = 0.10        // radians (about 6 degrees)
+    private var corr = matrix_identity_float4x4  // accumulated world-space correction applied on top of ARKit's pose
+    private var integratedCount = 0
+    private var regAttempts = 0
+    private var regApplied = 0
+    private var regSkipped = 0
+    private var regSumShift: Float = 0
+    private var regMaxSeenShift: Float = 0
     private let stateLock = NSLock()   // integration and mesh extraction run on different threads
     private(set) var initialised = false
     private(set) var lastGeometry: SCNGeometry?
@@ -77,6 +94,9 @@ class LiveTSDF {
         lockCentre = SIMD3<Float>(lw.x, lw.y, lw.z)
         hasLastPose = false
         jumpCount = 0
+        corr = matrix_identity_float4x4
+        integratedCount = 0
+        regAttempts = 0; regApplied = 0; regSkipped = 0; regSumShift = 0; regMaxSeenShift = 0
         print("[LOCK] centre=(\(String(format: "%.3f", lockCentre.x)),\(String(format: "%.3f", lockCentre.y)),\(String(format: "%.3f", lockCentre.z))) radius=\(lockRadius)")
 
         var lo = SIMD3<Float>(repeating:  Float.greatestFiniteMagnitude)
@@ -142,13 +162,35 @@ class LiveTSDF {
             hasLastPose = true
             lastPose = frame.pose
         }
-        integrateFrame(frame, colorBuffer: colorImage)
+        var usePose = corr * frame.pose
+        if registrationEnabled && integratedCount >= regStartFrames {
+            regAttempts += 1
+            if let r = registerFrame(frame) {
+                corr = r.0
+                usePose = corr * frame.pose
+                regApplied += 1
+                regSumShift += r.1
+                regMaxSeenShift = max(regMaxSeenShift, r.1)
+            } else {
+                regSkipped += 1
+                if regSkipped <= 5 || regSkipped % 20 == 0 {
+                    print("[REG] could not align - frame skipped (total skipped \(regSkipped) of \(regAttempts))")
+                }
+                return
+            }
+            if regAttempts % 30 == 0 {
+                let avg = regApplied > 0 ? regSumShift / Float(regApplied) : 0
+                print("[REG] attempts=\(regAttempts) applied=\(regApplied) skipped=\(regSkipped) avgShift=\(String(format: "%.1f", avg * 1000))mm maxShift=\(String(format: "%.1f", regMaxSeenShift * 1000))mm")
+            }
+        }
+        integrateFrame(frame, colorBuffer: colorImage, pose: usePose)
+        integratedCount += 1
     }
 
-    private func integrateFrame(_ frame: DepthFrame, colorBuffer: CVPixelBuffer?) {
+    private func integrateFrame(_ frame: DepthFrame, colorBuffer: CVPixelBuffer?, pose poseUsed: simd_float4x4) {
         let w = frame.width, h = frame.height
         let fx = frame.fx, fy = frame.fy, cx = frame.cx, cy = frame.cy
-        let invPose = simd_inverse(frame.pose)
+        let invPose = simd_inverse(poseUsed)
         let t0 = CFAbsoluteTimeGetCurrent()
         let (depthPx, weightPx) = prepareDepth(frame)
 
@@ -338,6 +380,161 @@ class LiveTSDF {
             }
         }
         return (out, wt)
+    }
+
+    // ---- Frame-to-surface alignment (direct TSDF registration) ----
+    // Returns (new accumulated correction, shift of the lock centre in metres, rotation in radians), or nil if the frame could not be aligned.
+    private func registerFrame(_ frame: DepthFrame) -> (simd_float4x4, Float, Float)? {
+        let w = frame.width, h = frame.height
+        var pts = [SIMD3<Float>]()
+        pts.reserveCapacity(6000)
+        var py = 4
+        while py < h {
+            var px = 4
+            while px < w {
+                let d = frame.pixels[py * w + px]
+                if d >= zMin && d <= zMax {
+                    pts.append(SIMD3<Float>((Float(px) - frame.cx) * d / frame.fx, -(Float(py) - frame.cy) * d / frame.fy, -d))
+                }
+                px += regStride
+            }
+            py += regStride
+        }
+        if pts.count < regMinPoints { return nil }
+        let raw = frame.pose
+        var c = corr
+        for _ in 0..<regIterations {
+            let T = c * raw
+            var A = [Double](repeating: 0, count: 36)
+            var bv = [Double](repeating: 0, count: 6)
+            var used = 0
+            for p in pts {
+                let pw4 = T * SIMD4<Float>(p.x, p.y, p.z, 1.0)
+                let pw = SIMD3<Float>(pw4.x, pw4.y, pw4.z)
+                if let s = sampleTSDF(pw) {
+                    let phi = s.0
+                    if abs(phi) > regMaxPhi { continue }
+                    let g = s.1
+                    let gl = simd_length(g)
+                    if gl < 1e-4 { continue }
+                    let n = g / gl
+                    let r = Double(phi * truncMargin)
+                    let cr = simd_cross(pw - lockCentre, n)
+                    let J: [Double] = [Double(cr.x), Double(cr.y), Double(cr.z), Double(n.x), Double(n.y), Double(n.z)]
+                    let wgt = 1.0 / (1.0 + (r / 0.005) * (r / 0.005))
+                    for a in 0..<6 {
+                        bv[a] -= wgt * J[a] * r
+                        for b in 0..<6 { A[a * 6 + b] += wgt * J[a] * J[b] }
+                    }
+                    used += 1
+                }
+            }
+            if used < regMinPoints { return nil }
+            // damping: prefers the smallest correction, so a surface that cannot pin down a rotation (for example a sphere) does not drift
+            let cnt = Double(used)
+            for a in 0..<3 { A[a * 6 + a] += 1e-2 * cnt * 0.0064 }
+            for a in 3..<6 { A[a * 6 + a] += 1e-2 * cnt }
+            guard let sol = solve6(A, bv) else { return nil }
+            let omega = SIMD3<Float>(Float(sol[0]), Float(sol[1]), Float(sol[2]))
+            let tv = SIMD3<Float>(Float(sol[3]), Float(sol[4]), Float(sol[5]))
+            var R = matrix_identity_float3x3
+            let ang = simd_length(omega)
+            if ang > 1e-9 { R = simd_float3x3(simd_quatf(angle: ang, axis: omega / ang)) }
+            var D = matrix_identity_float4x4
+            D.columns.0 = SIMD4<Float>(R.columns.0, 0)
+            D.columns.1 = SIMD4<Float>(R.columns.1, 0)
+            D.columns.2 = SIMD4<Float>(R.columns.2, 0)
+            D.columns.3 = SIMD4<Float>(lockCentre - R * lockCentre + tv, 1)
+            c = D * c
+        }
+        let dlt = c * simd_inverse(corr)
+        let mv = dlt * SIMD4<Float>(lockCentre.x, lockCentre.y, lockCentre.z, 1.0)
+        let shift = simd_length(SIMD3<Float>(mv.x, mv.y, mv.z) - lockCentre)
+        let tr = dlt.columns.0.x + dlt.columns.1.y + dlt.columns.2.z
+        let angle = acos(max(-1, min(1, (tr - 1) / 2)))
+        if shift > regMaxShift || angle > regMaxAngle { return nil }
+        return (c, shift, angle)
+    }
+
+    // Trilinear TSDF value and gradient (per voxel) at a world point; nil if outside the volume or not observed enough.
+    private func sampleTSDF(_ pw: SIMD3<Float>) -> (Float, SIMD3<Float>)? {
+        let u = (pw - volOrigin) / voxelSize
+        let fx0 = floor(u.x), fy0 = floor(u.y), fz0 = floor(u.z)
+        let ix = Int(fx0), iy = Int(fy0), iz = Int(fz0)
+        if ix < 0 || iy < 0 || iz < 0 || ix >= nx - 1 || iy >= ny - 1 || iz >= nz - 1 { return nil }
+        let tx = u.x - fx0, ty = u.y - fy0, tz = u.z - fz0
+        let i000 = ix + iy * nx + iz * nx * ny
+        let i100 = i000 + 1
+        let i010 = i000 + nx
+        let i110 = i010 + 1
+        let sz = nx * ny
+        let i001 = i000 + sz
+        let i101 = i100 + sz
+        let i011 = i010 + sz
+        let i111 = i110 + sz
+        let mw = regMinVoxelWeight
+        if weights[i000] < mw || weights[i100] < mw || weights[i010] < mw || weights[i110] < mw { return nil }
+        if weights[i001] < mw || weights[i101] < mw || weights[i011] < mw || weights[i111] < mw { return nil }
+        let v000 = tsdf[i000], v100 = tsdf[i100], v010 = tsdf[i010], v110 = tsdf[i110]
+        let v001 = tsdf[i001], v101 = tsdf[i101], v011 = tsdf[i011], v111 = tsdf[i111]
+        let c00 = v000 * (1 - tx) + v100 * tx
+        let c10 = v010 * (1 - tx) + v110 * tx
+        let c01 = v001 * (1 - tx) + v101 * tx
+        let c11 = v011 * (1 - tx) + v111 * tx
+        let c0 = c00 * (1 - ty) + c10 * ty
+        let c1 = c01 * (1 - ty) + c11 * ty
+        let phi = c0 * (1 - tz) + c1 * tz
+        let gxa = (v100 - v000) * (1 - ty) + (v110 - v010) * ty
+        let gxb = (v101 - v001) * (1 - ty) + (v111 - v011) * ty
+        let gx = gxa * (1 - tz) + gxb * tz
+        let gy = (c10 - c00) * (1 - tz) + (c11 - c01) * tz
+        let gz = c1 - c0
+        return (phi, SIMD3<Float>(gx, gy, gz))
+    }
+
+    // Solves the 6x6 system A x = b (Gaussian elimination with partial pivoting).
+    private func solve6(_ aIn: [Double], _ bIn: [Double]) -> [Double]? {
+        var m = aIn
+        var v = bIn
+        let n = 6
+        for col in 0..<n {
+            var piv = col
+            var best = abs(m[col * n + col])
+            var r = col + 1
+            while r < n {
+                let cand = abs(m[r * n + col])
+                if cand > best { best = cand; piv = r }
+                r += 1
+            }
+            if best < 1e-12 { return nil }
+            if piv > col {
+                for k in 0..<n {
+                    let tmp = m[col * n + k]
+                    m[col * n + k] = m[piv * n + k]
+                    m[piv * n + k] = tmp
+                }
+                let tv = v[col]
+                v[col] = v[piv]
+                v[piv] = tv
+            }
+            var r2 = col + 1
+            while r2 < n {
+                let f = m[r2 * n + col] / m[col * n + col]
+                for k in col..<n { m[r2 * n + k] -= f * m[col * n + k] }
+                v[r2] -= f * v[col]
+                r2 += 1
+            }
+        }
+        var x = [Double](repeating: 0, count: n)
+        var i = n - 1
+        while i >= 0 {
+            var s = v[i]
+            var j = i + 1
+            while j < n { s -= m[i * n + j] * x[j]; j += 1 }
+            x[i] = s / m[i * n + i]
+            i -= 1
+        }
+        return x
     }
 
     func extractMesh(mirror: Bool = false) -> SCNGeometry? {
