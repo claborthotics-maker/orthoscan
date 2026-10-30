@@ -17,7 +17,11 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private var seedFrames = [DepthFrame]()
     private var seedImages = [CVPixelBuffer]()
     private var frameCount = 0
-    private let maxFrames  = 300
+    private let maxFrames  = 1000
+    private var lastCentreDist: Float = 0          // latest centre distance (metres), used to gate frames
+    private var scanPaused = false
+    private var lastDistanceHaptic = Date.distantPast
+    private let distanceHaptic = UINotificationFeedbackGenerator()
     private let seedCount  = 5
     private var arFrameCounter  = 0
     private var meshUpdateCounter = 0
@@ -27,7 +31,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private var phase: ScanPhase = .footSelection
 
     private let minDepth: Float = 0.20
-    private let maxDepth: Float = 0.35
+    private let maxDepth: Float = 0.40
 
     private var arSceneView:       ARSCNView!
     private var sceneView:         SCNView!
@@ -232,10 +236,14 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         if let depthMap = frame.capturedDepthData?.depthDataMap {
             let dist = sampleCentreDepth(depthMap)
+            lastCentreDist = dist
             DispatchQueue.main.async { [weak self] in self?.updateDistanceUI(metres: dist) }
         }
 
         guard phase == .scanning else { return }
+        // Only integrate frames taken inside the scan range (minDepth...maxDepth); frames taken too close or
+        // too far create overlay surfaces. Skipped frames do not count toward maxFrames.
+        if lastCentreDist < minDepth || lastCentreDist > maxDepth { return }
         guard frameCount < maxFrames else {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, self.phase == .scanning else { return }
@@ -372,7 +380,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         cancelButton.isHidden  = false
         captureButton.isHidden = false
         updateDistanceBadge(text: "\(footSide.capitalized) Foot — Position", color: .systemGray)
-        statusLabel.text = "Hold phone 15–45 cm above foot\nStart at heel, rotate around foot"
+        statusLabel.text = "Hold phone 20–40 cm from the foot\nStart at heel, rotate around foot"
         startARSession()
     }
 
@@ -451,7 +459,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         seedFrames = []; seedImages = []
         liveTSDF.reset()
         updateDistanceBadge(text: "\(footSide.capitalized) Foot — Position", color: .systemGray)
-        statusLabel.text = "Hold phone 15–45 cm above foot"
+        statusLabel.text = "Hold phone 20–40 cm from the foot"
         if let cfg = arConfig { arSession.run(cfg, options: [.resetTracking]) }
     }
 
@@ -482,6 +490,11 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
     private func updateDistanceUI(metres: Float) {
         guard phase == .idle || phase == .scanning else { return }
+        if phase == .scanning {
+            updateScanDistanceUI(metres: metres)
+            return
+        }
+        distanceBadge.font = .systemFont(ofSize: 15, weight: .semibold)
         if metres == 0 {
             if phase == .idle { updateDistanceBadge(text: "No foot detected", color: .systemGray) }
         } else if metres < minDepth {
@@ -489,10 +502,40 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             if phase == .idle { statusLabel.text = String(format: "%.0f cm — minimum 20 cm", metres*100) }
         } else if metres > maxDepth {
             updateDistanceBadge(text: "Move closer", color: .systemOrange)
-            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 35 cm", metres*100) }
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 40 cm", metres*100) }
         } else if phase == .idle {
             updateDistanceBadge(text: String(format: "✓  %.0f cm", metres*100), color: .systemGreen)
             statusLabel.text = "Good distance — tap Scan Foot"
+        }
+    }
+
+    // Live distance guidance while scanning: big cm readout, colour, move closer/farther text, haptic when out of range.
+    private func updateScanDistanceUI(metres: Float) {
+        distanceBadge.font = .systemFont(ofSize: 22, weight: .bold)
+        let cm = Int((metres * 100).rounded())
+        var text = "\(cm) cm \u{00B7} Good"
+        var color = UIColor.systemGreen
+        var outOfRange = false
+        if metres <= 0 {
+            text = "No reading"; color = .systemGray; outOfRange = true
+        } else if metres < minDepth {
+            text = "\(cm) cm \u{00B7} Move farther"; color = .systemRed; outOfRange = true
+        } else if metres > maxDepth {
+            text = "\(cm) cm \u{00B7} Move closer"; color = .systemOrange; outOfRange = true
+        }
+        updateDistanceBadge(text: text, color: color)
+        if outOfRange {
+            if scanPaused == false {
+                scanPaused = true
+                statusLabel.text = "Paused \u{2014} hold 20\u{2013}40 cm from the foot"
+            }
+            if metres > 0 && Date().timeIntervalSince(lastDistanceHaptic) > 0.7 {
+                lastDistanceHaptic = Date()
+                distanceHaptic.notificationOccurred(.warning)
+            }
+        } else if scanPaused {
+            scanPaused = false
+            statusLabel.text = "Move around the foot slowly\nTap Stop when covered"
         }
     }
 

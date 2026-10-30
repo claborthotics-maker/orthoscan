@@ -58,8 +58,9 @@ class LiveTSDF {
         }
         samples.sort()
         let ref = samples[samples.count / 2]
-        zMin = max(0.10, ref - 0.08)
-        zMax = ref + 0.12
+        // fixed depth window: the 20-40 cm scan range plus a margin for surface relief
+        zMin = 0.18
+        zMax = 0.43
 
         var lo = SIMD3<Float>(repeating:  Float.greatestFiniteMagnitude)
         var hi = SIMD3<Float>(repeating: -Float.greatestFiniteMagnitude)
@@ -263,7 +264,7 @@ class LiveTSDF {
             }
         }
 
-        let refZ = zMax - 0.12
+        let refZ: Float = 0.30
         let s = 5
         for y in 1..<(h - 1) {
             for x in 1..<(w - 1) {
