@@ -30,6 +30,8 @@ class LiveTSDF {
     // Depth clean-up / confidence weighting (added on top of the reference algorithm)
     private let depthEdgeSpread: Float = 0.015  // reject a pixel if its 3x3 window spans more than this (metres)
     private let minAngleWeight: Float = 0.15    // floor for the viewing-angle weight
+    // Depth smoothing per frame (bilateral). Depth differences above ~3x this are treated as edges (metres). 0 = off.
+    private let depthSmoothSigma: Float = 0.004
 
     private var tsdf:    [Float] = []
     private var weights: [Float] = []
@@ -60,7 +62,7 @@ class LiveTSDF {
         let ref = samples[samples.count / 2]
         // fixed depth window: the 20-40 cm scan range plus a margin for surface relief
         zMin = 0.18
-        zMax = 0.43
+        zMax = 0.34
 
         var lo = SIMD3<Float>(repeating:  Float.greatestFiniteMagnitude)
         var hi = SIMD3<Float>(repeating: -Float.greatestFiniteMagnitude)
@@ -78,7 +80,7 @@ class LiveTSDF {
             }
         }
         let extent = hi - lo
-        var vs: Float = 0.003
+        var vs: Float = 0.0034
         func gridDims(_ v: Float) -> (Int, Int, Int) {
             return (max(2, Int(ceil(extent.x / v))), max(2, Int(ceil(extent.y / v))), max(2, Int(ceil(extent.z / v))))
         }
@@ -264,7 +266,54 @@ class LiveTSDF {
             }
         }
 
-        let refZ: Float = 0.30
+        let refZ: Float = 0.25
+        // Depth-aware smoothing (bilateral): average each pixel with its 5x5 neighbours, weighted by pixel distance and by
+        // depth difference, so noise is evened out but real depth edges are kept. Never creates new depth readings.
+        if depthSmoothSigma > 0 {
+            var sm = out
+            let sigma = depthSmoothSigma
+            var spatial = [Float](repeating: 0, count: 25)
+            for dy in -2...2 {
+                for dx in -2...2 {
+                    spatial[(dy + 2) * 5 + (dx + 2)] = exp(-Float(dx * dx + dy * dy) / 4.5)
+                }
+            }
+            let bands = 8
+            out.withUnsafeBufferPointer { inP in
+                sm.withUnsafeMutableBufferPointer { smP in
+                    spatial.withUnsafeBufferPointer { spP in
+                        guard let ip = inP.baseAddress, let op = smP.baseAddress, let sp = spP.baseAddress else { return }
+                        DispatchQueue.concurrentPerform(iterations: bands) { (band: Int) in
+                            let y0 = max(2, h * band / bands)
+                            let y1 = min(h - 2, h * (band + 1) / bands)
+                            if y0 >= y1 { return }
+                            for y in y0..<y1 {
+                                for x in 2..<(w - 2) {
+                                    let c = ip[y * w + x]
+                                    if c <= 0 { continue }
+                                    var sum: Float = 0
+                                    var wsum: Float = 0
+                                    for dy in -2...2 {
+                                        for dx in -2...2 {
+                                            let v = ip[(y + dy) * w + (x + dx)]
+                                            if v <= 0 { continue }
+                                            let r = (v - c) / sigma
+                                            if r > 3 || r < -3 { continue }
+                                            let wgt = sp[(dy + 2) * 5 + (dx + 2)] / (1 + r * r)
+                                            sum += wgt * v
+                                            wsum += wgt
+                                        }
+                                    }
+                                    if wsum > 0 { op[y * w + x] = sum / wsum }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            out = sm
+        }
+
         let s = 5
         for y in 1..<(h - 1) {
             for x in 1..<(w - 1) {
