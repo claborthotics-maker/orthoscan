@@ -690,8 +690,8 @@ struct MeshBuilder {
             }
             tris.append(tri)
         }
-        // ARKit works in metres; scale x100 so the STL imports at true size in Fusion
-        verts = verts.map { $0 * 100.0 }
+        // ARKit works in metres; write the STL in millimetres (x1000). In Fusion pick Millimeter in the Insert Mesh dialog.
+        verts = verts.map { $0 * 1000.0 }
         var stl = "solid foot\n"
         for tri in tris {
             let a=verts[Int(tri.x)],b=verts[Int(tri.y)],c=verts[Int(tri.z)]
