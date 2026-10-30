@@ -338,7 +338,8 @@ class LiveTSDF {
                     }
                 }
                 let ratio = refZ / d
-                wt[y * w + x] = min(4.0, ratio * ratio) * max(minAngleWeight, cosT)
+                let ratio2 = ratio * ratio
+                wt[y * w + x] = min(4.0, ratio2 * ratio2) * max(minAngleWeight, cosT)
             }
         }
         return (out, wt)
