@@ -55,7 +55,7 @@ class LiveTSDF {
     private let regMinVoxelWeight: Float = 1.0
     private let regMaxShift: Float = 0.03        // metres: a correction bigger than this in one frame counts as failed
     private let regMaxAngle: Float = 0.10        // radians (about 6 degrees)
-    private var corr = matrix_identity_float4x4  // accumulated world-space correction applied on top of ARKit's pose
+    private(set) var corr = matrix_identity_float4x4  // accumulated world-space correction applied on top of ARKit's pose
     private var integratedCount = 0
     private var regAttempts = 0
     private var regApplied = 0
@@ -180,7 +180,9 @@ class LiveTSDF {
             }
             if regAttempts % 30 == 0 {
                 let avg = regApplied > 0 ? regSumShift / Float(regApplied) : 0
-                print("[REG] attempts=\(regAttempts) applied=\(regApplied) skipped=\(regSkipped) avgShift=\(String(format: "%.1f", avg * 1000))mm maxShift=\(String(format: "%.1f", regMaxSeenShift * 1000))mm")
+                let accP = corr * SIMD4<Float>(lockCentre.x, lockCentre.y, lockCentre.z, 1.0)
+                let acc = simd_length(SIMD3<Float>(accP.x, accP.y, accP.z) - lockCentre)
+                print("[REG] attempts=\(regAttempts) applied=\(regApplied) skipped=\(regSkipped) avgShift=\(String(format: "%.1f", avg * 1000))mm maxShift=\(String(format: "%.1f", regMaxSeenShift * 1000))mm accumulated=\(String(format: "%.1f", acc * 1000))mm")
             }
         }
         integrateFrame(frame, colorBuffer: colorImage, pose: usePose)
