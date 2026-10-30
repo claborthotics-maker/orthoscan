@@ -31,8 +31,14 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private var phase: ScanPhase = .footSelection
 
     private let minDepth: Float = 0.20
+    private let distanceHapticEnabled = false   // buzz when out of range; set true to bring it back
+    private let settleFrames = 4                // depth frames to wait after returning in range before integrating again
+    private var inRangeStreak = 0
+    private var trackingWarned = false
+    private let outOfRangeStopFrames = 2        // depth frames in a row out of range (about half a second) before the scan stops itself
+    private var outOfRangeStreak = 0
     private let mirrorFinalMesh = true   // flip the finished mesh left-to-right (preview + STL). The live overlay is not flipped.
-    private let maxDepth: Float = 0.30
+    private let maxDepth: Float = 0.40
 
     private var arSceneView:       ARSCNView!
     private var sceneView:         SCNView!
@@ -238,6 +244,22 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         if let depthMap = frame.capturedDepthData?.depthDataMap {
             let dist = sampleCentreDepth(depthMap)
             lastCentreDist = dist
+            if dist >= minDepth && dist <= maxDepth {
+                inRangeStreak += 1
+                outOfRangeStreak = 0
+            } else {
+                inRangeStreak = 0
+                outOfRangeStreak += 1
+                // Out of range for a while: end the scan and build the result (needs at least 20 frames so a bad start can't lose a scan).
+                if phase == .scanning && outOfRangeStreak >= outOfRangeStopFrames && frameCount >= 20 {
+                    outOfRangeStreak = 0
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self, self.phase == .scanning else { return }
+                        self.distanceHaptic.notificationOccurred(.warning)
+                        self.stopScanAndProcess()
+                    }
+                }
+            }
             DispatchQueue.main.async { [weak self] in self?.updateDistanceUI(metres: dist) }
         }
 
@@ -245,6 +267,18 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         // Only integrate frames taken inside the scan range (minDepth...maxDepth); frames taken too close or
         // too far create overlay surfaces. Skipped frames do not count toward maxFrames.
         if lastCentreDist < minDepth || lastCentreDist > maxDepth { return }
+        // Let the pose settle after returning in range (and after any buzz) before adding frames again.
+        if inRangeStreak <= settleFrames { return }
+        // Only add frames while ARKit tracking is normal: limited tracking gives a poor pose, which shows up as seams.
+        if case .normal = frame.camera.trackingState {
+            trackingWarned = false
+        } else {
+            if trackingWarned == false {
+                trackingWarned = true
+                print("[TRACK] skipping frames, tracking not normal: \(frame.camera.trackingState)")
+            }
+            return
+        }
         guard frameCount < maxFrames else {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, self.phase == .scanning else { return }
@@ -381,7 +415,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         cancelButton.isHidden  = false
         captureButton.isHidden = false
         updateDistanceBadge(text: "\(footSide.capitalized) Foot — Position", color: .systemGray)
-        statusLabel.text = "Hold phone 20–30 cm from the foot\nStart at heel, rotate around foot"
+        statusLabel.text = "Hold phone 20–40 cm from the foot\nStart at heel, rotate around foot"
         startARSession()
     }
 
@@ -460,7 +494,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         seedFrames = []; seedImages = []
         liveTSDF.reset()
         updateDistanceBadge(text: "\(footSide.capitalized) Foot — Position", color: .systemGray)
-        statusLabel.text = "Hold phone 20–30 cm from the foot"
+        statusLabel.text = "Hold phone 20–40 cm from the foot"
         if let cfg = arConfig { arSession.run(cfg, options: [.resetTracking]) }
     }
 
@@ -503,7 +537,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             if phase == .idle { statusLabel.text = String(format: "%.0f cm — minimum 20 cm", metres*100) }
         } else if metres > maxDepth {
             updateDistanceBadge(text: "Move closer", color: .systemOrange)
-            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 30 cm", metres*100) }
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 40 cm", metres*100) }
         } else if phase == .idle {
             updateDistanceBadge(text: String(format: "✓  %.0f cm", metres*100), color: .systemGreen)
             statusLabel.text = "Good distance — tap Scan Foot"
@@ -528,9 +562,9 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         if outOfRange {
             if scanPaused == false {
                 scanPaused = true
-                statusLabel.text = "Paused \u{2014} hold 20\u{2013}30 cm from the foot"
+                statusLabel.text = "Out of range \u{2014} hold 20\u{2013}40 cm or the scan stops"
             }
-            if metres > 0 && Date().timeIntervalSince(lastDistanceHaptic) > 0.7 {
+            if distanceHapticEnabled && metres > 0 && Date().timeIntervalSince(lastDistanceHaptic) > 0.7 {
                 lastDistanceHaptic = Date()
                 distanceHaptic.notificationOccurred(.warning)
             }

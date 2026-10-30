@@ -62,7 +62,7 @@ class LiveTSDF {
         let ref = samples[samples.count / 2]
         // fixed depth window: the 20-40 cm scan range plus a margin for surface relief
         zMin = 0.18
-        zMax = 0.34
+        zMax = 0.43
 
         var lo = SIMD3<Float>(repeating:  Float.greatestFiniteMagnitude)
         var hi = SIMD3<Float>(repeating: -Float.greatestFiniteMagnitude)
@@ -266,7 +266,7 @@ class LiveTSDF {
             }
         }
 
-        let refZ: Float = 0.25
+        let refZ: Float = 0.30
         // Depth-aware smoothing (bilateral): average each pixel with its 5x5 neighbours, weighted by pixel distance and by
         // depth difference, so noise is evened out but real depth edges are kept. Never creates new depth readings.
         if depthSmoothSigma > 0 {
