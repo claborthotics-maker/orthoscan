@@ -37,6 +37,7 @@ class LiveTSDF {
     private var nx = 0, ny = 0, nz = 0
     private var volOrigin = SIMD3<Float>.zero
     private var dbgCount = 0
+    private let stateLock = NSLock()   // integration and mesh extraction run on different threads
     private(set) var initialised = false
     private(set) var lastGeometry: SCNGeometry?
 
@@ -133,6 +134,7 @@ class LiveTSDF {
         let gZMin = zMin, gZMax = zMax
         let yB0 = yBase, cb0 = cbcrBase
         let cW = colorW, cH = colorH, yRow = yBPR, cbRow = cbcrBPR
+        stateLock.lock()
         var perSlice = [Int](repeating: 0, count: gnz)
         tsdf.withUnsafeMutableBufferPointer { tsdfP in
             weights.withUnsafeMutableBufferPointer { wtsP in
@@ -195,6 +197,7 @@ class LiveTSDF {
             }
         }
         let touched = perSlice.reduce(0, +)
+        stateLock.unlock()
         dbgCount += 1
         if dbgCount % 10 == 1 {
             let vmin = volOrigin
@@ -293,6 +296,8 @@ class LiveTSDF {
 
     func extractMesh() -> SCNGeometry? {
         guard initialised else { return nil }
+        stateLock.lock()
+        defer { stateLock.unlock() }
         let tm0 = CFAbsoluteTimeGetCurrent()
         var verts      = [SIMD3<Float>]()
         var normals    = [SIMD3<Float>]()
@@ -328,6 +333,8 @@ class LiveTSDF {
     }
 
     func reset() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         tsdf = []; weights = []; colors = []
         nx = 0; ny = 0; nz = 0; volOrigin = .zero; initialised = false; lastGeometry = nil
         dbgCount = 0
