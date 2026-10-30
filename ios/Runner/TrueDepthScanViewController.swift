@@ -292,7 +292,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             self.meshUpdateCounter += 1
             print("[SCAN] frame=\(self.frameCount) meshCounter=\(self.meshUpdateCounter) initialised=\(self.liveTSDF.initialised)")
 
-            if self.liveTSDF.initialised && self.meshUpdateCounter >= 5 {
+            if self.liveTSDF.initialised && self.meshUpdateCounter >= 1 {
                 self.meshUpdateCounter = 0
                 if let geo = self.liveTSDF.extractMesh() {
                     DispatchQueue.main.async { [weak self] in
