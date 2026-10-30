@@ -37,6 +37,14 @@ class LiveTSDF {
     private var nx = 0, ny = 0, nz = 0
     private var volOrigin = SIMD3<Float>.zero
     private var dbgCount = 0
+    // Object lock + pose-jump gate (no smoothing: these only decide which depth data is allowed in)
+    private let lockRadius: Float = 0.25               // metres: only voxels this close to the starting object are ever updated
+    private var lockCentre = SIMD3<Float>.zero
+    private let maxStepTranslation: Float = 0.03       // metres between two integrated frames before the frame is rejected
+    private let maxStepRotation: Float = 0.14          // radians (about 8 degrees) between two integrated frames
+    private var lastPose = matrix_identity_float4x4
+    private var hasLastPose = false
+    private var jumpCount = 0
     private let stateLock = NSLock()   // integration and mesh extraction run on different threads
     private(set) var initialised = false
     private(set) var lastGeometry: SCNGeometry?
@@ -61,6 +69,15 @@ class LiveTSDF {
         // fixed depth window: the 20-40 cm scan range plus a margin for surface relief
         zMin = 0.18
         zMax = 0.43
+        // Object lock: the centre of the view when the scan starts is the object (the foot); nothing far from it is integrated.
+        let lf = frames[frames.count - 1]
+        let lxc =  (Float(lf.width) / 2 - lf.cx) * ref / lf.fx
+        let lyc = -(Float(lf.height) / 2 - lf.cy) * ref / lf.fy
+        let lw = lf.pose * SIMD4<Float>(lxc, lyc, -ref, 1.0)
+        lockCentre = SIMD3<Float>(lw.x, lw.y, lw.z)
+        hasLastPose = false
+        jumpCount = 0
+        print("[LOCK] centre=(\(String(format: "%.3f", lockCentre.x)),\(String(format: "%.3f", lockCentre.y)),\(String(format: "%.3f", lockCentre.z))) radius=\(lockRadius)")
 
         var lo = SIMD3<Float>(repeating:  Float.greatestFiniteMagnitude)
         var hi = SIMD3<Float>(repeating: -Float.greatestFiniteMagnitude)
@@ -100,6 +117,31 @@ class LiveTSDF {
 
     func integrate(frame: DepthFrame, colorImage: CVPixelBuffer?, step: Int = 2) {
         guard initialised else { return }
+        // Pose-jump gate: a sudden pose change means tracking glitched, and integrating that frame lays a second copy of the surface.
+        if hasLastPose {
+            let dpos = SIMD3<Float>(frame.pose.columns.3.x - lastPose.columns.3.x,
+                                    frame.pose.columns.3.y - lastPose.columns.3.y,
+                                    frame.pose.columns.3.z - lastPose.columns.3.z)
+            let ra = simd_float3x3(SIMD3<Float>(lastPose.columns.0.x, lastPose.columns.0.y, lastPose.columns.0.z),
+                                   SIMD3<Float>(lastPose.columns.1.x, lastPose.columns.1.y, lastPose.columns.1.z),
+                                   SIMD3<Float>(lastPose.columns.2.x, lastPose.columns.2.y, lastPose.columns.2.z))
+            let rb = simd_float3x3(SIMD3<Float>(frame.pose.columns.0.x, frame.pose.columns.0.y, frame.pose.columns.0.z),
+                                   SIMD3<Float>(frame.pose.columns.1.x, frame.pose.columns.1.y, frame.pose.columns.1.z),
+                                   SIMD3<Float>(frame.pose.columns.2.x, frame.pose.columns.2.y, frame.pose.columns.2.z))
+            let rel = simd_mul(ra.transpose, rb)
+            let tr = rel.columns.0.x + rel.columns.1.y + rel.columns.2.z
+            let ang = acos(max(-1, min(1, (tr - 1) / 2)))
+            let moved = simd_length(dpos)
+            lastPose = frame.pose
+            if moved > maxStepTranslation || ang > maxStepRotation {
+                jumpCount += 1
+                print("[JUMP] frame rejected #\(jumpCount) moved=\(String(format: "%.3f", moved))m turned=\(String(format: "%.1f", ang * 57.2958))deg")
+                return
+            }
+        } else {
+            hasLastPose = true
+            lastPose = frame.pose
+        }
         integrateFrame(frame, colorBuffer: colorImage)
     }
 
@@ -133,6 +175,7 @@ class LiveTSDF {
         let gnx = nx, gny = ny, gnz = nz
         let gOrigin = volOrigin, gVoxel = voxelSize, gTrunc = truncMargin
         let gZMin = zMin, gZMax = zMax
+        let gLockC = lockCentre, gLockR2 = lockRadius * lockRadius
         let yB0 = yBase, cb0 = cbcrBase
         let cW = colorW, cH = colorH, yRow = yBPR, cbRow = cbcrBPR
         stateLock.lock()
@@ -149,6 +192,8 @@ class LiveTSDF {
                                         for ix in 0..<gnx {
                                             // andyzeng vox2world: world = vol_origin + voxel_size * voxel_index
                                             let wp = gOrigin + gVoxel * SIMD3<Float>(Float(ix), Float(iy), Float(iz))
+                                            let lockD = wp - gLockC
+                                            if simd_dot(lockD, lockD) > gLockR2 { continue }
                                             // andyzeng: cam_pts = inv(cam_pose) @ world_pt
                                             let ch = invPose * SIMD4<Float>(wp.x, wp.y, wp.z, 1.0)
                                             // ARKit camera looks down -Z  =>  depth along the optical axis is -z
