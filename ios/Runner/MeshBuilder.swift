@@ -344,7 +344,7 @@ class LiveTSDF {
         return (out, wt)
     }
 
-    func extractMesh() -> SCNGeometry? {
+    func extractMesh(mirror: Bool = false) -> SCNGeometry? {
         guard initialised else { return nil }
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -372,6 +372,18 @@ class LiveTSDF {
         var obs = 0, neg = 0
         for i in 0..<weights.count where weights[i] > 0 { obs += 1; if tsdf[i] < 0 { neg += 1 } }
         print("[MESH] verts=\(verts.count) tris=\(indices.count / 3) observedVoxels=\(obs) negativeVoxels=\(neg)")
+        if mirror {
+            // Mirror left-to-right (x -> -x), reverse each triangle's corner order so the surface still faces outward.
+            for i in 0..<verts.count { verts[i].x = -verts[i].x }
+            for i in 0..<normals.count { normals[i].x = -normals[i].x }
+            var t = 0
+            while t + 2 < indices.count {
+                let tmp = indices[t + 1]
+                indices[t + 1] = indices[t + 2]
+                indices[t + 2] = tmp
+                t += 3
+            }
+        }
         guard verts.count > 10, indices.count > 0 else { return nil }
         let geo = MeshBuilder.buildSCNGeometryColored(
             vertices: verts, normals: normals, vertColors: vertColors, indices: indices)

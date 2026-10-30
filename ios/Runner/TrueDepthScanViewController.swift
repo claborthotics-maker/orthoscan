@@ -31,7 +31,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private var phase: ScanPhase = .footSelection
 
     private let minDepth: Float = 0.20
-    private let maxDepth: Float = 0.40
+    private let mirrorFinalMesh = true   // flip the finished mesh left-to-right (preview + STL). The live overlay is not flipped.
+    private let maxDepth: Float = 0.30
 
     private var arSceneView:       ARSCNView!
     private var sceneView:         SCNView!
@@ -380,7 +381,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         cancelButton.isHidden  = false
         captureButton.isHidden = false
         updateDistanceBadge(text: "\(footSide.capitalized) Foot — Position", color: .systemGray)
-        statusLabel.text = "Hold phone 20–40 cm from the foot\nStart at heel, rotate around foot"
+        statusLabel.text = "Hold phone 20–30 cm from the foot\nStart at heel, rotate around foot"
         startARSession()
     }
 
@@ -419,7 +420,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
                 DispatchQueue.main.async { self.showError("Not enough frames — rescan.") }
                 return
             }
-            let geo = self.liveTSDF.extractMesh()
+            let geo = self.liveTSDF.extractMesh(mirror: self.mirrorFinalMesh)
             guard let finalGeo = geo else {
                 DispatchQueue.main.async { self.showError("Mesh build failed — try scanning again.") }
                 return
@@ -459,7 +460,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         seedFrames = []; seedImages = []
         liveTSDF.reset()
         updateDistanceBadge(text: "\(footSide.capitalized) Foot — Position", color: .systemGray)
-        statusLabel.text = "Hold phone 20–40 cm from the foot"
+        statusLabel.text = "Hold phone 20–30 cm from the foot"
         if let cfg = arConfig { arSession.run(cfg, options: [.resetTracking]) }
     }
 
@@ -502,7 +503,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             if phase == .idle { statusLabel.text = String(format: "%.0f cm — minimum 20 cm", metres*100) }
         } else if metres > maxDepth {
             updateDistanceBadge(text: "Move closer", color: .systemOrange)
-            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 40 cm", metres*100) }
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 30 cm", metres*100) }
         } else if phase == .idle {
             updateDistanceBadge(text: String(format: "✓  %.0f cm", metres*100), color: .systemGreen)
             statusLabel.text = "Good distance — tap Scan Foot"
@@ -527,7 +528,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         if outOfRange {
             if scanPaused == false {
                 scanPaused = true
-                statusLabel.text = "Paused \u{2014} hold 20\u{2013}40 cm from the foot"
+                statusLabel.text = "Paused \u{2014} hold 20\u{2013}30 cm from the foot"
             }
             if metres > 0 && Date().timeIntervalSince(lastDistanceHaptic) > 0.7 {
                 lastDistanceHaptic = Date()
