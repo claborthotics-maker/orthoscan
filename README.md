@@ -72,7 +72,10 @@ Live scan screen: `ios/Runner/TrueDepthScanViewController.swift`. Reconstruction
 - Frame-to-model alignment: each frame is nudged onto the surface already built (6-DoF, 4 iterations) before it is fused. Frames that cannot be aligned are skipped.
 - Live overlay is rebuilt every frame and drawn with the inverse alignment correction so it sits on the real foot.
 - Mirror fix: the final mesh is flipped left-to-right with triangle winding reversed.
-- Distance badge shows 20-40 cm; the scanner accepts 18-43 cm. Scans stop at 1000 frames. No smoothing is applied yet.
+- Distance badge shows 20-40 cm; the scanner accepts 18-43 cm. Scans stop at 1000 frames.
+
+**Smoothing**
+The exported (final) mesh gets very light Taubin smoothing: lambda 0.33, mu -0.34, 4 passes. Taubin alternates a pull toward the neighbours' average with a push back out, so it removes small ripples without shrinking the foot. In testing on a noisy sphere, 4 passes cut surface noise by about a third with no measurable shrinkage; on real scans (2 passes) vertices moved about 0.2-0.25 mm on average and the overall size changed by under 0.25 mm. Vertices on open mesh edges are held fixed. The live overlay is not smoothed. A `[SMOOTH]` line in the debug log shows how far vertices moved and the mesh size before and after. To turn it off set `smoothEnabled = false` in `MeshBuilder.swift`; to change the strength edit `smoothLambda`, `smoothMu` or `smoothIterations` there.
 
 **Crash fix (memory leak)**
 Long scans used to crash at roughly 350-700 frames. Cause: the live preview mesh was rebuilt every frame and each rebuild left about 7 MB of temporary objects behind, until iOS killed the app at its memory limit (about 3.4 GB on the iPhone 17 Pro). Fix: the preview mesh build is wrapped in an `autoreleasepool`. Memory now stays flat (about 600 MB) and a scan runs to the 1000-frame limit. The scan itself is unchanged.
@@ -83,4 +86,4 @@ Long scans used to crash at roughly 350-700 frames. Cause: the live preview mesh
 - Back-camera (LiDAR) version not built yet.
 
 **Baseline tags**
-`scan-master-v1` to `v5` are the steps that built this scanner (mirror fix, faster overlay, object lock and jump gate, alignment, overlay correction). `scan-base` is the pre-fix baseline. `scan-base-v2` and `scan-master-v6` are the current baseline with the crash fix.
+`scan-master-v1` to `v5` are the steps that built this scanner (mirror fix, faster overlay, object lock and jump gate, alignment, overlay correction). `scan-base` is the pre-fix baseline. `scan-base-v2` and `scan-master-v6` are the baseline with the crash fix. `scan-master-v7` adds the light final-mesh smoothing.

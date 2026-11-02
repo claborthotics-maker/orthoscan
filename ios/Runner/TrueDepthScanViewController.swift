@@ -424,7 +424,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
                 DispatchQueue.main.async { self.showError("Not enough frames — rescan.") }
                 return
             }
-            let geo = self.liveTSDF.extractMesh(mirror: self.mirrorFinalMesh)
+            let geo = self.liveTSDF.extractMesh(mirror: self.mirrorFinalMesh, smooth: true)
             guard let finalGeo = geo else {
                 DispatchQueue.main.async { self.showError("Mesh build failed — try scanning again.") }
                 return

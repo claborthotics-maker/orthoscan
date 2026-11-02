@@ -65,6 +65,11 @@ class LiveTSDF {
     private let stateLock = NSLock()   // integration and mesh extraction run on different threads
     private(set) var initialised = false
     private(set) var lastGeometry: SCNGeometry?
+    // Very light smoothing of the final exported mesh only (Taubin: smooths without shrinking). The live overlay is not smoothed.
+    private let smoothEnabled = true          // set false to turn the smoothing off
+    private let smoothLambda: Float = 0.33
+    private let smoothMu: Float = -0.34
+    private let smoothIterations = 4
 
     func initialise(frames: [DepthFrame], step: Int = 2) {
         var samples = [Float]()
@@ -539,7 +544,7 @@ class LiveTSDF {
         return x
     }
 
-    func extractMesh(mirror: Bool = false) -> SCNGeometry? {
+    func extractMesh(mirror: Bool = false, smooth: Bool = false) -> SCNGeometry? {
         guard initialised else { return nil }
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -578,6 +583,9 @@ class LiveTSDF {
                 indices[t + 2] = tmp
                 t += 3
             }
+        }
+        if smooth && smoothEnabled {
+            MeshBuilder.taubinSmooth(verts: &verts, indices: indices, lambda: smoothLambda, mu: smoothMu, iterations: smoothIterations)
         }
         guard verts.count > 10, indices.count > 0 else { return nil }
         let geo = MeshBuilder.buildSCNGeometryColored(
@@ -883,6 +891,64 @@ struct MeshBuilder {
         simd_normalize(simd_cross(b-a, c-a))
     }
 
+    // Light Taubin smoothing: a pull toward the neighbours average (lambda) then a push back out (mu), repeated. Vertices on open edges stay fixed.
+    static func taubinSmooth(verts: inout [SIMD3<Float>], indices: [UInt32], lambda: Float, mu: Float, iterations: Int) {
+        let n = verts.count
+        if n < 4 || indices.count < 3 || iterations < 1 { return }
+        var edgeCount = [UInt64: UInt8]()
+        edgeCount.reserveCapacity(indices.count)
+        func addEdge(_ p: UInt32, _ q: UInt32) {
+            let lo = min(p, q), hi = max(p, q)
+            edgeCount[(UInt64(lo) << 32) | UInt64(hi), default: 0] += 1
+        }
+        var t = 0
+        while t + 2 < indices.count {
+            addEdge(indices[t], indices[t + 1])
+            addEdge(indices[t + 1], indices[t + 2])
+            addEdge(indices[t + 2], indices[t])
+            t += 3
+        }
+        var nbrs = [[Int32]](repeating: [], count: n)
+        var fixed = [Bool](repeating: false, count: n)
+        for (key, cnt) in edgeCount {
+            let lo = Int(key >> 32), hi = Int(key & 0xFFFFFFFF)
+            if lo >= n || hi >= n { continue }
+            nbrs[lo].append(Int32(hi))
+            nbrs[hi].append(Int32(lo))
+            if cnt == 1 { fixed[lo] = true; fixed[hi] = true }
+        }
+        let orig = verts
+        var tmp = verts
+        for _ in 0..<iterations {
+            for f in [lambda, mu] {
+                for i in 0..<n {
+                    let nb = nbrs[i]
+                    if fixed[i] || nb.isEmpty { tmp[i] = verts[i]; continue }
+                    var sum = SIMD3<Float>(repeating: 0)
+                    for j in nb { sum += verts[Int(j)] }
+                    let avg = sum / Float(nb.count)
+                    tmp[i] = verts[i] + f * (avg - verts[i])
+                }
+                swap(&verts, &tmp)
+            }
+        }
+        func extent(_ v: [SIMD3<Float>]) -> SIMD3<Float> {
+            var lo = SIMD3<Float>(repeating: Float.greatestFiniteMagnitude)
+            var hi = SIMD3<Float>(repeating: -Float.greatestFiniteMagnitude)
+            for p in v { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+            return hi - lo
+        }
+        var maxMove: Float = 0, sumMove: Float = 0
+        for i in 0..<n {
+            let m = simd_length(verts[i] - orig[i])
+            maxMove = max(maxMove, m); sumMove += m
+        }
+        let e0 = extent(orig) * 1000, e1 = extent(verts) * 1000
+        var fixedCount = 0
+        for b in fixed where b { fixedCount += 1 }
+        print("[SMOOTH] taubin lambda=\(lambda) mu=\(mu) passes=\(iterations) verts=\(n) heldFixed=\(fixedCount) avgMove=\(String(format: "%.3f", sumMove / Float(n) * 1000))mm maxMove=\(String(format: "%.3f", maxMove * 1000))mm")
+        print("[SMOOTH] size before=(\(String(format: "%.2f", e0.x)),\(String(format: "%.2f", e0.y)),\(String(format: "%.2f", e0.z)))mm after=(\(String(format: "%.2f", e1.x)),\(String(format: "%.2f", e1.y)),\(String(format: "%.2f", e1.z)))mm")
+    }
     static func buildSCNGeometryColored(
         vertices: [SIMD3<Float>], normals: [SIMD3<Float>],
         vertColors: [SIMD3<Float>], indices: [UInt32]) -> SCNGeometry
