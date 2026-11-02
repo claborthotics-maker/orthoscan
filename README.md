@@ -77,6 +77,13 @@ Live scan screen: `ios/Runner/TrueDepthScanViewController.swift`. Reconstruction
 **Smoothing**
 The exported (final) mesh gets very light Taubin smoothing: lambda 0.33, mu -0.34, 4 passes. Taubin alternates a pull toward the neighbours' average with a push back out, so it removes small ripples without shrinking the foot. In testing on a noisy sphere, 4 passes cut surface noise by about a third with no measurable shrinkage; on real scans (2 passes) vertices moved about 0.2-0.25 mm on average and the overall size changed by under 0.25 mm. Vertices on open mesh edges are held fixed. The live overlay is not smoothed. A `[SMOOTH]` line in the debug log shows how far vertices moved and the mesh size before and after. To turn it off set `smoothEnabled = false` in `MeshBuilder.swift`; to change the strength edit `smoothLambda`, `smoothMu` or `smoothIterations` there.
 
+**Single-skin mesh (inner back wall removed)**
+A TSDF scan fills a band of voxels about 15 mm behind the skin it sees, then stops. The mesh builder used to read the jump from that band to never-seen voxels as a second surface, which produced a rippled inner wall behind the real skin. Mesh cells that touch voxels with too little weight (under `minWeight`) are now skipped, so only the real outer skin is built. The outer skin is unchanged; the scan's outer rim loses about one voxel (roughly 3 mm) where it was thinly seen. The exported STL is now a single open sheet, not a two-layer shell. Applies to the final STL and the live overlay. To bring the inner layer back set `trimBackWall = false` in `MeshBuilder.swift`. The `[TRIM]` log line shows how many cells were skipped.
+
+The underside of the sheet (seen from behind) is drawn light grey instead of black. This is display only, not part of the STL; change `backFaceColor` in `MeshBuilder.swift` to adjust it.
+
+Dimensional accuracy: smoothing and rim trimming move the surface by under about a millimetre in tests on the scanner's own mesh. A tape-measure check against a real foot or a known object is still recommended.
+
 **Crash fix (memory leak)**
 Long scans used to crash at roughly 350-700 frames. Cause: the live preview mesh was rebuilt every frame and each rebuild left about 7 MB of temporary objects behind, until iOS killed the app at its memory limit (about 3.4 GB on the iPhone 17 Pro). Fix: the preview mesh build is wrapped in an `autoreleasepool`. Memory now stays flat (about 600 MB) and a scan runs to the 1000-frame limit. The scan itself is unchanged.
 
@@ -86,4 +93,4 @@ Long scans used to crash at roughly 350-700 frames. Cause: the live preview mesh
 - Back-camera (LiDAR) version not built yet.
 
 **Baseline tags**
-`scan-master-v1` to `v5` are the steps that built this scanner (mirror fix, faster overlay, object lock and jump gate, alignment, overlay correction). `scan-base` is the pre-fix baseline. `scan-base-v2` and `scan-master-v6` are the baseline with the crash fix. `scan-master-v7` adds the light final-mesh smoothing.
+`scan-master-v1` to `v5` are the steps that built this scanner (mirror fix, faster overlay, object lock and jump gate, alignment, overlay correction). `scan-base` is the pre-fix baseline. `scan-base-v2` and `scan-master-v6` are the baseline with the crash fix. `scan-master-v7` adds the light final-mesh smoothing. `scan-master-v8` removes the inner back wall and adds the grey underside.

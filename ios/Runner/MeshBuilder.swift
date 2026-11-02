@@ -65,6 +65,8 @@ class LiveTSDF {
     private let stateLock = NSLock()   // integration and mesh extraction run on different threads
     private(set) var initialised = false
     private(set) var lastGeometry: SCNGeometry?
+    // Drop the rippled inner wall: skip mesh cells that touch voxels the camera has not seen enough. The outer skin is unaffected.
+    private let trimBackWall = true          // set false to bring the inner layer back
     // Very light smoothing of the final exported mesh only (Taubin: smooths without shrinking). The live overlay is not smoothed.
     private let smoothEnabled = true          // set false to turn the smoothing off
     private let smoothLambda: Float = 0.33
@@ -562,8 +564,10 @@ class LiveTSDF {
         MeshBuilder.marchingCubesFaithful(
             tsdf: filtered, colors: colors, nx: nx, ny: ny, nz: nz,
             origin: volOrigin, voxelSize: voxelSize,
-            verts: &verts, normals: &normals, vertColors: &vertColors, indices: &indices)
+            verts: &verts, normals: &normals, vertColors: &vertColors, indices: &indices,
+            weights: trimBackWall ? weights : nil, minWeight: minWeight)
         let tm2 = CFAbsoluteTimeGetCurrent()
+        print("[TRIM] backWallTrim=\(trimBackWall) skippedThinCells=\(MeshBuilder.lastThinCells) tris=\(indices.count / 3)")
         let trisBefore = indices.count / 3
         MeshBuilder.keepMainPieces(verts: &verts, normals: &normals, vertColors: &vertColors,
                                    indices: &indices, minFraction: minPieceFraction)
@@ -739,7 +743,8 @@ struct MeshBuilder {
         nx: Int, ny: Int, nz: Int,
         origin: SIMD3<Float>, voxelSize: Float,
         verts: inout [SIMD3<Float>], normals: inout [SIMD3<Float>],
-        vertColors: inout [SIMD3<Float>], indices: inout [UInt32])
+        vertColors: inout [SIMD3<Float>], indices: inout [UInt32],
+        weights: [Float]? = nil, minWeight: Float = 0)
     {
         var edgeTable = [Int](repeating: 0, count: 256)
         var triTable  = [[Int]](repeating: [], count: 256)
@@ -779,6 +784,8 @@ struct MeshBuilder {
                 }
             }
         }
+        var thinSkipped = 0
+        defer { MeshBuilder.lastThinCells = thinSkipped }
         var edgeVert = [Int: UInt32]()
         edgeVert.reserveCapacity(150_000)
         var ev = [UInt32](repeating: 0, count: 12)
@@ -788,6 +795,11 @@ struct MeshBuilder {
             for y in 0..<(ny - 1) {
                 for x in 0..<(nx - 1) {
                     if cubeFlag[vi(x, y, z)] == false { continue }
+                    if let wts = weights {
+                        var thin = false
+                        for c in 0..<8 where wts[vi(x + cox[c], y + coy[c], z + coz[c])] < minWeight { thin = true; break }
+                        if thin { thinSkipped += 1; continue }
+                    }
                     var cubeIdx = 0
                     for c in 0..<8 {
                         let v = tsdf[vi(x + cox[c], y + coy[c], z + coz[c])]
@@ -949,6 +961,10 @@ struct MeshBuilder {
         print("[SMOOTH] taubin lambda=\(lambda) mu=\(mu) passes=\(iterations) verts=\(n) heldFixed=\(fixedCount) avgMove=\(String(format: "%.3f", sumMove / Float(n) * 1000))mm maxMove=\(String(format: "%.3f", maxMove * 1000))mm")
         print("[SMOOTH] size before=(\(String(format: "%.2f", e0.x)),\(String(format: "%.2f", e0.y)),\(String(format: "%.2f", e0.z)))mm after=(\(String(format: "%.2f", e1.x)),\(String(format: "%.2f", e1.y)),\(String(format: "%.2f", e1.z)))mm")
     }
+    // How many mesh cells the back-wall filter skipped in the latest extraction (debug logging only).
+    static var lastThinCells = 0
+    // Colour of the underside (the back of the skin sheet), shown instead of black when you look at the scan from behind.
+    static let backFaceColor = UIColor(white: 0.72, alpha: 1.0)   // light grey; 0 = black, 1 = pure white
     static func buildSCNGeometryColored(
         vertices: [SIMD3<Float>], normals: [SIMD3<Float>],
         vertColors: [SIMD3<Float>], indices: [UInt32]) -> SCNGeometry
@@ -969,13 +985,28 @@ struct MeshBuilder {
         let nSrc  = SCNGeometrySource(data:nData, semantic:.normal,   vectorCount:normals.count,   usesFloatComponents:true, componentsPerVector:3, bytesPerComponent:4, dataOffset:0, dataStride:12)
         let cSrc  = SCNGeometrySource(data:cData, semantic:.color,    vectorCount:vertColors.count,usesFloatComponents:true, componentsPerVector:3, bytesPerComponent:4, dataOffset:0, dataStride:12)
         let elem  = SCNGeometryElement(data:iData, primitiveType:.triangles, primitiveCount:indices.count/3, bytesPerIndex:4)
-        let geo   = SCNGeometry(sources:[vSrc,nSrc,cSrc], elements:[elem])
+        // Second copy of the triangles with the corner order reversed: it is only visible from behind, so the underside gets its own material.
+        var backIdx = indices
+        var bt = 0
+        while bt + 2 < backIdx.count {
+            let tmpI = backIdx[bt + 1]
+            backIdx[bt + 1] = backIdx[bt + 2]
+            backIdx[bt + 2] = tmpI
+            bt += 3
+        }
+        let backData = backIdx.withUnsafeBytes { Data($0) }
+        let elemBack = SCNGeometryElement(data:backData, primitiveType:.triangles, primitiveCount:indices.count/3, bytesPerIndex:4)
+        let geo   = SCNGeometry(sources:[vSrc,nSrc,cSrc], elements:[elem, elemBack])
         let mat   = SCNMaterial()
         mat.lightingModel = .physicallyBased
         mat.diffuse.contents  = UIColor.white
         mat.roughness.contents = 0.6
         mat.metalness.contents = 0.0
-        geo.materials = [mat]
+        let backMat = SCNMaterial()
+        backMat.lightingModel = .constant
+        backMat.diffuse.contents = UIColor.black
+        backMat.emission.contents = MeshBuilder.backFaceColor
+        geo.materials = [mat, backMat]
         return geo
     }
 
