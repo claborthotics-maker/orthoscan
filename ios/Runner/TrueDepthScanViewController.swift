@@ -296,7 +296,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
                 self.meshUpdateCounter = 0
                 // The mesh is built in the corrected frame; the camera view uses ARKit's raw pose. Draw the overlay with the inverse correction so it sits on the real object.
                 let overlayFix = simd_inverse(self.liveTSDF.corr)
-                if let geo = self.liveTSDF.extractMesh() {
+                if let geo = autoreleasepool(invoking: { self.liveTSDF.extractMesh() }) {
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
                         if let existing = self.liveMeshNode {
