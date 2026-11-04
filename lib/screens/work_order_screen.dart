@@ -54,6 +54,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   bool _notesExpanded = false;
 
   late WorkOrderStatus _status;
+  List<String> _linkedScans = <String>[];
   late FootSide _footSide;
   late TemplateType? _orthoticType;
   late int _quantityLeft;
@@ -137,6 +138,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     super.initState();
     final wo = widget.workOrder;
     _nameController.text = wo.name;
+    _linkedScans = List<String>.from(wo.scanFiles);
     _instructionsController.text = wo.specialInstructions;
     _weightController.text = wo.patientWeight?.toString() ?? '';
     _heelLiftHeightController.text = wo.heelLiftHeight;
@@ -235,8 +237,119 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     return widthOption;
   }
 
+  String _scanKind(String path) {
+    final n = path.split('/').last.toLowerCase();
+    if (n.contains('impression')) return 'Impression';
+    if (n.contains('right')) return 'Right';
+    if (n.contains('left')) return 'Left';
+    return 'Other';
+  }
+
+  void _unlinkScan(String path) {
+    setState(() => _linkedScans.remove(path));
+  }
+
+  Future<void> _pickExistingScan() async {
+    final available = widget.patient.scanFiles
+        .toSet()
+        .where((p) => _linkedScans.contains(p) == false)
+        .toList();
+    if (available.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No other saved scans for this patient')),
+      );
+      return;
+    }
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF16213E),
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Choose a scan',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold)),
+            ),
+            ...available.reversed.map((p) => ListTile(
+                  leading: const Icon(Icons.insert_drive_file,
+                      color: Color(0xFF4FC3F7)),
+                  title: Text(p.split('/').last,
+                      style: const TextStyle(color: Colors.white, fontSize: 13)),
+                  subtitle: Text(_scanKind(p),
+                      style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                  onTap: () => Navigator.pop(ctx, p),
+                )),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || mounted == false) return;
+    final kind = _scanKind(picked);
+    setState(() {
+      if (kind != 'Other') {
+        _linkedScans.removeWhere((p) => _scanKind(p) == kind);
+      }
+      _linkedScans.add(picked);
+    });
+  }
+
+  Widget _buildScansSection() {
+    return _buildSection(
+      title: 'Scans',
+      icon: Icons.view_in_ar,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_linkedScans.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange.withOpacity(0.5)),
+              ),
+              child: const Text('No scans linked yet. You can still submit.',
+                  style: TextStyle(color: Colors.orangeAccent, fontSize: 13)),
+            )
+          else
+            ..._linkedScans.map((p) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.insert_drive_file,
+                      color: Color(0xFF4FC3F7)),
+                  title: Text(p.split('/').last,
+                      style: const TextStyle(color: Colors.white, fontSize: 13)),
+                  subtitle: Text(_scanKind(p),
+                      style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                  trailing: TextButton(
+                    onPressed: () => _unlinkScan(p),
+                    child: const Text('Unlink',
+                        style: TextStyle(color: Colors.white54)),
+                  ),
+                )),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _pickExistingScan,
+              icon: const Icon(Icons.add_link, color: Colors.white),
+              label: const Text('Use existing scan',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _applyStateToWorkOrder(WorkOrder wo) {
     wo.name = _nameController.text.trim();
+    wo.scanFiles = List<String>.from(_linkedScans);
     wo.specialInstructions = _instructionsController.text;
     wo.status = _status;
     wo.footSide = _footSide;
@@ -852,6 +965,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 child: _buildField('Name / Number', _nameController,
                     hint: 'e.g. John Doe 1234'),
               ),
+
+              const SizedBox(height: 16),
+
+              _buildScansSection(),
 
               const SizedBox(height: 16),
 
