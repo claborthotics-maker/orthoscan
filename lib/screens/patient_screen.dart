@@ -564,114 +564,6 @@ class _PatientScreenState extends State<PatientScreen> {
 
             const SizedBox(height: 16),
 
-                    // ─── Scans ───────────────────────────────────────────────
-            _SectionCard(
-              title: 'Scans',
-              icon: Icons.radar,
-              child: Column(
-                children: [
-                  if (widget.patient.scanFiles.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Text('No scans yet',
-                          style: TextStyle(color: Colors.white54)),
-                    )
-                  else
-                    ...widget.patient.scanFiles.asMap().entries.map((entry) {
-                      final i = entry.key;
-                      final path = entry.value;
-                      final name = path.split('/').last;
-                      return GestureDetector(
-                        onLongPress: () => _showScanOptions(context, i, path),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.insert_drive_file, color: Color(0xFF4FC3F7)),
-                          title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.share, color: Colors.white54, size: 20),
-                            onPressed: () async {
-                              var sharePath = path;
-                              if (File(sharePath).existsSync() == false) {
-                                final dbDir = await getDatabasesPath();
-                                final alt = dbDir + '/' + name;
-                                if (File(alt).existsSync()) { sharePath = alt; }
-                              }
-                              if (File(sharePath).existsSync() == false) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Scan file is missing: $name')),
-                                );
-                                return;
-                              }
-                              final box = context.findRenderObject() as RenderBox?;
-                              await Share.shareXFiles([XFile(sharePath)],
-                                subject: 'Scan – ${widget.patient.fullName}',
-                                sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size);
-                            },
-                          ),
-                        ),
-                      );
-                    }),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _startScan,
-                      icon: const Icon(Icons.camera_alt,
-                          color: Colors.white),
-                      label: const Text('Start New Scan',
-                          style: TextStyle(color: Colors.white)),
-                     style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F3460),
-                        padding: const EdgeInsets.all(14),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // ─── Clinical Notes
-            _SectionCard(
-              title: 'Clinical Notes',
-              icon: Icons.note_alt,
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _notesController,
-                    style: const TextStyle(color: Colors.white),
-                    maxLines: 5,
-                    maxLength: 100,
-                    decoration: InputDecoration(
-                      hintText: 'Enter clinical notes here...',
-                      hintStyle: const TextStyle(color: Colors.white24),
-                      counterStyle: const TextStyle(color: Colors.white38),
-                      enabledBorder: const OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      focusedBorder: const OutlineInputBorder(
-                        borderSide: BorderSide(color: Color(0xFF4FC3F7)),
-                      ),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: ElevatedButton(
-                      onPressed: _saveNotes,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F3460),
-                      ),
-                      child: const Text('Save Notes',
-                          style: TextStyle(color: Colors.white)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
             // â”€â”€â”€ Work Orders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _SectionCard(
               title: 'Work Orders',
@@ -799,6 +691,115 @@ class _PatientScreenState extends State<PatientScreen> {
                 ],
               ),
             ),
+
+            const SizedBox(height: 16),
+
+                    // ─── Scans ───────────────────────────────────────────────
+            _SectionCard(
+              title: 'Scans',
+              icon: Icons.radar,
+              child: Column(
+                children: [
+                  if (widget.patient.scanFiles.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('No scans yet',
+                          style: TextStyle(color: Colors.white54)),
+                    )
+                  else
+                    ...widget.patient.scanFiles.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final path = entry.value;
+                      final name = path.split('/').last;
+                      return GestureDetector(
+                        onLongPress: () => _showScanOptions(context, i, path),
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.insert_drive_file, color: Color(0xFF4FC3F7)),
+                          title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.share, color: Colors.white54, size: 20),
+                            onPressed: () async {
+                              var sharePath = path;
+                              if (File(sharePath).existsSync() == false) {
+                                final dbDir = await getDatabasesPath();
+                                final alt = dbDir + '/' + name;
+                                if (File(alt).existsSync()) { sharePath = alt; }
+                              }
+                              if (File(sharePath).existsSync() == false) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Scan file is missing: $name')),
+                                );
+                                return;
+                              }
+                              final box = context.findRenderObject() as RenderBox?;
+                              await Share.shareXFiles([XFile(sharePath)],
+                                subject: 'Scan – ${widget.patient.fullName}',
+                                sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size);
+                            },
+                          ),
+                        ),
+                      );
+                    }),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _startScan,
+                      icon: const Icon(Icons.camera_alt,
+                          color: Colors.white),
+                      label: const Text('Start New Scan',
+                          style: TextStyle(color: Colors.white)),
+                     style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F3460),
+                        padding: const EdgeInsets.all(14),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ─── Clinical Notes
+            _SectionCard(
+              title: 'Clinical Notes',
+              icon: Icons.note_alt,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _notesController,
+                    style: const TextStyle(color: Colors.white),
+                    maxLines: 5,
+                    maxLength: 100,
+                    decoration: InputDecoration(
+                      hintText: 'Enter clinical notes here...',
+                      hintStyle: const TextStyle(color: Colors.white24),
+                      counterStyle: const TextStyle(color: Colors.white38),
+                      enabledBorder: const OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white24),
+                      ),
+                      focusedBorder: const OutlineInputBorder(
+                        borderSide: BorderSide(color: Color(0xFF4FC3F7)),
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ElevatedButton(
+                      onPressed: _saveNotes,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F3460),
+                      ),
+                      child: const Text('Save Notes',
+                          style: TextStyle(color: Colors.white)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
 
             const SizedBox(height: 80),
           ],

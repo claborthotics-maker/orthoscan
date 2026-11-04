@@ -108,3 +108,8 @@ The inside (underside) of the scan shell is now shown in a muted steel blue, lit
 - The grey "Scan N" subtitle under each scan in the patient profile was removed; each row shows the scan file name only.
 - The email subject now shows the patient's name (it was printing the literal text `${widget.patient.fullName}`).
 - Sharing a scan now finds the file by name in the app's current Documents folder when the saved path no longer exists. iOS changes the app container path on reinstall and update, which left saved absolute paths stale and stopped the STL attaching to email. If the file is truly gone, the app shows "Scan file is missing: <name>".
+
+## Scan auto-naming and patient profile layout
+
+- Saved scans are named automatically from the patient and scan type: `Doe_John_Direct_Left_1.stl`, `..._Direct_Right_1.stl`, `..._Impression_1.stl` (last name, first name, type, side, number). The number is the highest saved number for that patient, type and side plus one, so a new scan never overwrites an earlier one; discarded scans do not use a number. Spaces and symbols in names are removed. Older scans named `scan_left.stl` and `scan_right.stl` are unchanged.
+- The patient profile now shows Patient Info, Work Orders, Scans, then Clinical Notes, top to bottom.

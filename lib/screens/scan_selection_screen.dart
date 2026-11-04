@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:io';
+import 'package:flutter/material.dart';
 import '../models/patient.dart';
 import 'scan_screen.dart';
 
@@ -12,6 +13,49 @@ class ScanSelectionScreen extends StatelessWidget {
 
   const ScanSelectionScreen({super.key, required this.patient});
 
+  String _cleanName(String s) {
+    final noSpaces = s.trim().replaceAll(RegExp(r'\s+'), '');
+    final kept = noSpaces.replaceAll(RegExp(r'[^\p{L}\p{N}-]', unicode: true), '');
+    return kept.isEmpty ? 'Unknown' : kept;
+  }
+
+  Future<String> _autoName(String filePath, ScanType scanType) async {
+    try {
+      final file = File(filePath);
+      if (file.existsSync() == false) return filePath;
+      final dir = file.parent.path;
+      final base = filePath.split('/').last.toLowerCase();
+      String kind;
+      if (scanType == ScanType.impressionBox) {
+        kind = 'Impression';
+      } else if (base.contains('right')) {
+        kind = 'Direct_Right';
+      } else {
+        kind = 'Direct_Left';
+      }
+      final prefix = '${_cleanName(patient.lastName)}_${_cleanName(patient.firstName)}_$kind';
+      final pattern = RegExp('^' + RegExp.escape(prefix) + r'_(\d+)\.stl$');
+      var maxN = 0;
+      for (final p in patient.scanFiles) {
+        final m = pattern.firstMatch(p.split('/').last);
+        if (m != null) {
+          final n = int.parse(m.group(1) ?? '0');
+          if (n > maxN) maxN = n;
+        }
+      }
+      var next = maxN + 1;
+      var newPath = '$dir/${prefix}_$next.stl';
+      while (File(newPath).existsSync()) {
+        next += 1;
+        newPath = '$dir/${prefix}_$next.stl';
+      }
+      await file.rename(newPath);
+      return newPath;
+    } catch (e) {
+      return filePath;
+    }
+  }
+
   Future<void> _startScan(BuildContext context, ScanType scanType) async {
     final filePath = await Navigator.push<String>(
       context,
@@ -23,7 +67,10 @@ class ScanSelectionScreen extends StatelessWidget {
       ),
     );
     if (filePath != null && context.mounted) {
-      Navigator.pop(context, filePath);
+      final named = await _autoName(filePath, scanType);
+      if (context.mounted) {
+        Navigator.pop(context, named);
+      }
     }
   }
 
