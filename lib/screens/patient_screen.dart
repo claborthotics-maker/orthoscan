@@ -8,6 +8,7 @@ import '../services/database_service.dart';
 import '../utils/input_formatters.dart';
 import '../services/database_service.dart';
 import 'scan_selection_screen.dart';
+import 'package:sqflite/sqflite.dart' show getDatabasesPath;
 import 'package:share_plus/share_plus.dart';
 import 'work_order_screen.dart';
 import '../services/clinician_service.dart';
@@ -586,13 +587,24 @@ class _PatientScreenState extends State<PatientScreen> {
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.insert_drive_file, color: Color(0xFF4FC3F7)),
                           title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                          subtitle: Text('Scan \${i + 1}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
                           trailing: IconButton(
                             icon: const Icon(Icons.share, color: Colors.white54, size: 20),
                             onPressed: () async {
+                              var sharePath = path;
+                              if (File(sharePath).existsSync() == false) {
+                                final dbDir = await getDatabasesPath();
+                                final alt = dbDir + '/' + name;
+                                if (File(alt).existsSync()) { sharePath = alt; }
+                              }
+                              if (File(sharePath).existsSync() == false) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Scan file is missing: $name')),
+                                );
+                                return;
+                              }
                               final box = context.findRenderObject() as RenderBox?;
-                              await Share.shareXFiles([XFile(path)],
-                                subject: 'Scan – \${widget.patient.fullName}',
+                              await Share.shareXFiles([XFile(sharePath)],
+                                subject: 'Scan – ${widget.patient.fullName}',
                                 sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size);
                             },
                           ),

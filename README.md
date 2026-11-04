@@ -102,3 +102,9 @@ The final-mesh Taubin smoothing now runs 6 passes (was 4), with lambda 0.33 and 
 ## Underside colour and shading
 
 The inside (underside) of the scan shell is now shown in a muted steel blue, lit with the same physically based material as the outside, so it picks up light and shadow and no longer looks flat. This replaces the earlier flat light-grey underside. The material flips its surface direction so the inside catches light. This is display only: the exported STL is unchanged. To change the colour, edit `backFaceColor` in `ios/Runner/MeshBuilder.swift`.
+
+## Patient scan list and sharing
+
+- The grey "Scan N" subtitle under each scan in the patient profile was removed; each row shows the scan file name only.
+- The email subject now shows the patient's name (it was printing the literal text `${widget.patient.fullName}`).
+- Sharing a scan now finds the file by name in the app's current Documents folder when the saved path no longer exists. iOS changes the app container path on reinstall and update, which left saved absolute paths stale and stopped the STL attaching to email. If the file is truly gone, the app shows "Scan file is missing: <name>".
