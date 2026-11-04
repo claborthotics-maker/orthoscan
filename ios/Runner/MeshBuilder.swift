@@ -71,7 +71,7 @@ class LiveTSDF {
     private let smoothEnabled = true          // set false to turn the smoothing off
     private let smoothLambda: Float = 0.33
     private let smoothMu: Float = -0.34
-    private let smoothIterations = 4
+    private let smoothIterations = 6
 
     func initialise(frames: [DepthFrame], step: Int = 2) {
         var samples = [Float]()
