@@ -964,7 +964,7 @@ struct MeshBuilder {
     // How many mesh cells the back-wall filter skipped in the latest extraction (debug logging only).
     static var lastThinCells = 0
     // Colour of the underside (the back of the skin sheet), shown instead of black when you look at the scan from behind.
-    static let backFaceColor = UIColor(white: 0.72, alpha: 1.0)   // light grey; 0 = black, 1 = pure white
+    static let backFaceColor = UIColor(red: 0.435, green: 0.561, blue: 0.686, alpha: 1.0)   // muted steel blue; edit to change the underside colour
     static func buildSCNGeometryColored(
         vertices: [SIMD3<Float>], normals: [SIMD3<Float>],
         vertColors: [SIMD3<Float>], indices: [UInt32]) -> SCNGeometry
@@ -1003,9 +1003,11 @@ struct MeshBuilder {
         mat.roughness.contents = 0.6
         mat.metalness.contents = 0.0
         let backMat = SCNMaterial()
-        backMat.lightingModel = .constant
-        backMat.diffuse.contents = UIColor.black
-        backMat.emission.contents = MeshBuilder.backFaceColor
+        backMat.lightingModel = .physicallyBased
+        backMat.diffuse.contents = MeshBuilder.backFaceColor
+        backMat.roughness.contents = 0.6
+        backMat.metalness.contents = 0.0
+        backMat.shaderModifiers = [.surface: "_surface.normal = -_surface.normal;"]
         geo.materials = [mat, backMat]
         return geo
     }

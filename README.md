@@ -98,3 +98,7 @@ Long scans used to crash at roughly 350-700 frames. Cause: the live preview mesh
 ## Smoothing strength (6 passes)
 
 The final-mesh Taubin smoothing now runs 6 passes (was 4), with lambda 0.33 and mu -0.34 unchanged. It is applied to the exported STL only, and open-edge vertices stay fixed. On a real foot scan (about 18.6k vertices) it moved vertices 0.53 mm on average and 1.58 mm at most, with no change in overall bounding-box size. The ripples on skin are visibly reduced. To change the strength, edit `smoothIterations` in `ios/Runner/MeshBuilder.swift`.
+
+## Underside colour and shading
+
+The inside (underside) of the scan shell is now shown in a muted steel blue, lit with the same physically based material as the outside, so it picks up light and shadow and no longer looks flat. This replaces the earlier flat light-grey underside. The material flips its surface direction so the inside catches light. This is display only: the exported STL is unchanged. To change the colour, edit `backFaceColor` in `ios/Runner/MeshBuilder.swift`.
