@@ -113,3 +113,13 @@ The inside (underside) of the scan shell is now shown in a muted steel blue, lit
 
 - Saved scans are named automatically from the patient and scan type: `Doe_John_Direct_Left_1.stl`, `..._Direct_Right_1.stl`, `..._Impression_1.stl` (last name, first name, type, side, number). The number is the highest saved number for that patient, type and side plus one, so a new scan never overwrites an earlier one; discarded scans do not use a number. Spaces and symbols in names are removed. Older scans named `scan_left.stl` and `scan_right.stl` are unchanged.
 - The patient profile now shows Patient Info, Work Orders, Scans, then Clinical Notes, top to bottom.
+
+## Work order scans and zip submit
+
+- Each work order has a Scans section under the Work Order Name / Number.
+- Scan now opens the scanner. A saved scan is auto-named, added to the patient's scans, and linked to the work order.
+- Use existing scan links a scan the patient already has. Picking a second left or right scan replaces the first of that kind. Unlink removes a link.
+- A scan belongs to the patient. One scan can be linked to many work orders. A work order holds up to a left scan, a right scan, or one impression.
+- The review screen warns when no scans are linked. Submitting is still allowed.
+- Confirm and Submit builds a zip named after the work order, such as 2002_lab_order.zip. It holds the PDF, every linked STL, and manifest.txt, and it goes out through the normal share sheet.
+- Linked scans are found by file name in the current Documents folder, so links survive an app reinstall. A linked file that no longer exists is listed in manifest.txt as not found.
