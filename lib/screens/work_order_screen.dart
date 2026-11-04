@@ -13,6 +13,7 @@ import '../services/database_service.dart';
 import 'work_order_widgets.dart';
 import 'foot_diagram_widget.dart';
 import 'work_order_confirmation_screen.dart';
+import 'scan_selection_screen.dart';
 
 class WorkOrderScreen extends StatefulWidget {
   final WorkOrder workOrder;
@@ -249,6 +250,31 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     setState(() => _linkedScans.remove(path));
   }
 
+  Future<void> _scanNow() async {
+    final filePath = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ScanSelectionScreen(patient: widget.patient),
+      ),
+    );
+    if (filePath == null || mounted == false) return;
+    final files = List<String>.from(widget.patient.scanFiles);
+    if (files.contains(filePath) == false) files.add(filePath);
+    widget.patient.scanFiles = files;
+    await DatabaseService().updatePatient(widget.patient);
+    if (mounted == false) return;
+    final kind = _scanKind(filePath);
+    setState(() {
+      if (kind != 'Other') {
+        _linkedScans.removeWhere((q) => _scanKind(q) == kind);
+      }
+      _linkedScans.add(filePath);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Scan linked: ' + filePath.split('/').last)),
+    );
+  }
+
   Future<void> _pickExistingScan() async {
     final available = widget.patient.scanFiles
         .toSet()
@@ -332,6 +358,21 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                         style: TextStyle(color: Colors.white54)),
                   ),
                 )),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _scanNow,
+              icon: const Icon(Icons.camera_alt, color: Colors.white),
+              label: const Text('Scan now',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F3460),
+                padding: const EdgeInsets.all(14),
+              ),
+            ),
+          ),
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
