@@ -1,4 +1,4 @@
-﻿name: orthoscan
+name: orthoscan
 description: "A new Flutter project."
 publish_to: 'none'
 
@@ -17,6 +17,7 @@ dependencies:
   printing: ^5.14.3
   shared_preferences: ^2.2.2
   share_plus: ^7.2.2
+  archive: ^4.6.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

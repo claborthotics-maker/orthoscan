@@ -5,6 +5,10 @@ import '../models/work_order_template.dart';
 import '../models/patient.dart';
 import '../services/pdf_service.dart';
 import 'package:printing/printing.dart';
+import 'dart:io';
+import 'package:archive/archive.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:sqflite/sqflite.dart' show getDatabasesPath;
 
 class WorkOrderConfirmationScreen extends StatelessWidget {
   final WorkOrder workOrder;
@@ -21,6 +25,75 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     this.leftDiagramImage,
     this.rightDiagramImage,
   });
+
+  String _safeName(String s) {
+    final t = s.trim().replaceAll(RegExp(r'\s+'), '_');
+    final k = t.replaceAll(RegExp(r'[^A-Za-z0-9_\-]'), '');
+    return k.isEmpty ? 'work_order' : k;
+  }
+
+  String _kindOf(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('impression')) return 'Impression';
+    if (n.contains('right')) return 'Right foot (direct scan)';
+    if (n.contains('left')) return 'Left foot (direct scan)';
+    return 'Scan';
+  }
+
+  Future<String?> _resolveScan(String path) async {
+    if (File(path).existsSync()) return path;
+    final name = path.split('/').last;
+    final dbDir = await getDatabasesPath();
+    final alt = dbDir + '/' + name;
+    if (File(alt).existsSync()) return alt;
+    return null;
+  }
+
+  Future<void> _shareZip(Uint8List pdfBytes, Rect origin) async {
+    final base = _safeName(workOrder.displayName);
+    final pdfName = base + '_lab_order.pdf';
+    final archive = Archive();
+    archive.addFile(ArchiveFile(pdfName, pdfBytes.length, pdfBytes));
+    final lines = <String>[
+      'Work order: ' + workOrder.displayName,
+      'Patient: ' + patient.fullName,
+      'Created: ' + DateTime.now().toIso8601String(),
+      '',
+      'Files in this zip:',
+      pdfName + '  -  work order PDF',
+    ];
+    final missing = <String>[];
+    for (final p in workOrder.scanFiles) {
+      final name = p.split('/').last;
+      final real = await _resolveScan(p);
+      if (real == null) {
+        missing.add(name);
+        continue;
+      }
+      final data = await File(real).readAsBytes();
+      archive.addFile(ArchiveFile(name, data.length, data));
+      lines.add(name + '  -  ' + _kindOf(name));
+    }
+    if (missing.isNotEmpty) {
+      lines.add('');
+      lines.add('Linked scans that could not be found on this device:');
+      for (final m in missing) {
+        lines.add(m);
+      }
+    }
+    final manifest = Uint8List.fromList(lines.join('\n').codeUnits);
+    archive.addFile(ArchiveFile('manifest.txt', manifest.length, manifest));
+    final zipData = ZipEncoder().encode(archive);
+    final zipBytes = List<int>.from(zipData as Iterable<int>);
+    final dir = await Directory.systemTemp.createTemp('clab_zip');
+    final zipFile = File(dir.path + '/' + base + '_lab_order.zip');
+    await zipFile.writeAsBytes(zipBytes);
+    await Share.shareXFiles(
+      [XFile(zipFile.path)],
+      subject: 'Lab order - ' + workOrder.displayName,
+      sharePositionOrigin: origin,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -245,10 +318,42 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
 
             const SizedBox(height: 24),
  // Confirm & Submit button — marks as submitted AND opens share sheet
+            if (workOrder.scanFiles.isEmpty)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                ),
+                child: const Text(
+                    'Warning: no scans are linked to this work order. It will be sent with the PDF only.',
+                    style: TextStyle(color: Colors.orangeAccent, fontSize: 13)),
+              )
+            else
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.green.withOpacity(0.5)),
+                ),
+                child: Text(
+                    workOrder.scanFiles.length.toString() +
+                        ' scan(s) will be sent in the zip with the PDF.',
+                    style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 13)),
+              ),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final screen = MediaQuery.of(context).size;
+                  final origin = Rect.fromLTWH(screen.width / 2, screen.height / 2, 1, 1);
                   // First confirm/submit
                   onConfirm();
                   // Then generate and share PDF
@@ -258,11 +363,19 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
                     leftDiagramImage: leftDiagramImage,
                     rightDiagramImage: rightDiagramImage,
                   );
-                  await Printing.sharePdf(
-                    bytes: bytes,
-                    filename:
-                        '${workOrder.displayName.replaceAll(' ', '_')}_lab_order.pdf',
-                  );
+                  try {
+                    await _shareZip(bytes, origin);
+                  } catch (e, st) {
+                    print('ZIP ERROR: ' + e.toString());
+                    print(st.toString());
+                    messenger.showSnackBar(
+                      SnackBar(
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 30),
+                        content: Text('ZIP ERROR: ' + e.toString()),
+                      ),
+                    );
+                  }
                 },
                 icon: const Icon(Icons.send, color: Colors.white),
                 label: Text(workOrder.submissionCount > 0 ? 'Confirm & Re-Submit to Lab' : 'Confirm & Submit to Lab',
