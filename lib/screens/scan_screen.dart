@@ -52,6 +52,7 @@ class _ScanScreenState extends State<ScanScreen> {
       }
     } catch (e) {
       setState(() => _isScanning = false);
+      if (e is PlatformException && e.code == 'CANCELLED') return;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Scan failed: $e')),
