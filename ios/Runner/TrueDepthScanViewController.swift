@@ -1,5 +1,6 @@
 import UIKit
 import ARKit
+import AVKit
 import SceneKit
 import simd
 
@@ -32,7 +33,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private var liveMeshNode: SCNNode?
 
     private enum ScanPhase { case footSelection, idle, scanning, processing, preview }
-    private var phase: ScanPhase = .footSelection
+    private var phase: ScanPhase = .footSelection { didSet { updateVolumeHint() } }
 
     private var minDepth: Float { return isImpression ? 0.25 : 0.20 }
     private var maxDepth: Float { return isImpression ? 0.55 : 0.40 }
@@ -57,6 +58,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         view.backgroundColor = .black
         buildUI()
         if isImpression { footSelectionView.isHidden = true }
+        setupHardwareButtons()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -407,6 +409,70 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         updateDistanceBadge(text: "\(scanSubject) — Position", color: .systemGray)
         statusLabel.text = "Hold phone \(Int(minDepth * 100))–\(Int(maxDepth * 100)) cm from the \(objectWord)\nStart at heel, rotate around foot"
         startARSession()
+    }
+
+    private var volumeHint: UIView?
+
+    // Small hint pill on the left edge, pointing at the volume buttons: only visible while the scanner is idle and ready to start.
+    private func updateVolumeHint() {
+        guard captureButton != nil else { return }
+        if phase == .idle {
+            if volumeHint == nil { buildVolumeHint() }
+            volumeHint?.isHidden = false
+        } else {
+            volumeHint?.isHidden = true
+        }
+    }
+
+    private func buildVolumeHint() {
+        // VOLHINT3: small pill, arrow + two-line text (Start over Stop)
+        let box = UIView()
+        box.backgroundColor = UIColor.black.withAlphaComponent(0.65)
+        box.layer.cornerRadius = 10
+        box.translatesAutoresizingMaskIntoConstraints = false
+        let icon = UIImageView(image: UIImage(systemName: "arrow.left"))
+        icon.tintColor = .white
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        let label = UILabel()
+        label.text = "Start\nStop"
+        label.numberOfLines = 2
+        label.textAlignment = .left
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 12, weight: .semibold)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(icon)
+        box.addSubview(label)
+        view.addSubview(box)
+        NSLayoutConstraint.activate([
+            box.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
+            NSLayoutConstraint(item: box, attribute: .centerY, relatedBy: .equal, toItem: view, attribute: .bottom, multiplier: 0.30, constant: 0),
+            icon.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 8),
+            icon.centerYAnchor.constraint(equalTo: box.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 14),
+            icon.heightAnchor.constraint(equalToConstant: 14),
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -10),
+            label.topAnchor.constraint(equalTo: box.topAnchor, constant: 7),
+            label.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -7),
+        ])
+        volumeHint = box
+    }
+
+    private func setupHardwareButtons() {
+        if #available(iOS 17.2, *) {
+            let interaction = AVCaptureEventInteraction { [weak self] event in
+                if event.phase == .ended { self?.hardwareButtonPressed() }
+            }
+            view.addInteraction(interaction)
+        }
+    }
+
+    // Volume button acts as the start / stop scan button. Ignored on the review screen.
+    private func hardwareButtonPressed() {
+        guard phase == .idle || phase == .scanning else { return }
+        guard captureButton.isHidden == false, captureButton.isEnabled else { return }
+        captureTapped()
     }
 
     @objc private func captureTapped() {
