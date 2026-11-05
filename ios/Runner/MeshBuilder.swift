@@ -1049,20 +1049,27 @@ struct MeshBuilder {
         }
         // ARKit works in metres; write the STL in millimetres (x1000). In Fusion pick Millimeter in the Insert Mesh dialog.
         verts = verts.map { $0 * 1000.0 }
-        var stl = "solid foot\n"
+        // BINSTL: binary STL (80-byte header, UInt32 triangle count, 50 bytes per triangle), units mm
+        var data = Data()
+        data.reserveCapacity(84 + 50 * tris.count)
+        data.append(Data(count: 80))
+        var triCount = UInt32(tris.count).littleEndian
+        data.append(Data(bytes: &triCount, count: 4))
+        var f = [Float](repeating: 0, count: 12)
         for tri in tris {
             let a=verts[Int(tri.x)],b=verts[Int(tri.y)],c=verts[Int(tri.z)]
-            let n=simd_normalize(simd_cross(b-a,c-a))
-            stl += "  facet normal \(n.x) \(n.y) \(n.z)\n    outer loop\n"
-            stl += "      vertex \(a.x) \(a.y) \(a.z)\n"
-            stl += "      vertex \(b.x) \(b.y) \(b.z)\n"
-            stl += "      vertex \(c.x) \(c.y) \(c.z)\n"
-            stl += "    endloop\n  endfacet\n"
+            var n=simd_normalize(simd_cross(b-a,c-a))
+            if !(n.x.isFinite && n.y.isFinite && n.z.isFinite) { n = SIMD3<Float>(0,0,0) }
+            f[0]=n.x; f[1]=n.y; f[2]=n.z
+            f[3]=a.x; f[4]=a.y; f[5]=a.z
+            f[6]=b.x; f[7]=b.y; f[8]=b.z
+            f[9]=c.x; f[10]=c.y; f[11]=c.z
+            f.withUnsafeBytes { data.append(contentsOf: $0) }
+            data.append(contentsOf: [UInt8(0), UInt8(0)])
         }
-        stl += "endsolid foot\n"
         let dir = FileManager.default.urls(for:.documentDirectory, in:.userDomainMask)[0]
         let url = dir.appendingPathComponent("scan_\(footSide).stl")
-        try? stl.write(to:url, atomically:true, encoding:.utf8)
+        try? data.write(to: url, options: .atomic)
         return url
     }
 
