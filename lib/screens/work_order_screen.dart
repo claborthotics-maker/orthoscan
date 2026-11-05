@@ -758,6 +758,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   Future<void> _pickDate({required bool isDelivery}) async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
