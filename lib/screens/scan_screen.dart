@@ -85,12 +85,12 @@ class _ScanScreenState extends State<ScanScreen> {
               const SizedBox(height: 24),
               if (!_isLiDARAvailable) ...[
                 const Text(
-                  'LiDAR Not Available',
+                  '3D Scanning Not Available',
                   style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  '3D scanning requires a LiDAR-equipped device (iPhone 12 Pro or newer, iPad Pro).',
+                  '3D scanning requires a device with a front TrueDepth camera (an iPhone with Face ID).',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white54, fontSize: 15),
                 ),

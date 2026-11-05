@@ -117,9 +117,9 @@ class ScanSelectionScreen extends StatelessWidget {
             _ScanOptionCard(
               icon: Icons.inventory_2,
               title: 'Scan Impression Box',
-              description: 'Scan a foam impression box casting of the patient\'s foot using LiDAR.',
+              description: 'Scan a foam impression box casting of the patient\'s feet as one 3D scan using the front camera.',
               color: const Color(0xFF4FC3F7),
-              tags: ['LiDAR', 'iOS'],
+              tags: ['3D scan', 'Front camera'],
               onTap: () => _startScan(context, ScanType.impressionBox),
               disabled: false,
             ),
@@ -130,26 +130,13 @@ class ScanSelectionScreen extends StatelessWidget {
             _ScanOptionCard(
               icon: Icons.accessibility_new,
               title: 'Scan Foot Directly',
-              description: 'Scan the patient\'s foot directly using the device LiDAR camera.',
+              description: 'Scan the patient\'s foot directly as a 3D scan using the front camera.',
               color: Colors.green,
-              tags: ['LiDAR', 'iOS'],
+              tags: ['3D scan', 'Front camera'],
               onTap: () => _startScan(context, ScanType.directFoot),
               disabled: false,
             ),
 
-            const SizedBox(height: 16),
-
-            // ─── Prosthetic (Coming Soon) ─────────────────────────────────
-            _ScanOptionCard(
-              icon: Icons.medical_services,
-              title: 'Scan Prosthetic',
-              description: 'Coming soon – scan prosthetic limb for custom '
-                  'orthotic fabrication.',
-              color: Colors.white24,
-              tags: ['Coming Soon'],
-              onTap: null,
-              disabled: true,
-            ),
 
             const Spacer(),
 
