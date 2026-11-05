@@ -8,6 +8,10 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     var onScanComplete: ((URL) -> Void)?
     var onCancel:       (() -> Void)?
     var footSide: String = "left"
+    var scanType: String = "directFoot"
+    private var isImpression: Bool { return scanType == "impressionBox" }
+    private var objectWord: String { return isImpression ? "box" : "foot" }
+    private var scanSubject: String { return isImpression ? "Impression Box" : footSide.capitalized + " Foot" }
 
     private let arSession = ARSession()
     private var arConfig: ARFaceTrackingConfiguration?
@@ -30,8 +34,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private enum ScanPhase { case footSelection, idle, scanning, processing, preview }
     private var phase: ScanPhase = .footSelection
 
-    private let minDepth: Float = 0.20
-    private let maxDepth: Float = 0.40
+    private var minDepth: Float { return isImpression ? 0.25 : 0.20 }
+    private var maxDepth: Float { return isImpression ? 0.55 : 0.40 }
     private let mirrorFinalMesh = true   // flip the finished mesh left-to-right (preview + STL). The live overlay is not flipped.
 
     private var arSceneView:       ARSCNView!
@@ -48,8 +52,11 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        liveTSDF.impressionMode = isImpression
+        if isImpression { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.startImpressionMode() } }
         view.backgroundColor = .black
         buildUI()
+        if isImpression { footSelectionView.isHidden = true }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -377,6 +384,19 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         return vals[vals.count / 2]
     }
 
+    private func startImpressionMode() {
+        guard phase == .footSelection else { return }
+        footSide = "impression"
+        footSelectionView.removeFromSuperview()
+        phase = .idle
+        cancelButton.isHidden  = false
+        captureButton.isHidden = false
+        captureButton.setTitle("Scan Box", for: .normal)
+        updateDistanceBadge(text: "Impression Box — Position", color: .systemGray)
+        statusLabel.text = "Hold phone 25–55 cm from the box\nCentre the box, then move slowly around it"
+        startARSession()
+    }
+
     @objc private func footSelected(_ sender: UIButton) {
         footSide = sender.tag == 0 ? "left" : "right"
         UIView.animate(withDuration: 0.25) { self.footSelectionView.alpha = 0 }
@@ -384,8 +404,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         phase = .idle
         cancelButton.isHidden  = false
         captureButton.isHidden = false
-        updateDistanceBadge(text: "\(footSide.capitalized) Foot — Position", color: .systemGray)
-        statusLabel.text = "Hold phone 20–40 cm from the foot\nStart at heel, rotate around foot"
+        updateDistanceBadge(text: "\(scanSubject) — Position", color: .systemGray)
+        statusLabel.text = "Hold phone \(Int(minDepth * 100))–\(Int(maxDepth * 100)) cm from the \(objectWord)\nStart at heel, rotate around foot"
         startARSession()
     }
 
@@ -403,8 +423,8 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             captureButton.setTitle("Stop Scan", for: .normal)
             captureButton.backgroundColor = .systemRed
             frameCountLabel.isHidden = false
-            updateDistanceBadge(text: "Scanning \(footSide.capitalized) Foot", color: .systemRed)
-            statusLabel.text = "Move around the foot slowly\nTap Stop when covered"
+            updateDistanceBadge(text: "Scanning \(scanSubject)", color: .systemRed)
+            statusLabel.text = "Move around the \(objectWord) slowly\nTap Stop when covered"
         } else if phase == .scanning {
             guard frameCount >= 20 else { statusLabel.text = "Keep scanning — need more frames"; return }
             stopScanAndProcess()
@@ -457,14 +477,14 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         sceneView.isHidden = true; arSceneView.isHidden = false
         submitButton.isHidden = true; rescanButton.isHidden = true
         captureButton.isHidden = false; captureButton.isEnabled = true
-        captureButton.setTitle("Scan Foot", for: .normal)
+        captureButton.setTitle(isImpression ? "Scan Box" : "Scan Foot", for: .normal)
         captureButton.backgroundColor = .systemBlue
         cancelButton.isHidden = false; frameCountLabel.isHidden = true
         phase = .idle; frameCount = 0
         seedFrames = []; seedImages = []
         liveTSDF.reset()
-        updateDistanceBadge(text: "\(footSide.capitalized) Foot — Position", color: .systemGray)
-        statusLabel.text = "Hold phone 20–40 cm from the foot"
+        updateDistanceBadge(text: "\(scanSubject) — Position", color: .systemGray)
+        statusLabel.text = "Hold phone \(Int(minDepth * 100))–\(Int(maxDepth * 100)) cm from the \(objectWord)"
         if let cfg = arConfig { arSession.run(cfg, options: [.resetTracking]) }
     }
 
@@ -504,13 +524,13 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             if phase == .idle { updateDistanceBadge(text: "No foot detected", color: .systemGray) }
         } else if metres < minDepth {
             updateDistanceBadge(text: "Too close — move back", color: .systemRed)
-            if phase == .idle { statusLabel.text = String(format: "%.0f cm — minimum 20 cm", metres*100) }
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm — minimum %d cm", metres*100, Int(minDepth * 100)) }
         } else if metres > maxDepth {
             updateDistanceBadge(text: "Move closer", color: .systemOrange)
-            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum 40 cm", metres*100) }
+            if phase == .idle { statusLabel.text = String(format: "%.0f cm — maximum %d cm", metres*100, Int(maxDepth * 100)) }
         } else if phase == .idle {
             updateDistanceBadge(text: String(format: "✓  %.0f cm", metres*100), color: .systemGreen)
-            statusLabel.text = "Good distance — tap Scan Foot"
+            statusLabel.text = ("Good distance — tap " + (isImpression ? "Scan Box" : "Scan Foot"))
         }
     }
 
@@ -532,7 +552,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
         if outOfRange {
             if scanPaused == false {
                 scanPaused = true
-                statusLabel.text = "Paused \u{2014} hold 20\u{2013}40 cm from the foot"
+                statusLabel.text = "Paused \u{2014} hold \(Int(minDepth * 100))\u{2013}\(Int(maxDepth * 100)) cm from the \(objectWord)"
             }
             if metres > 0 && Date().timeIntervalSince(lastDistanceHaptic) > 0.7 {
                 lastDistanceHaptic = Date()
@@ -540,7 +560,7 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
             }
         } else if scanPaused {
             scanPaused = false
-            statusLabel.text = "Move around the foot slowly\nTap Stop when covered"
+            statusLabel.text = "Move around the \(objectWord) slowly\nTap Stop when covered"
         }
     }
 

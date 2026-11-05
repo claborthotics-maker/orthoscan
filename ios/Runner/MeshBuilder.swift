@@ -38,7 +38,7 @@ class LiveTSDF {
     private var volOrigin = SIMD3<Float>.zero
     private var dbgCount = 0
     // Object lock + pose-jump gate (no smoothing: these only decide which depth data is allowed in)
-    private let lockRadius: Float = 0.25               // metres: only voxels this close to the starting object are ever updated
+    private var lockRadius: Float = 0.25               // metres: only voxels this close to the starting object are ever updated
     private var lockCentre = SIMD3<Float>.zero
     private let maxStepTranslation: Float = 0.03       // metres between two integrated frames before the frame is rejected
     private let maxStepRotation: Float = 0.14          // radians (about 8 degrees) between two integrated frames
@@ -63,6 +63,7 @@ class LiveTSDF {
     private var regSumShift: Float = 0
     private var regMaxSeenShift: Float = 0
     private let stateLock = NSLock()   // integration and mesh extraction run on different threads
+    var impressionMode = false   // set by the scanner for impression box scans
     private(set) var initialised = false
     private(set) var lastGeometry: SCNGeometry?
     // Drop the rippled inner wall: skip mesh cells that touch voxels the camera has not seen enough. The outer skin is unaffected.
@@ -91,8 +92,9 @@ class LiveTSDF {
         samples.sort()
         let ref = samples[samples.count / 2]
         // fixed depth window: the 20-40 cm scan range plus a margin for surface relief
-        zMin = 0.18
-        zMax = 0.43
+        zMin = impressionMode ? 0.20 : 0.18
+        zMax = impressionMode ? 0.60 : 0.43
+        lockRadius = impressionMode ? 0.35 : 0.25
         // Object lock: the centre of the view when the scan starts is the object (the foot); nothing far from it is integrated.
         let lf = frames[frames.count - 1]
         let lxc =  (Float(lf.width) / 2 - lf.cx) * ref / lf.fx

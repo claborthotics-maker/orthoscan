@@ -25,7 +25,7 @@ public class ScanPlugin: NSObject, FlutterPlugin {
             let args      = call.arguments as? [String: Any]
             let patientId = args?["patientId"] as? String ?? ""
             let footSide  = args?["footSide"]  as? String ?? "left"
-            presentScanner(patientId: patientId, footSide: footSide, result: result)
+            presentScanner(patientId: patientId, footSide: footSide, scanType: args?["scanType"] as? String ?? "directFoot", result: result)
 
         default:
             result(FlutterMethodNotImplemented)
@@ -34,6 +34,7 @@ public class ScanPlugin: NSObject, FlutterPlugin {
 
     private func presentScanner(patientId: String,
                                  footSide: String,
+                                 scanType: String,
                                  result: @escaping FlutterResult) {
         DispatchQueue.main.async {
             guard let rootVC = UIApplication.shared.connectedScenes
@@ -47,6 +48,7 @@ public class ScanPlugin: NSObject, FlutterPlugin {
             }
 
             let scanVC = TrueDepthScanViewController()
+            scanVC.scanType = scanType
             scanVC.footSide = footSide   // pre-set from Flutter; UI can override
             scanVC.onScanComplete = { fileURL in
                 result(["filePath": fileURL.path,
