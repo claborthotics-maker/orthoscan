@@ -22,11 +22,13 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
     private var seedFrames = [DepthFrame]()
     private var seedImages = [CVPixelBuffer]()
     private var frameCount = 0
-    private let maxFrames  = 1000
+    private let maxFrames  = 1500
     private var lastCentreDist: Float = 0          // latest centre distance (metres), used to gate frames
     private var scanPaused = false
     private var lastDistanceHaptic = Date.distantPast
     private let distanceHaptic = UINotificationFeedbackGenerator()
+    private let goalHaptic = UIImpactFeedbackGenerator(style: .heavy)   // double thump once at 500 frames
+    private var goalHapticFired = false
     private let seedCount  = 5
     private var arFrameCounter  = 0
     private var meshUpdateCounter = 0
@@ -323,7 +325,20 @@ class TrueDepthScanViewController: UIViewController, ARSessionDelegate {
 
             let fc = self.frameCount
             DispatchQueue.main.async { [weak self] in
-                self?.frameCountLabel.text = "\(fc)/\(self?.maxFrames ?? 300)"
+                let cueText: String = fc < 250 ? "  Keep scanning" : (fc < 500 ? "  Keep going" : "  Good")
+                let cueColor: UIColor = fc < 250 ? .systemRed : (fc < 500 ? .systemOrange : .systemGreen)
+                self?.frameCountLabel.text = "\(fc)/\(self?.maxFrames ?? 300)" + cueText
+                self?.frameCountLabel.textColor = cueColor
+                if fc >= 500 {
+                    if let me = self, !me.goalHapticFired {
+                        me.goalHapticFired = true
+                        me.goalHaptic.prepare()
+                        me.goalHaptic.impactOccurred()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { me.goalHaptic.impactOccurred() }
+                    }
+                } else {
+                    self?.goalHapticFired = false
+                }
             }
         }
     }
