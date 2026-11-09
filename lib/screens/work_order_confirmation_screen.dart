@@ -443,6 +443,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
             _row('Right', w.toeFillerCountRight > 0
                 ? '${w.toeFillerCountRight} toe filler${w.toeFillerCountRight > 1 ? "s" : ""}'
                 : 'Partial foot - no toe fillers'),
+          _row('Pricing', 'Partial Foot costs more than a standard Rebound.'),
         ]));
       }
       out.add(const SizedBox(height: 16));

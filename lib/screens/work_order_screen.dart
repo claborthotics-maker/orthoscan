@@ -274,7 +274,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   Future<void> _removeProduct(WorkOrder m) async {
-    final label = _productLabel(m.id == widget.workOrder.id ? _orthoticType : m.templateType);
+    final label = _memberLabel(m);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -343,7 +343,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF16213E),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,12 +356,15 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
             children: [
               for (final m in members)
                 InputChip(
-                  label: Text(_productLabel(m.id == wo.id ? _orthoticType : m.templateType),
+                  label: Text(_memberLabel(m),
                       style: const TextStyle(color: Colors.white)),
                   selected: m.id == wo.id,
                   showCheckmark: false,
-                  selectedColor: const Color(0xFF0F3460),
+                  selectedColor: const Color(0xFF2A4F8F),
                   backgroundColor: const Color(0xFF1A1A2E),
+                  side: m.id == wo.id
+                      ? const BorderSide(color: Colors.white, width: 1.8)
+                      : const BorderSide(color: Colors.white12),
                   deleteIconColor: Colors.white54,
                   onSelected: (_) {
                     if (m.id != wo.id) _openPacketMember(m);
@@ -581,11 +583,47 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     );
   }
 
+  // Name that follows what is actually on the order.
+  String _autoProductName() {
+    final t = _orthoticType;
+    if (t == null) return '';
+    if (t == TemplateType.polyShell) return 'Poly Shell';
+    final isPT = t == TemplateType.partialFoot;
+    final partials = <bool>[
+      if (_quantityLeft > 0) isPT || _isPartialFootLeft,
+      if (_quantityRight > 0) isPT || _isPartialFootRight,
+    ];
+    if (partials.isEmpty) partials.add(isPT || _isPartialFootLeft || _isPartialFootRight);
+    if (partials.every((p) => p)) return 'Partial Foot';
+    if (partials.any((p) => p)) return 'Rebound / Partial Foot';
+    return 'Rebound';
+  }
+
+  String _memberLabel(WorkOrder m) {
+    if (m.id == widget.workOrder.id) {
+      final a = _autoProductName();
+      return a.isNotEmpty ? a : _productLabel(_orthoticType);
+    }
+    return m.name.trim().isNotEmpty ? m.name.trim() : _productLabel(m.templateType);
+  }
+
+  Color _productColor() {
+    final n = _autoProductName();
+    if (n == 'Poly Shell') return const Color(0xFFBA68C8);
+    if (n == 'Partial Foot') return const Color(0xFFFFD54F);
+    if (n == 'Rebound / Partial Foot') return const Color(0xFF81C784);
+    return const Color(0xFF4FC3F7);
+  }
+
   void _applyStateToWorkOrder(WorkOrder wo) {
-    final autoType = _orthoticType;
     final typedName = _nameController.text.trim();
-    final autoName = autoType == null ? '' : DefaultTemplates.defaultNameForType(autoType);
-    wo.name = typedName.isNotEmpty ? typedName : (autoName.isNotEmpty ? autoName : 'Work Order');
+    final autoName = _autoProductName();
+    const standardNames = {
+      '', 'Rebound', 'Poly Shell', 'Partial Foot', 'Rebound / Partial Foot',
+      'Work Order', 'Untitled Work Order',
+    };
+    final keepCustom = typedName.isNotEmpty && !standardNames.contains(typedName);
+    wo.name = keepCustom ? typedName : (autoName.isNotEmpty ? autoName : 'Work Order');
     wo.scanFiles = List<String>.from(_linkedScans);
     wo.specialInstructions = _instructionsController.text;
     wo.status = _status;
@@ -774,7 +812,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       for (final m in others) {
         if (m.id == widget.workOrder.id) continue;
         if (m.quantityLeft == 0 && m.quantityRight == 0) {
-          errors.add('• ${_productLabel(m.templateType)}: quantity must be at least 1');
+          errors.add('• ${_memberLabel(m)}: quantity must be at least 1');
           otherProblem = true;
         }
       }
@@ -853,7 +891,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           packetOrders: packetOrders,
           packetLabels: _packetMembers.length > 1
               ? _packetMembers
-                  .map((m) => _productLabel(m.id == wo.id ? _orthoticType : m.templateType))
+                  .map((m) => _memberLabel(m))
                   .toList()
               : <String>[],
           onConfirm: () {            final now = DateTime.now();
@@ -1086,7 +1124,21 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
           backgroundColor: const Color(0xFF16213E),
-          title: const Text('Work Order', style: TextStyle(color: Colors.white)),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('WORK ORDER',
+                  style: TextStyle(color: Colors.white54, fontSize: 10, letterSpacing: 1)),
+              Text(_autoProductName().isNotEmpty ? _autoProductName() : 'Work Order',
+                  style: TextStyle(
+                      color: _productColor(), fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(3),
+            child: Container(height: 3, color: _productColor()),
+          ),
           iconTheme: const IconThemeData(color: Colors.white),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -1448,8 +1500,33 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   icon: Icons.accessibility_new,
                   isExpanded: _partialFootExpanded,
                   onToggle: () => setState(() => _partialFootExpanded = !_partialFootExpanded),
-                  summary: (_isPartialFootLeft || _isPartialFootRight) ? 'Yes' : 'No',
+                  summary: (_isPartialFootLeft || _isPartialFootRight || _isPartialFoot) ? 'Yes · costs more' : 'No',
                   child: Column(children: [
+                    if (_isPartialFootLeft || _isPartialFootRight || _isPartialFoot) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                        ),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.attach_money, color: Colors.amber, size: 18),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Partial Foot is a different product and costs more than a standard Rebound. This note is for you only and does not print on the lab sheet.',
+                                style: TextStyle(color: Colors.amber, fontSize: 12.5, height: 1.3),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     if (_showLeftFoot)
                       PartialFootRow(
                         label: 'Left Foot is Partial',

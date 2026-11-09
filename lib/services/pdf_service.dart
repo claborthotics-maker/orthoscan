@@ -171,7 +171,7 @@ class PdfService {
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(_typeName(wo.templateType).toUpperCase(),
+          pw.Text(_bannerName(wo).toUpperCase(),
               style: bld(15, color: PdfColors.white)),
           pw.Text(wo.quantityLabel, style: bld(12, color: PdfColors.white)),
         ],
@@ -469,6 +469,18 @@ class PdfService {
     final min = d.minute.toString().padLeft(2, '0');
     final ampm = d.hour >= 12 ? 'PM' : 'AM';
     return '${_fmtDate(d)} $hour:$min $ampm';
+  }
+
+  static String _bannerName(WorkOrder wo) {
+    if (wo.templateType == null) return 'Unknown';
+    if (wo.templateType == TemplateType.polyShell) return 'Poly Shell';
+    final isPT = wo.templateType == TemplateType.partialFoot;
+    final partials = <bool>[
+      if (wo.quantityLeft > 0) isPT || wo.isPartialFootLeft,
+      if (wo.quantityRight > 0) isPT || wo.isPartialFootRight,
+    ];
+    if (partials.isNotEmpty && partials.every((p) => p)) return 'Partial Foot';
+    return 'Rebound';
   }
 
   static String _typeName(TemplateType? type) {
