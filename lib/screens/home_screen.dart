@@ -43,8 +43,8 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _loadAllWorkOrders() async {
-    setState(() => _woLoading = true);
+  Future<void> _loadAllWorkOrders({bool spinner = true}) async {
+    if (spinner) setState(() => _woLoading = true);
     final clinicId = _clinicianService.activeClinic?.id;
     final wos = await _db.getAllWorkOrders(clinicId: clinicId);
     final patientMap = {for (final p in _patients) p.id: p};
@@ -432,7 +432,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             builder: (_) => WorkOrderScreen(
                               workOrder: wo,
                               patient: patient,
-                              onSave: (updated) async => await _db.updateWorkOrder(updated),
+                              onSave: (updated) async {
+                                await _db.updateWorkOrder(updated);
+                                if (mounted) await _loadAllWorkOrders(spinner: false);
+                              },
                             ),
                           ));
                           _loadAllWorkOrders();

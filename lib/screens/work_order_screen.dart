@@ -273,6 +273,61 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     ));
   }
 
+  Future<void> _removeProduct(WorkOrder m) async {
+    final label = _productLabel(m.id == widget.workOrder.id ? _orthoticType : m.templateType);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Remove product', style: TextStyle(color: Colors.white)),
+        content: Text(
+            'Remove $label from this order? Its specs and lab notes will be deleted. The other products are kept.',
+            style: const TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Remove', style: TextStyle(color: Colors.white))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final db = DatabaseService();
+    final removingCurrent = m.id == widget.workOrder.id;
+    if (!removingCurrent) {
+      _applyStateToWorkOrder(widget.workOrder);
+      await widget.onSave(widget.workOrder);
+    }
+    await db.deleteWorkOrder(m.id);
+    final remaining = (await db.getPacketMembers(widget.workOrder.packetId))
+        .where((w) => w.id != m.id)
+        .toList();
+    if (remaining.length == 1) {
+      remaining.first.packetId = '';
+      await db.updateWorkOrder(remaining.first);
+    }
+    if (!mounted) return;
+    if (removingCurrent) {
+      if (remaining.isEmpty) {
+        Navigator.pop(context);
+        return;
+      }
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => WorkOrderScreen(
+          workOrder: remaining.first,
+          patient: widget.patient,
+          onSave: widget.onSave,
+        ),
+      ));
+    } else {
+      if (remaining.length == 1) widget.workOrder.packetId = '';
+      setState(() => _packetMembers = remaining.length > 1 ? remaining : []);
+    }
+  }
+
   Widget _buildPacketBar() {
     final wo = widget.workOrder;
     final members = _packetMembers.isEmpty ? <WorkOrder>[wo] : _packetMembers;
@@ -301,15 +356,18 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
             runSpacing: 8,
             children: [
               for (final m in members)
-                ChoiceChip(
+                InputChip(
                   label: Text(_productLabel(m.id == wo.id ? _orthoticType : m.templateType),
                       style: const TextStyle(color: Colors.white)),
                   selected: m.id == wo.id,
+                  showCheckmark: false,
                   selectedColor: const Color(0xFF0F3460),
                   backgroundColor: const Color(0xFF1A1A2E),
+                  deleteIconColor: Colors.white54,
                   onSelected: (_) {
                     if (m.id != wo.id) _openPacketMember(m);
                   },
+                  onDeleted: members.length > 1 ? () => _removeProduct(m) : null,
                 ),
               if (!hasPoly)
                 ActionChip(
@@ -709,6 +767,21 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       errors.add('• Shoe size is required');
     if (_quantityLeft == 0 && _quantityRight == 0)
       errors.add('• Quantity must be at least 1');
+    // Packet-wide check: every other product in this order needs a quantity too.
+    if (widget.workOrder.packetId.isNotEmpty) {
+      final others = await DatabaseService().getPacketMembers(widget.workOrder.packetId);
+      var otherProblem = false;
+      for (final m in others) {
+        if (m.id == widget.workOrder.id) continue;
+        if (m.quantityLeft == 0 && m.quantityRight == 0) {
+          errors.add('• ${_productLabel(m.templateType)}: quantity must be at least 1');
+          otherProblem = true;
+        }
+      }
+      if (otherProblem) {
+        errors.add('Tap the other product at the top of this screen to fix it.');
+      }
+    }
 
     if (errors.isNotEmpty) {
       showDialog(

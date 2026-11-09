@@ -258,14 +258,7 @@ class _PatientScreenState extends State<PatientScreen> {
                         patient: widget.patient,
                         onSave: (wo) async {
                           await _db.updateWorkOrder(wo);
-                          if (mounted) {
-                            setState(() {
-                              final index = _workOrders
-                                  .indexWhere((w) => w.id == wo.id);
-                              if (index != -1)
-                                _workOrders[index] = wo;
-                            });
-                          }
+                          if (mounted) await _loadWorkOrders();
                         },
                       ),
                     ),
@@ -313,8 +306,8 @@ class _PatientScreenState extends State<PatientScreen> {
     return '${_typeName(wo.templateType)} · ${wo.quantityLabel}';
   }
 
-  void _openWorkOrder(WorkOrder wo) {
-    Navigator.push(
+  Future<void> _openWorkOrder(WorkOrder wo) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => WorkOrderScreen(
@@ -322,17 +315,12 @@ class _PatientScreenState extends State<PatientScreen> {
           patient: widget.patient,
           onSave: (saved) async {
             await _db.updateWorkOrder(saved);
-            if (mounted) {
-              setState(() {
-                final index =
-                    _workOrders.indexWhere((w) => w.id == saved.id);
-                if (index != -1) _workOrders[index] = saved;
-              });
-            }
+            if (mounted) await _loadWorkOrders();
           },
         ),
       ),
     );
+    if (mounted) _loadWorkOrders();
   }
 
   void _copyWorkOrder(WorkOrder wo) {
