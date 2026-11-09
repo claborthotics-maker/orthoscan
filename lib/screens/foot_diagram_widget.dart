@@ -619,6 +619,7 @@ class _FullScreenFootState extends State<_FullScreenFoot> {
           autofocus: true,
           style: const TextStyle(color: Colors.white),
           maxLines: 3,
+          textCapitalization: TextCapitalization.sentences,
           maxLength: 50,
           decoration: const InputDecoration(
             hintText: 'Enter note...',

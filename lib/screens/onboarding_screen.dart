@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import '../utils/text_caps.dart';
 import 'package:flutter/services.dart';
 import '../models/clinician.dart';
 import '../models/clinic.dart';
@@ -160,7 +161,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         Expanded(child: _buildField('State *', f.stateController)),
                         const SizedBox(width: 12),
                         Expanded(child: _buildField('ZIP *', f.zipController,
-                            maxLength: 5, inputType: TextInputType.number)),
+                            inputType: TextInputType.number)),
                       ]),
                       const SizedBox(height: 12),
                       _buildPhoneField('Phone *', f.phoneController),
@@ -204,7 +205,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return TextField(
       controller: controller,
       maxLength: maxLength,
-      keyboardType: inputType,
+      keyboardType: inputType ?? keyboardFor(label),
+      inputFormatters: formattersFor(label),
+      textCapitalization: capitalizationFor(label),
+      autocorrect: autocorrectFor(label),
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,

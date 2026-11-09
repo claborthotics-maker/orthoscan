@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import '../utils/text_caps.dart';
 import 'package:flutter/services.dart';
 import '../models/clinician.dart';
 import '../models/clinic.dart';
@@ -108,7 +109,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Expanded(child: _buildField('State *', stateController)),
                 const SizedBox(width: 8),
                 Expanded(child: _buildField('ZIP *', zipController,
-                    maxLength: 5, inputType: TextInputType.number)),
+                    inputType: TextInputType.number)),
               ]),
               const SizedBox(height: 12),
               _buildPhoneField('Phone *', phoneController),
@@ -424,7 +425,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return TextField(
       controller: controller,
       maxLength: maxLength,
-      keyboardType: inputType,
+      keyboardType: inputType ?? keyboardFor(label),
+      inputFormatters: formattersFor(label),
+      textCapitalization: capitalizationFor(label),
+      autocorrect: autocorrectFor(label),
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,

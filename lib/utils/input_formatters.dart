@@ -47,3 +47,25 @@ class DobInputFormatter extends TextInputFormatter {
     );
   }
 }
+
+// --- ZIP Formatter ---
+// Formats as: 12345 or 12345-6789
+class ZipInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final buffer = StringBuffer();
+    for (int i = 0; i < digits.length && i < 9; i++) {
+      if (i == 5) buffer.write('-');
+      buffer.write(digits[i]);
+    }
+    final string = buffer.toString();
+    return newValue.copyWith(
+      text: string,
+      selection: TextSelection.collapsed(offset: string.length),
+    );
+  }
+}

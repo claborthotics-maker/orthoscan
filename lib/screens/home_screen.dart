@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import '../utils/text_caps.dart';
 import '../models/patient.dart';
 import '../models/work_order.dart';
 import '../models/clinician.dart';
@@ -486,9 +487,9 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
           const SizedBox(height: 12),
           _buildField('Patient ID *', _patientIdController),
           const SizedBox(height: 12),
-          _buildField('Date of Birth', _dobController, hint: 'Optional'),
+          _buildField('Date of Birth', _dobController, hint: 'MM-DD-YYYY (optional)'),
           const SizedBox(height: 12),
-          _buildField('Phone', _phoneController, hint: 'Optional'),
+          _buildField('Phone', _phoneController, hint: '555-555-5555 (optional)'),
         ]),
       ),
       actions: [
@@ -540,6 +541,10 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
   Widget _buildField(String label, TextEditingController controller, {String? hint}) {
     return TextField(
       controller: controller,
+      textCapitalization: capitalizationFor(label),
+      autocorrect: autocorrectFor(label),
+      keyboardType: keyboardFor(label),
+      inputFormatters: formattersFor(label),
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,

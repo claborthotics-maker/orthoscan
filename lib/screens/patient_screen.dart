@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import '../utils/text_caps.dart';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
@@ -368,6 +369,7 @@ class _PatientScreenState extends State<PatientScreen> {
             style: TextStyle(color: Colors.white)),
         content: TextField(
           controller: controller,
+          textCapitalization: TextCapitalization.words,
           autofocus: true,
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
@@ -438,12 +440,12 @@ class _PatientScreenState extends State<PatientScreen> {
                   hint: 'Optional'),
               const SizedBox(height: 12),
               _buildField('Date of Birth', dobController,
-                  hint: 'MM/DD/YYYY',
+                  hint: 'MM-DD-YYYY',
                   formatter: DobInputFormatter(),
                   keyboardType: TextInputType.number),
               const SizedBox(height: 12),
               _buildField('Phone', phoneController,
-                  hint: '(555) 555-5555',
+                  hint: '555-555-5555',
                   formatter: PhoneInputFormatter(),
                   keyboardType: TextInputType.phone),
               const SizedBox(height: 12),
@@ -496,8 +498,10 @@ class _PatientScreenState extends State<PatientScreen> {
     return TextField(
       controller: controller,
       style: const TextStyle(color: Colors.white),
-      keyboardType: keyboardType,
-      inputFormatters: formatter != null ? [formatter] : [],
+      keyboardType: keyboardType ?? keyboardFor(label),
+      inputFormatters: formattersFor(label),
+      textCapitalization: capitalizationFor(label),
+      autocorrect: autocorrectFor(label),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -770,6 +774,7 @@ class _PatientScreenState extends State<PatientScreen> {
                 children: [
                   TextField(
                     controller: _notesController,
+          textCapitalization: TextCapitalization.sentences,
                     style: const TextStyle(color: Colors.white),
                     maxLines: 5,
                     maxLength: 500,

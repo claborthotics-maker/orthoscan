@@ -2,6 +2,7 @@
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
+import '../utils/text_caps.dart';
 import 'package:flutter/services.dart';
 import '../models/patient.dart';
 import '../models/work_order.dart';
@@ -490,6 +491,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: nameController,
+          textCapitalization: TextCapitalization.words,
               autofocus: true,
               style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(
@@ -1596,6 +1598,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 summary: _instructionsController.text.isEmpty ? 'No notes' : _instructionsController.text,
                 child: TextField(
                  controller: _instructionsController,
+          textCapitalization: TextCapitalization.sentences,
                     style: const TextStyle(color: Colors.white),
                     maxLines: 4,
                     maxLength: 500,
@@ -1668,6 +1671,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   Widget _buildField(String label, TextEditingController controller, {String? hint}) {
     return TextField(
       controller: controller,
+      textCapitalization: capitalizationFor(label),
+      autocorrect: autocorrectFor(label),
+      keyboardType: keyboardFor(label),
+      inputFormatters: formattersFor(label),
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,
