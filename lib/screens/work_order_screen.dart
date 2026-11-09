@@ -200,6 +200,140 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     } else {
       _selectedClinician = _clinicianService.defaultClinician;
     }
+    _loadPacket();
+  }
+
+  // ─── Packet (linked products) ───────────────────────────────────────
+  List<WorkOrder> _packetMembers = [];
+
+  Future<void> _loadPacket() async {
+    final id = widget.workOrder.packetId;
+    if (id.isEmpty) return;
+    final list = await DatabaseService().getPacketMembers(id);
+    if (mounted) setState(() => _packetMembers = list);
+  }
+
+  String _productLabel(TemplateType? t) {
+    if (t == null) return 'Product';
+    final n = DefaultTemplates.defaultNameForType(t);
+    return n.isEmpty ? 'Product' : n;
+  }
+
+  Future<void> _openPacketMember(WorkOrder target) async {
+    _applyStateToWorkOrder(widget.workOrder);
+    await widget.onSave(widget.workOrder);
+    final all = await DatabaseService().getPacketMembers(widget.workOrder.packetId);
+    final fresh = all.firstWhere((w) => w.id == target.id, orElse: () => target);
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(MaterialPageRoute(
+      builder: (_) => WorkOrderScreen(
+        workOrder: fresh,
+        patient: widget.patient,
+        onSave: widget.onSave,
+      ),
+    ));
+  }
+
+  Future<void> _addProduct(TemplateType type) async {
+    final wo = widget.workOrder;
+    if (wo.packetId.isEmpty) {
+      wo.packetId = 'pk${DateTime.now().millisecondsSinceEpoch}';
+    }
+    _applyStateToWorkOrder(wo);
+    await widget.onSave(wo);
+    final tpl = DefaultTemplates.getAll().firstWhere((t) => t.templateType == type);
+    final sib = tpl.toWorkOrder(patientId: wo.patientId, clinicianName: wo.clinicianName);
+    sib.name = DefaultTemplates.defaultNameForType(type);
+    sib.packetId = wo.packetId;
+    sib.clinicId = wo.clinicId;
+    sib.clinicianId = wo.clinicianId;
+    sib.clinicName = wo.clinicName;
+    sib.quantityLeft = wo.quantityLeft;
+    sib.quantityRight = wo.quantityRight;
+    sib.shoeSizeGender = wo.shoeSizeGender;
+    sib.shoeSize = wo.shoeSize;
+    sib.shoeWidth = wo.shoeWidth;
+    sib.sameSizeForBothFeet = wo.sameSizeForBothFeet;
+    sib.shoeSizeLeft = wo.shoeSizeLeft;
+    sib.shoeWidthLeft = wo.shoeWidthLeft;
+    sib.shoeSizeRight = wo.shoeSizeRight;
+    sib.shoeWidthRight = wo.shoeWidthRight;
+    sib.diagramData = wo.diagramData;
+    sib.dateOfService = wo.dateOfService;
+    sib.expectedDeliveryDate = wo.expectedDeliveryDate;
+    sib.scanFiles = List<String>.from(wo.scanFiles);
+    await DatabaseService().insertWorkOrder(sib);
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(MaterialPageRoute(
+      builder: (_) => WorkOrderScreen(
+        workOrder: sib,
+        patient: widget.patient,
+        onSave: widget.onSave,
+      ),
+    ));
+  }
+
+  Widget _buildPacketBar() {
+    final wo = widget.workOrder;
+    final members = _packetMembers.isEmpty ? <WorkOrder>[wo] : _packetMembers;
+    final types = members
+        .map((m) => m.id == wo.id ? _orthoticType : m.templateType)
+        .toSet();
+    final hasRebound =
+        types.contains(TemplateType.rebound) || types.contains(TemplateType.partialFoot);
+    final hasPoly = types.contains(TemplateType.polyShell);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF16213E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Products in this order',
+              style: TextStyle(color: Color(0xFF4FC3F7), fontSize: 11, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final m in members)
+                ChoiceChip(
+                  label: Text(_productLabel(m.id == wo.id ? _orthoticType : m.templateType),
+                      style: const TextStyle(color: Colors.white)),
+                  selected: m.id == wo.id,
+                  selectedColor: const Color(0xFF0F3460),
+                  backgroundColor: const Color(0xFF1A1A2E),
+                  onSelected: (_) {
+                    if (m.id != wo.id) _openPacketMember(m);
+                  },
+                ),
+              if (!hasPoly)
+                ActionChip(
+                  label: const Text('+ Poly Shell', style: TextStyle(color: Color(0xFF4FC3F7))),
+                  backgroundColor: const Color(0xFF1A1A2E),
+                  onPressed: () => _addProduct(TemplateType.polyShell),
+                ),
+              if (!hasRebound)
+                ActionChip(
+                  label: const Text('+ Rebound', style: TextStyle(color: Color(0xFF4FC3F7))),
+                  backgroundColor: const Color(0xFF1A1A2E),
+                  onPressed: () => _addProduct(TemplateType.rebound),
+                ),
+            ],
+          ),
+          if (members.length > 1) ...[
+            const SizedBox(height: 8),
+            const Text(
+                'Patient, shoe size, diagram, dates and scans are shared. Specs and lab notes are per product.',
+                style: TextStyle(color: Colors.white38, fontSize: 11)),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -629,6 +763,12 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         print('DEBUG diagram capture error: $e');
       }
       print('DEBUG leftImg: ${leftImg?.length} bytes, rightImg: ${rightImg?.length} bytes');
+      final packetOrders = wo.packetId.isEmpty
+          ? <WorkOrder>[]
+          : (await DatabaseService().getPacketMembers(wo.packetId))
+              .map((m) => m.id == wo.id ? wo : m)
+              .toList();
+      if (!mounted) return;
       Navigator.push(
       context,
       MaterialPageRoute(
@@ -637,6 +777,12 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           patient: widget.patient,
           leftDiagramImage: leftImg,
           rightDiagramImage: rightImg,
+          packetOrders: packetOrders,
+          packetLabels: _packetMembers.length > 1
+              ? _packetMembers
+                  .map((m) => _productLabel(m.id == wo.id ? _orthoticType : m.templateType))
+                  .toList()
+              : <String>[],
           onConfirm: () {            final now = DateTime.now();
             if (wo.submissionCount == 0) {
               wo.originalSubmittedAt = now;
@@ -914,6 +1060,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                 Text('Created ${_formatDate(widget.workOrder.createdAt)}',
                     style: const TextStyle(color: Colors.white38, fontSize: 12)),
               ]),
+
+              const SizedBox(height: 16),
+
+              _buildPacketBar(),
 
               const SizedBox(height: 16),
 

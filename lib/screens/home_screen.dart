@@ -223,6 +223,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<_WOWithPatient> get _filteredWorkOrders {
+    final raw = _filteredRaw;
+    final seen = <String>{};
+    final out = <_WOWithPatient>[];
+    for (final w in raw) {
+      final pk = w.wo.packetId;
+      if (pk.isEmpty) {
+        out.add(w);
+        continue;
+      }
+      if (seen.add(pk)) {
+        final m = _allWorkOrders.where((x) => x.wo.packetId == pk).toList()
+          ..sort((a, b) => a.wo.createdAt.compareTo(b.wo.createdAt));
+        out.add(m.first);
+      }
+    }
+    return out;
+  }
+
+  String _packetTitle(WorkOrder wo) {
+    if (wo.packetId.isEmpty) return wo.displayName;
+    final m = _allWorkOrders.where((x) => x.wo.packetId == wo.packetId).map((x) => x.wo).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return m.length > 1 ? m.map((w) => w.displayName).join(' + ') : wo.displayName;
+  }
+
+  List<_WOWithPatient> get _filteredRaw {
     if (_searchQuery.isEmpty) return _allWorkOrders;
     return _allWorkOrders.where((w) =>
       w.patient.fullName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
@@ -419,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           child: Row(children: [
                             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(wo.displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              Text(_packetTitle(wo), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                               Text(patient.fullName, style: const TextStyle(color: Colors.white54, fontSize: 12)),
                               Text(wo.statusLabel, style: TextStyle(color: _statusColor(wo.status), fontSize: 11)),
                             ])),

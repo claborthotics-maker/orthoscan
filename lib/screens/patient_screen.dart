@@ -280,6 +280,39 @@ class _PatientScreenState extends State<PatientScreen> {
     );
   }
 
+  List<WorkOrder> _packetOf(WorkOrder wo) {
+    if (wo.packetId.isEmpty) return [wo];
+    final l = _workOrders.where((w) => w.packetId == wo.packetId).toList();
+    l.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return l;
+  }
+
+  List<WorkOrder> _groupedWorkOrders() {
+    final seen = <String>{};
+    final out = <WorkOrder>[];
+    for (final w in _workOrders) {
+      if (w.packetId.isEmpty) {
+        out.add(w);
+        continue;
+      }
+      if (seen.add(w.packetId)) out.add(_packetOf(w).first);
+    }
+    return out;
+  }
+
+  String _packetTitle(WorkOrder wo) {
+    final m = _packetOf(wo);
+    return m.length > 1 ? m.map((w) => w.displayName).join(' + ') : wo.displayName;
+  }
+
+  String _packetSubtitle(WorkOrder wo) {
+    final m = _packetOf(wo);
+    if (m.length > 1) {
+      return m.map((w) => '${_typeName(w.templateType)}: ${w.quantityLabel}').join('  ·  ');
+    }
+    return '${_typeName(wo.templateType)} · ${wo.quantityLabel}';
+  }
+
   void _openWorkOrder(WorkOrder wo) {
     Navigator.push(
       context,
@@ -327,7 +360,7 @@ class _PatientScreenState extends State<PatientScreen> {
         title: const Text('Delete Work Order',
             style: TextStyle(color: Colors.white)),
         content: Text(
-          'Are you sure you want to delete "${wo.displayName}"? This cannot be undone.',
+          'Are you sure you want to delete "${_packetTitle(wo)}"? This cannot be undone.',
           style: const TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -338,9 +371,12 @@ class _PatientScreenState extends State<PatientScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              await _db.deleteWorkOrder(wo.id);
+              final doomed = _packetOf(wo);
+              for (final d in doomed) {
+                await _db.deleteWorkOrder(d.id);
+              }
               setState(() {
-                _workOrders.removeWhere((w) => w.id == wo.id);
+                _workOrders.removeWhere((w) => doomed.any((d) => d.id == w.id));
               });
               Navigator.pop(context);
               if (mounted) {
@@ -556,7 +592,7 @@ class _PatientScreenState extends State<PatientScreen> {
                           style: TextStyle(color: Colors.white54)),
                     )
                   else
-                    ..._workOrders.map(
+                    ..._groupedWorkOrders().map(
                       (wo) => Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
@@ -567,12 +603,12 @@ class _PatientScreenState extends State<PatientScreen> {
                         child: ListTile(
                           leading: const Icon(Icons.assignment,
                               color: Color(0xFF4FC3F7)),
-                          title: Text(wo.displayName,
+                          title: Text(_packetTitle(wo),
                               style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w500)),
                           subtitle: Text(
-                              '${_typeName(wo.templateType)} · ${wo.quantityLabel}',
+                              _packetSubtitle(wo),
                               style: const TextStyle(
                                   color: Colors.white54, fontSize: 12),
                             ),

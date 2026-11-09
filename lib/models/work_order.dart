@@ -19,6 +19,7 @@ class WorkOrder {
   final String patientId;
   String name;
   String lastTemplateName;
+  String packetId; // links work orders that belong to one packet ('' = standalone)
   TemplateType? templateType;
   WorkOrderStatus status;
   FootSide footSide;
@@ -102,6 +103,7 @@ class WorkOrder {
     required this.patientId,
     this.name = '',
     this.lastTemplateName = '',
+    this.packetId = '',
     this.templateType,
     this.status = WorkOrderStatus.draft,
     this.footSide = FootSide.bilateral,
@@ -264,6 +266,7 @@ class WorkOrder {
       'patientId': patientId,
        'name': name,
       'lastTemplateName': lastTemplateName,
+      'packetId': packetId,
       'templateType': templateType?.index,
       'status': status.index,
       'footSide': footSide.index,
@@ -328,6 +331,7 @@ class WorkOrder {
       patientId: map['patientId'],
      name: map['name'] ?? '',
       lastTemplateName: map['lastTemplateName'] ?? '',
+      packetId: map['packetId'] ?? '',
       templateType: map['templateType'] != null
           ? TemplateType.values[map['templateType']] : null,
       status: WorkOrderStatus.values[map['status'] ?? 0],

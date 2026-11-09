@@ -24,7 +24,7 @@ class DatabaseService {
     final path = join(dbPath, 'orthoscan.db');
     return await openDatabase(
       path,
-      version: 13,
+      version: 14,
       onCreate: _createTables,
       onUpgrade: _onUpgrade,
     );
@@ -120,6 +120,9 @@ class DatabaseService {
     if (oldVersion < 13) {
       try { await db.execute('ALTER TABLE patients ADD COLUMN clinicId TEXT'); } catch (e) {}
     }
+    if (oldVersion < 14) {
+      try { await db.execute("ALTER TABLE work_orders ADD COLUMN packetId TEXT DEFAULT ''"); } catch (e) {}
+    }
     }
     Future<void> _createTables(Database db, int version) async {
     await db.execute('''
@@ -171,6 +174,7 @@ class DatabaseService {
           patientId TEXT NOT NULL,
           name TEXT,
           lastTemplateName TEXT,
+          packetId TEXT DEFAULT '',
         templateType INTEGER,
         status INTEGER DEFAULT 0,
         footSide INTEGER DEFAULT 2,
@@ -329,8 +333,20 @@ class DatabaseService {
 
   Future<void> updateWorkOrder(WorkOrder wo) async {
     final db = await database;
-    await db.update('work_orders', _workOrderToMap(wo),
-        where: 'id = ?', whereArgs: [wo.id]);
+    final map = _workOrderToMap(wo);
+    await db.update('work_orders', map, where: 'id = ?', whereArgs: [wo.id]);
+    // Packet: keep shared fields identical on the other (draft) products.
+    if (wo.packetId.isNotEmpty) {
+      const shared = [
+        'shoeSize', 'shoeSizeGender', 'shoeWidth', 'sameSizeForBothFeet',
+        'shoeSizeLeft', 'shoeWidthLeft', 'shoeSizeRight', 'shoeWidthRight',
+        'diagramData', 'dateOfService', 'expectedDeliveryDate',
+        'clinicianId', 'clinicianName', 'clinicName', 'scanFiles',
+      ];
+      await db.update('work_orders', {for (final k in shared) k: map[k]},
+          where: 'packetId = ? AND id != ? AND status = 0',
+          whereArgs: [wo.packetId, wo.id]);
+    }
   }
 
   Future<void> deleteWorkOrder(String id) async {
@@ -347,6 +363,14 @@ class DatabaseService {
     return maps.map((map) => _workOrderFromMap(map)).toList();
   }
 
+  Future<List<WorkOrder>> getPacketMembers(String packetId) async {
+    if (packetId.isEmpty) return [];
+    final db = await database;
+    final maps = await db.query('work_orders',
+        where: 'packetId = ?', whereArgs: [packetId], orderBy: 'createdAt ASC');
+    return maps.map((map) => _workOrderFromMap(map)).toList();
+  }
+
   Future<List<WorkOrder>> getAllWorkOrders({String? clinicId}) async {
     final db = await database;
     final maps = await db.query('work_orders', where: clinicId != null ? 'clinicId = ?' : null, whereArgs: clinicId != null ? [clinicId] : null, orderBy: 'createdAt DESC');
@@ -359,6 +383,7 @@ class DatabaseService {
       'patientId': wo.patientId,
        'name': wo.name,
       'lastTemplateName': wo.lastTemplateName,
+      'packetId': wo.packetId,
       'templateType': wo.templateType?.index,
       'status': wo.status.index,
       'footSide': wo.footSide.index,
@@ -423,6 +448,7 @@ class DatabaseService {
       patientId: map['patientId'] as String,
      name: map['name'] as String? ?? '',
       lastTemplateName: map['lastTemplateName'] as String? ?? '',
+      packetId: map['packetId'] as String? ?? '',
       templateType: map['templateType'] != null
           ? TemplateType.values[map['templateType'] as int] : null,
       status: WorkOrderStatus.values[map['status'] as int? ?? 0],

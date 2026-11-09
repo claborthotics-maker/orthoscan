@@ -4,6 +4,7 @@ import '../models/work_order.dart';
 import '../models/work_order_template.dart';
 import '../models/patient.dart';
 import '../services/pdf_service.dart';
+import '../services/database_service.dart';
 import 'package:printing/printing.dart';
 import 'dart:io';
 import 'package:archive/archive.dart';
@@ -16,6 +17,8 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
   final VoidCallback onConfirm;
   final Uint8List? leftDiagramImage;
   final Uint8List? rightDiagramImage;
+  final List<String> packetLabels;
+  final List<WorkOrder> packetOrders;
 
   const WorkOrderConfirmationScreen({
     super.key,
@@ -24,6 +27,8 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     required this.onConfirm,
     this.leftDiagramImage,
     this.rightDiagramImage,
+    this.packetLabels = const [],
+    this.packetOrders = const [],
   });
 
   String _safeName(String s) {
@@ -49,11 +54,15 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     return null;
   }
 
-  Future<void> _shareZip(Uint8List pdfBytes, Rect origin) async {
+  Future<void> _shareZip(Uint8List pdfBytes, Rect origin,
+      [List<MapEntry<String, Uint8List>> extraPdfs = const []]) async {
     final base = _safeName(patient.lastName + '_' + patient.firstName + '_' + workOrder.displayName);
     final pdfName = base + '_lab_order.pdf';
     final archive = Archive();
     archive.addFile(ArchiveFile(pdfName, pdfBytes.length, pdfBytes));
+    for (final e in extraPdfs) {
+      archive.addFile(ArchiveFile(e.key, e.value.length, e.value));
+    }
     final lines = <String>[
       'Work order: ' + workOrder.displayName,
       'Patient: ' + patient.fullName,
@@ -62,6 +71,9 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
       'Files in this zip:',
       pdfName + '  -  work order PDF',
     ];
+    for (final e in extraPdfs) {
+      lines.add(e.key + '  -  work order PDF');
+    }
     final missing = <String>[];
     for (final p in workOrder.scanFiles) {
       final name = p.split('/').last;
@@ -86,19 +98,17 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     final zipData = ZipEncoder().encode(archive);
     final zipBytes = List<int>.from(zipData as Iterable<int>);
     final dir = await Directory.systemTemp.createTemp('clab_zip');
-    final zipFile = File(dir.path + '/' + base + '_lab_order.zip');
+    final zipFile = File(dir.path + '/' + base + (extraPdfs.isEmpty ? '' : '_packet') + '_lab_order.zip');
     await zipFile.writeAsBytes(zipBytes);
     await Share.shareXFiles(
       [XFile(zipFile.path)],
-      subject: 'Lab order - ' + workOrder.displayName,
+      subject: 'Lab order - ' + (packetLabels.length > 1 ? packetLabels.join(' + ') : workOrder.displayName),
       sharePositionOrigin: origin,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final fields = _collectFields();
-    final accommodations = _collectAccommodations();
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -130,7 +140,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(workOrder.displayName,
+                      Text(packetLabels.length > 1 ? packetLabels.join(' + ') : workOrder.displayName,
                           style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -176,44 +186,6 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
               ],
             ]),
 
-            const SizedBox(height: 16),
-
-            _buildSection('Quantity', Icons.numbers, [
-              _row('Quantity', workOrder.quantityLabel),
-            ]),
-
-            const SizedBox(height: 16),
-
-            if (fields.isNotEmpty) ...[
-              _buildSection('Product Specs', Icons.layers, fields),
-              const SizedBox(height: 16),
-            ],
-
-            if (workOrder.archModification != 0) ...[
-              _buildSection('Arch Modification', Icons.architecture, [
-                _row('Arch Mod',
-                    workOrder.archModification > 0
-                        ? '+${workOrder.archModification}'
-                        : '${workOrder.archModification}'),
-              ]),
-              const SizedBox(height: 16),
-            ],
-
-            _buildSection('Accommodations', Icons.tune, accommodations),
-
-            if (workOrder.isPartialFootLeft || workOrder.isPartialFootRight) ...[
-              const SizedBox(height: 16),
-              _buildSection('Partial Foot', Icons.accessibility_new, [
-                if (workOrder.isPartialFootLeft)
-                  _row('Left', workOrder.toeFillerCountLeft > 0
-                      ? '${workOrder.toeFillerCountLeft} toe filler${workOrder.toeFillerCountLeft > 1 ? "s" : ""}'
-                      : 'Partial foot - no toe fillers'),
-                if (workOrder.isPartialFootRight)
-                  _row('Right', workOrder.toeFillerCountRight > 0
-                      ? '${workOrder.toeFillerCountRight} toe filler${workOrder.toeFillerCountRight > 1 ? "s" : ""}'
-                      : 'Partial foot - no toe fillers'),
-              ]),
-            ],
             const SizedBox(height: 16),
 
             // Foot Diagram
@@ -284,11 +256,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            _buildSection('Notes', Icons.note_alt, [
-              _row('', workOrder.specialInstructions.isEmpty
-                  ? 'None'
-                  : workOrder.specialInstructions),
-            ]),
+            ..._productBlocks(),
 
             const SizedBox(height: 24),
 
@@ -343,6 +311,21 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
                         ' scan(s) will be sent in the zip with the PDF.',
                     style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 13)),
               ),
+            if (packetLabels.length > 1)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F3460).withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF4FC3F7).withOpacity(0.4)),
+                ),
+                child: Text(
+                    'This order has ${packetLabels.length} products (${packetLabels.join(' + ')}). '
+                    'The zip will contain one PDF per product, all submitted together.',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13)),
+              ),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -359,8 +342,30 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
                     leftDiagramImage: leftDiagramImage,
                     rightDiagramImage: rightDiagramImage,
                   );
+                  final extra = <MapEntry<String, Uint8List>>[];
                   try {
-                    await _shareZip(bytes, origin);
+                    if (workOrder.packetId.isNotEmpty) {
+                      final all = await DatabaseService().getPacketMembers(workOrder.packetId);
+                      for (final s in all) {
+                        if (s.id == workOrder.id) continue;
+                        final now = DateTime.now();
+                        if (s.submissionCount == 0) s.originalSubmittedAt = now;
+                        s.submissionCount += 1;
+                        s.status = WorkOrderStatus.submitted;
+                        s.submittedAt = now;
+                        await DatabaseService().updateWorkOrder(s);
+                        final sb = await PdfService.generateWorkOrderPdf(
+                          wo: s,
+                          patient: patient,
+                          leftDiagramImage: leftDiagramImage,
+                          rightDiagramImage: rightDiagramImage,
+                        );
+                        extra.add(MapEntry(
+                            _safeName(patient.lastName + '_' + patient.firstName + '_' + s.displayName) + '_lab_order.pdf',
+                            sb));
+                      }
+                    }
+                    await _shareZip(bytes, origin, extra);
                   } catch (e, st) {
                     print('ZIP ERROR: ' + e.toString());
                     print(st.toString());
@@ -393,6 +398,60 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  List<Widget> _productBlocks() {
+    final orders = packetOrders.isEmpty ? <WorkOrder>[workOrder] : packetOrders;
+    final out = <Widget>[];
+    for (final w in orders) {
+      final fields = _collectFields(w);
+      final acc = _collectAccommodations(w);
+      out.add(Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F3460),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF4FC3F7).withOpacity(0.5)),
+        ),
+        child: Text(w.displayName.toUpperCase(),
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
+      ));
+      out.add(const SizedBox(height: 12));
+      out.add(_buildSection('Quantity', Icons.numbers, [_row('Quantity', w.quantityLabel)]));
+      out.add(const SizedBox(height: 16));
+      if (fields.isNotEmpty) {
+        out.add(_buildSection('Product Specs', Icons.layers, fields));
+        out.add(const SizedBox(height: 16));
+      }
+      if (w.archModification != 0) {
+        out.add(_buildSection('Arch Modification', Icons.architecture, [
+          _row('Arch Mod', w.archModification > 0 ? '+${w.archModification}' : '${w.archModification}'),
+        ]));
+        out.add(const SizedBox(height: 16));
+      }
+      out.add(_buildSection('Accommodations', Icons.tune, acc));
+      if (w.isPartialFootLeft || w.isPartialFootRight) {
+        out.add(const SizedBox(height: 16));
+        out.add(_buildSection('Partial Foot', Icons.accessibility_new, [
+          if (w.isPartialFootLeft)
+            _row('Left', w.toeFillerCountLeft > 0
+                ? '${w.toeFillerCountLeft} toe filler${w.toeFillerCountLeft > 1 ? "s" : ""}'
+                : 'Partial foot - no toe fillers'),
+          if (w.isPartialFootRight)
+            _row('Right', w.toeFillerCountRight > 0
+                ? '${w.toeFillerCountRight} toe filler${w.toeFillerCountRight > 1 ? "s" : ""}'
+                : 'Partial foot - no toe fillers'),
+        ]));
+      }
+      out.add(const SizedBox(height: 16));
+      out.add(_buildSection('Notes for the lab', Icons.note_alt, [
+        _row('', w.specialInstructions.isEmpty ? 'None' : w.specialInstructions),
+      ]));
+      out.add(const SizedBox(height: 24));
+    }
+    return out;
   }
 
   Widget _buildSection(String title, IconData icon, List<Widget> rows) {
@@ -454,7 +513,8 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     return '${d.month}/${d.day}/${d.year}';
   }
 
-  List<Widget> _collectFields() {
+  List<Widget> _collectFields([WorkOrder? w]) {
+    final workOrder = w ?? this.workOrder;
     final rows = <Widget>[];
     void add(String label, String value) {
       if (value.isNotEmpty && value != 'None') rows.add(_row(label, value));
@@ -477,7 +537,8 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
     return rows;
   }
 
-  List<Widget> _collectAccommodations() {
+  List<Widget> _collectAccommodations([WorkOrder? w]) {
+    final workOrder = w ?? this.workOrder;
     final rows = <Widget>[];
     void add(String label, String value) {
       if (value.isNotEmpty && value != 'None') rows.add(_row(label, value));
