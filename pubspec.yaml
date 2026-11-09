@@ -28,4 +28,6 @@ flutter:
   assets:
     - assets/images/left_foot.png
     - assets/images/right_foot.png
+    - assets/fonts/Roboto-Regular.ttf
+    - assets/fonts/Roboto-Bold.ttf
 

@@ -411,21 +411,39 @@ class _OverlayPainter extends CustomPainter {
       canvas.drawPath(path, paint);
     }
 
+    var noteNo = 0;
     for (final mark in marks) {
       final pos = _scale(mark.position, size);
       final markSize = relative ? mark.size * (size.width / 300) : mark.size;
+      if (mark.type == MarkType.general) noteNo++;
       canvas.drawCircle(pos, markSize / 2,
           Paint()..color = mark.color..style = PaintingStyle.fill);
       canvas.drawCircle(pos, markSize / 2,
           Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.5);
-      if (mark.note != null && mark.note!.isNotEmpty) {
-        final tp = TextPainter(
-          text: const TextSpan(text: '📝', style: TextStyle(fontSize: 10)),
-          textDirection: TextDirection.ltr,
-        );
-        tp.layout();
-        tp.paint(canvas, pos + Offset(markSize / 2, -markSize));
+      // thin dark ring so every mark (incl. white notes) is visible on paper
+      canvas.drawCircle(pos, markSize / 2 + 1.2,
+          Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 1.0);
+      // letter / number so marks still read in black and white
+      String ch;
+      Color chColor = Colors.black;
+      switch (mark.type) {
+        case MarkType.pressure: ch = 'P'; chColor = Colors.white; break;
+        case MarkType.relief: ch = 'R'; break;
+        case MarkType.missingToe: ch = 'X'; break;
+        case MarkType.general: ch = '$noteNo'; break;
       }
+      final tp = TextPainter(
+        text: TextSpan(
+            text: ch,
+            style: TextStyle(
+                color: chColor,
+                fontSize: markSize * 0.72,
+                fontWeight: FontWeight.bold,
+                height: 1.0)),
+        textDirection: TextDirection.ltr,
+      );
+      tp.layout();
+      tp.paint(canvas, pos - Offset(tp.width / 2, tp.height / 2));
     }
   }
 

@@ -1,12 +1,20 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import '../models/work_order.dart';
 import '../models/patient.dart';
 import '../models/work_order_template.dart';
+import '../screens/foot_diagram_widget.dart';
 
+/// Black-and-white-first lab sheet, US Letter.
+/// Black text, thin dark borders, bold values, bundled Roboto font.
+/// Foot diagram keeps its colours but every mark also carries a letter
+/// (P / R / X) or a note number so it still reads in grayscale.
 class PdfService {
+  static final PdfColor _ink = PdfColors.black;
+  static final PdfColor _label = PdfColor.fromInt(0xFF2B2B2B);
+
   static Future<Uint8List> generateWorkOrderPdf({
     required WorkOrder wo,
     required Patient patient,
@@ -14,229 +22,354 @@ class PdfService {
     Uint8List? rightDiagramImage,
   }) async {
     final pdf = pw.Document();
-    final font = await PdfGoogleFonts.nunitoRegular();
-    final fontBold = await PdfGoogleFonts.nunitoBold();
+    final font = pw.Font.ttf(await rootBundle.load('assets/fonts/Roboto-Regular.ttf'));
+    final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/Roboto-Bold.ttf'));
 
     pw.ImageProvider? leftImg;
     pw.ImageProvider? rightImg;
     if (leftDiagramImage != null) leftImg = pw.MemoryImage(leftDiagramImage);
     if (rightDiagramImage != null) rightImg = pw.MemoryImage(rightDiagramImage);
 
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.letter,
-        margin: const pw.EdgeInsets.all(20),
-        build: (context) => [
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              // Header
-              pw.Container(
-                padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: pw.BoxDecoration(
-                  color: PdfColors.blueGrey800,
-                  borderRadius: pw.BorderRadius.circular(6),
-                ),
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Row(children: [
-                          pw.Text('LAB ORDER',
-                              style: pw.TextStyle(font: fontBold, fontSize: 18, color: PdfColors.white)),
-                          if (wo.submissionCount > 1) ...[
-                            pw.SizedBox(width: 8),
-                            pw.Container(
-                              padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: pw.BoxDecoration(
-                                color: PdfColors.orange,
-                                borderRadius: pw.BorderRadius.circular(4),
-                              ),
-                              child: pw.Text('RESUBMISSION #${wo.submissionCount - 1}',
-                                  style: pw.TextStyle(font: fontBold, fontSize: 9, color: PdfColors.white)),
-                            ),
-                          ],
-                        ]),
-                        if (wo.clinicName.isNotEmpty)
-                          pw.Text(wo.clinicName,
-                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
-                        if (wo.clinicianName.isNotEmpty)
-                          pw.Text('Clinician: ${wo.clinicianName}',
-                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
-                      ],
-                    ),
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        if (wo.dateOfService != null)
-                          pw.Text('Service: ${_fmtDate(wo.dateOfService)}',
-                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
-                        if (wo.expectedDeliveryDate != null)
-                          pw.Text('Delivery: ${_fmtDate(wo.expectedDeliveryDate)}',
-                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
-                        if (wo.submissionCount <= 1)
-                          pw.Text('Submitted: ${_fmtDateTime(wo.submittedAt ?? DateTime.now())}',
-                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white))
-                        else ...[
-                          pw.Text('Originally: ${_fmtDateTime(wo.originalSubmittedAt ?? wo.submittedAt ?? DateTime.now())}',
-                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
-                          pw.Text('Resubmitted: ${_fmtDateTime(wo.submittedAt ?? DateTime.now())}',
-                              style: pw.TextStyle(font: font, fontSize: 10, color: PdfColors.white)),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 5),
+    final diagram = DiagramData.fromJsonString(wo.diagramData);
 
-              // Two column layout
-              pw.Row(
+    pw.TextStyle reg(double size, {PdfColor? color}) =>
+        pw.TextStyle(font: font, fontSize: size, color: color ?? _ink);
+    pw.TextStyle bld(double size, {PdfColor? color}) =>
+        pw.TextStyle(font: bold, fontSize: size, color: color ?? _ink);
+
+    pw.Widget caps(String s) =>
+        pw.Text(s.toUpperCase(), style: bld(8.5).copyWith(letterSpacing: 0.4));
+
+    pw.Widget box({required pw.Widget child, double pad = 10, double width = 0.8}) =>
+        pw.Container(
+          width: double.infinity,
+          padding: pw.EdgeInsets.all(pad),
+          decoration: pw.BoxDecoration(border: pw.Border.all(color: _ink, width: width)),
+          child: child,
+        );
+
+    pw.Widget gap([double h = 8]) => pw.SizedBox(height: h);
+
+    // ---------- header ----------
+    final due = wo.expectedDeliveryDate;
+    final header = pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        _sec('PATIENT', fontBold, font, [
-                          _rd('Name', patient.fullName),
-                          if (patient.patientId.isNotEmpty) _rd('ID', patient.patientId),
-                          if (patient.notes.isNotEmpty) _rd('Clinical Notes', patient.notes),
-                        ]),
-                        pw.SizedBox(height: 4),
-                        _sec('ORDER', fontBold, font, [
-                          _rd('Type', _typeName(wo.templateType)),
-                          _rd('Quantity', wo.quantityLabel),
-                        ]),
-                        pw.SizedBox(height: 4),
-                        _sec('SHOE SIZE', fontBold, font, [
-                          _rd('Gender', wo.shoeSizeGender),
-                          if (wo.sameSizeForBothFeet) ...[
-                            _rd('Size', wo.shoeSize),
-                            _rd('Width', wo.shoeWidth),
-                          ] else ...[
-                            _rd('L Size', wo.shoeSizeLeft),
-                            _rd('L Width', wo.shoeWidthLeft),
-                            _rd('R Size', wo.shoeSizeRight),
-                            _rd('R Width', wo.shoeWidthRight),
-                          ],
-                        ]),
-                      ],
-                    ),
-                  ),
-                  pw.SizedBox(width: 6),
-                  pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        if (_hasProductSpecs(wo)) ...[
-                          _sec('PRODUCT SPECS', fontBold, font, _productSpecRows(wo)),
-                          pw.SizedBox(height: 4),
-                        ],
-                        if (wo.archModification != 0) ...[
-                          _sec('ARCH MOD', fontBold, font, [
-                            _rd('', wo.archModification > 0
-                                ? '+${wo.archModification}' : '${wo.archModification}'),
-                          ]),
-                          pw.SizedBox(height: 4),
-                        ],
-                        _sec('ACCOMMODATIONS', fontBold, font,
-                            _hasAccommodations(wo) ? _accommodationRows(wo) : [_rd('', 'None')]),
-                        if (wo.isPartialFootLeft || wo.isPartialFootRight) ...[
-                          pw.SizedBox(height: 4),
-                          _sec('PARTIAL FOOT', fontBold, font, [
-                            if (wo.isPartialFootLeft)
-                              _rd('Left', wo.toeFillerCountLeft > 0
-                                  ? '${wo.toeFillerCountLeft} toe filler${wo.toeFillerCountLeft > 1 ? "s" : ""}'
-                                  : 'Partial foot'),
-                            if (wo.isPartialFootRight)
-                              _rd('Right', wo.toeFillerCountRight > 0
-                                  ? '${wo.toeFillerCountRight} toe filler${wo.toeFillerCountRight > 1 ? "s" : ""}'
-                                  : 'Partial foot'),
-                          ]),
-                        ],
-                      ],
-                    ),
+                  pw.Row(children: [
+                    pw.Text('LAB ORDER', style: bld(24)),
+                    if (wo.submissionCount > 1) ...[
+                      pw.SizedBox(width: 10),
+                      pw.Container(
+                        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: pw.BoxDecoration(
+                            border: pw.Border.all(color: _ink, width: 1.2)),
+                        child: pw.Text('RESUBMISSION #${wo.submissionCount - 1}',
+                            style: bld(9)),
+                      ),
+                    ],
+                  ]),
+                  pw.SizedBox(height: 4),
+                  if (wo.clinicName.isNotEmpty)
+                    pw.Text(wo.clinicName, style: reg(11)),
+                  if (wo.clinicianName.isNotEmpty)
+                    pw.Text('Clinician: ${wo.clinicianName}', style: reg(10)),
+                ],
+              ),
+            ),
+            // Lab number: fillable field
+            pw.Container(
+              width: 130,
+              height: 56,
+              padding: const pw.EdgeInsets.fromLTRB(7, 5, 7, 5),
+              decoration: pw.BoxDecoration(border: pw.Border.all(color: _ink, width: 1.4)),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  caps('Lab #'),
+                  pw.SizedBox(height: 3),
+                  pw.TextField(
+                    name: 'lab_number',
+                    width: 114,
+                    height: 34,
+                    maxLength: 12,
+                    textStyle: bld(20),
                   ),
                 ],
               ),
-              pw.SizedBox(height: 4),
-
-              // Notes - always shown
-              _sec('NOTES', fontBold, font, [
-                _rd('', wo.specialInstructions.trim().isEmpty
-                    ? 'None' : wo.specialInstructions),
-              ]),
-              pw.SizedBox(height: 4),
-
-              // Foot Diagram - full width, always shown
-              pw.Container(
-                padding: const pw.EdgeInsets.all(8),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.blueGrey200),
-                  borderRadius: pw.BorderRadius.circular(5),
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('FOOT DIAGRAM',
-                        style: pw.TextStyle(font: fontBold, fontSize: 9,
-                            color: PdfColors.blueGrey700, letterSpacing: 0.5)),
-                    pw.Divider(color: PdfColors.blueGrey200, thickness: 0.5),
-                    pw.SizedBox(height: 4),
-                    if (leftImg != null || rightImg != null)
-                      pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.center,
-                        children: [
-                          if (rightImg != null)
-                            pw.Column(
-                              crossAxisAlignment: pw.CrossAxisAlignment.center,
-                              children: [
-                                pw.Text('Right Foot',
-                                    style: pw.TextStyle(font: fontBold, fontSize: 9,
-                                        color: PdfColors.blueGrey600)),
-                                pw.SizedBox(height: 3),
-                                pw.Image(rightImg, height: 130, width: 140,
-                                    fit: pw.BoxFit.contain),
-                              ],
-                            ),
-                          if (leftImg != null && rightImg != null)
-                            pw.SizedBox(width: 16),
-                          if (leftImg != null)
-                            pw.Column(
-                              crossAxisAlignment: pw.CrossAxisAlignment.center,
-                              children: [
-                                pw.Text('Left Foot',
-                                    style: pw.TextStyle(font: fontBold, fontSize: 9,
-                                        color: PdfColors.blueGrey600)),
-                                pw.SizedBox(height: 3),
-                                pw.Image(leftImg, height: 130, width: 140,
-                                    fit: pw.BoxFit.contain),
-                              ],
-                            ),
-                        ],
-                      )
-                    else
-                      pw.Text('No diagram markings added',
-                          style: pw.TextStyle(font: font, fontSize: 10,
-                              color: PdfColors.blueGrey400)),
-                    pw.SizedBox(height: 4),
-                    pw.Row(children: [
-                      _legendDot(PdfColors.red, 'Pressure', font),
-                      pw.SizedBox(width: 10),
-                      _legendDot(PdfColors.green, 'Relief', font),
-                      pw.SizedBox(width: 10),
-                      _legendDot(PdfColors.orange, 'Missing Toe', font),
-                      pw.SizedBox(width: 10),
-                      _legendDot(PdfColors.grey, 'Note', font),
-                    ]),
-                  ],
-                ),
+            ),
+            pw.SizedBox(width: 8),
+            pw.Container(
+              width: 124,
+              height: 56,
+              padding: const pw.EdgeInsets.fromLTRB(7, 5, 7, 5),
+              decoration: pw.BoxDecoration(border: pw.Border.all(color: _ink, width: 1.4)),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  caps('Due'),
+                  pw.SizedBox(height: 3),
+                  pw.Text(due == null ? '-' : _fmtDate(due), style: bld(17)),
+                  if (wo.dateOfService != null)
+                    pw.Text('Service ${_fmtDate(wo.dateOfService)}',
+                        style: reg(8.5, color: _label)),
+                ],
               ),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 8),
+        pw.Container(height: 2.2, color: _ink),
+      ],
+    );
+
+    // ---------- patient ----------
+    final patientBox = box(
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Expanded(
+            flex: 5,
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              caps('Patient'),
+              pw.SizedBox(height: 4),
+              pw.Text(patient.fullName, style: bld(15)),
+            ]),
+          ),
+          if (patient.patientId.isNotEmpty)
+            pw.Expanded(
+              flex: 3,
+              child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                caps('Patient ID'),
+                pw.SizedBox(height: 4),
+                pw.Text(patient.patientId, style: bld(13)),
+              ]),
+            ),
+          pw.Expanded(
+            flex: 4,
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              caps('Shoe size'),
+              pw.SizedBox(height: 4),
+              pw.Text(_shoeSize(wo), style: bld(13)),
+            ]),
+          ),
+        ],
+      ),
+    );
+
+    // ---------- product banner + per-foot line ----------
+    final banner = pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      color: _ink,
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(_typeName(wo.templateType).toUpperCase(),
+              style: bld(15, color: PdfColors.white)),
+          pw.Text(wo.quantityLabel, style: bld(12, color: PdfColors.white)),
+        ],
+      ),
+    );
+    final feetLine = _feetLine(wo);
+    final feetBox = pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: pw.BoxDecoration(
+          border: pw.Border(
+              left: pw.BorderSide(color: _ink, width: 0.8),
+              right: pw.BorderSide(color: _ink, width: 0.8),
+              bottom: pw.BorderSide(color: _ink, width: 0.8))),
+      child: pw.Text(feetLine, style: bld(11)),
+    );
+
+    // ---------- specs + accommodations ----------
+    final specs = _productSpecRows(wo);
+    final accs = _accommodationRows(wo);
+    pw.Widget rowsCol(String title, List<_RD> rows, {bool rule = false}) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        decoration: rule
+            ? pw.BoxDecoration(
+                border: pw.Border(right: pw.BorderSide(color: _ink, width: 0.6)))
+            : null,
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            caps(title),
+            pw.SizedBox(height: 5),
+            if (rows.isEmpty) pw.Text('None', style: bld(11)),
+            ...rows.map((r) => pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 2.5),
+                  child: pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.SizedBox(width: 82, child: pw.Text(r.label, style: reg(9, color: _label))),
+                      pw.Expanded(child: pw.Text(r.value, style: bld(11))),
+                    ],
+                  ),
+                )),
+          ],
+        ),
+      );
+    }
+
+    final specsBox = pw.Container(
+      width: double.infinity,
+      decoration: pw.BoxDecoration(border: pw.Border.all(color: _ink, width: 0.8)),
+      child: pw.SizedBox(
+        height: 38 + (specs.length > accs.length ? specs.length : accs.length).clamp(1, 20).toDouble() * 16.5,
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(child: rowsCol('Product specs', specs, rule: true)),
+            pw.Expanded(child: rowsCol('Accommodations', accs)),
+          ],
+        ),
+      ),
+    );
+
+    // ---------- notes ----------
+    pw.Widget notesBox(String title, String body) => box(
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              caps(title),
+              pw.SizedBox(height: 5),
+              pw.Text(body, style: reg(10.5)),
             ],
           ),
+        );
+    final labNotes = wo.specialInstructions.trim();
+    final clinNotes = patient.notes.trim();
+
+    // ---------- diagram ----------
+    pw.Widget footCol(String label, pw.ImageProvider img) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            pw.Image(img, height: 150, width: 100, fit: pw.BoxFit.contain),
+            pw.SizedBox(height: 2),
+            pw.Text(label.toUpperCase(), style: bld(9)),
+          ],
+        );
+
+    pw.Widget legendItem(PdfColor fill, String ch, PdfColor chColor, String label) =>
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: 4),
+          child: pw.Row(children: [
+            pw.Container(
+              width: 13,
+              height: 13,
+              alignment: pw.Alignment.center,
+              decoration: pw.BoxDecoration(
+                  color: fill,
+                  shape: pw.BoxShape.circle,
+                  border: pw.Border.all(color: _ink, width: 0.8)),
+              child: pw.Text(ch, style: bld(8, color: chColor)),
+            ),
+            pw.SizedBox(width: 6),
+            pw.Text(label, style: reg(9.5)),
+          ]),
+        );
+
+    final noteLines = <String>[];
+    void collectNotes(String foot, List<FootMark> marks) {
+      var n = 0;
+      for (final m in marks) {
+        if (m.type != MarkType.general) continue;
+        n++;
+        final t = (m.note ?? '').trim();
+        if (t.isNotEmpty) noteLines.add('$foot $n   $t');
+      }
+    }
+    collectNotes('Right', diagram.rightMarks);
+    collectNotes('Left', diagram.leftMarks);
+
+    final diagramBox = box(
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          caps('Foot diagram'),
+          pw.SizedBox(height: 6),
+          if (leftImg != null || rightImg != null)
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              mainAxisAlignment: pw.MainAxisAlignment.center,
+              children: [
+                if (rightImg != null) footCol('Right', rightImg),
+                if (leftImg != null && rightImg != null) pw.SizedBox(width: 40),
+                if (leftImg != null) footCol('Left', leftImg),
+                pw.SizedBox(width: 40),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    legendItem(PdfColors.red, 'P', PdfColors.white, 'Pressure'),
+                    legendItem(PdfColors.green, 'R', PdfColors.black, 'Relief'),
+                    legendItem(PdfColors.orange, 'X', PdfColors.black, 'Missing toe'),
+                    legendItem(PdfColors.white, '1', PdfColors.black, 'Note (numbered)'),
+                  ],
+                ),
+              ],
+            )
+          else
+            pw.Text('No diagram markings added', style: reg(10)),
+          if (noteLines.isNotEmpty) ...[
+            pw.SizedBox(height: 6),
+            ...noteLines.map((l) => pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 1.5),
+                  child: pw.Text(l, style: reg(9.5)),
+                )),
+          ],
+        ],
+      ),
+    );
+
+    final submitted = wo.submissionCount <= 1
+        ? 'Submitted ${_fmtDateTime(wo.submittedAt ?? DateTime.now())}'
+        : 'Originally ${_fmtDateTime(wo.originalSubmittedAt ?? wo.submittedAt ?? DateTime.now())}'
+            '  ·  Resubmitted ${_fmtDateTime(wo.submittedAt ?? DateTime.now())}';
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.letter,
+        margin: const pw.EdgeInsets.symmetric(horizontal: 36, vertical: 30),
+        footer: (ctx) => pw.Container(
+          padding: const pw.EdgeInsets.only(top: 4),
+          decoration: pw.BoxDecoration(
+              border: pw.Border(top: pw.BorderSide(color: _ink, width: 0.6))),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}   ·   $submitted',
+                  style: reg(8.5, color: _label)),
+            ],
+          ),
+        ),
+        // Separate top-level widgets so content can flow to a 2nd page
+        // instead of failing when something is too tall.
+        build: (context) => [
+          header,
+          gap(10),
+          patientBox,
+          gap(),
+          banner,
+          feetBox,
+          gap(),
+          specsBox,
+          gap(),
+          notesBox('Notes for the lab', labNotes.isEmpty ? 'None' : labNotes),
+          if (clinNotes.isNotEmpty) ...[
+            gap(),
+            notesBox('Clinical notes', clinNotes),
+          ],
+          gap(),
+          diagramBox,
         ],
       ),
     );
@@ -244,59 +377,37 @@ class PdfService {
     return pdf.save();
   }
 
-  static pw.Widget _sec(String title, pw.Font fontBold, pw.Font font, List<_RD?> rows) {
-    final valid = rows.whereType<_RD>().toList();
-    if (valid.isEmpty) return pw.SizedBox.shrink();
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(6),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.blueGrey200),
-        borderRadius: pw.BorderRadius.circular(4),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(title,
-              style: pw.TextStyle(font: fontBold, fontSize: 9,
-                  color: PdfColors.blueGrey700, letterSpacing: 0.5)),
-          pw.Divider(color: PdfColors.blueGrey200, thickness: 0.5),
-          pw.SizedBox(height: 2),
-          ...valid.map((r) => pw.Padding(
-                padding: const pw.EdgeInsets.only(bottom: 2),
-                child: r.label.isEmpty
-                    ? pw.Text(r.value,
-                        style: pw.TextStyle(font: font, fontSize: 10))
-                    : pw.Row(
-                        children: [
-                          pw.SizedBox(
-                            width: 72,
-                            child: pw.Text(r.label,
-                                style: pw.TextStyle(font: fontBold, fontSize: 10,
-                                    color: PdfColors.blueGrey600)),
-                          ),
-                          pw.SizedBox(width: 4),
-                          pw.Expanded(
-                            child: pw.Text(r.value,
-                                style: pw.TextStyle(font: font, fontSize: 10)),
-                          ),
-                        ],
-                      ),
-              )),
-        ],
-      ),
-    );
+  // ---------- helpers ----------
+
+  static String _shoeSize(WorkOrder wo) {
+    String part(String size, String width) =>
+        [size, width].where((s) => s.isNotEmpty && s != 'None').join(' ');
+    final g = wo.shoeSizeGender;
+    if (wo.sameSizeForBothFeet) {
+      final s = part(wo.shoeSize, wo.shoeWidth);
+      return s.isEmpty ? '-' : '${g.isEmpty ? '' : '$g  '}$s';
+    }
+    final l = part(wo.shoeSizeLeft, wo.shoeWidthLeft);
+    final r = part(wo.shoeSizeRight, wo.shoeWidthRight);
+    return '${g.isEmpty ? '' : '$g  '}L ${l.isEmpty ? '-' : l}   R ${r.isEmpty ? '-' : r}';
   }
 
-  static pw.Widget _legendDot(PdfColor color, String label, pw.Font font) {
-    return pw.Row(children: [
-      pw.Container(
-        width: 7, height: 7,
-        decoration: pw.BoxDecoration(color: color, shape: pw.BoxShape.circle),
-      ),
-      pw.SizedBox(width: 3),
-      pw.Text(label, style: pw.TextStyle(font: font, fontSize: 9,
-          color: PdfColors.blueGrey700)),
-    ]);
+  static String _footProduct(WorkOrder wo, bool left) {
+    final partial = wo.templateType == TemplateType.partialFoot ||
+        (left ? wo.isPartialFootLeft : wo.isPartialFootRight);
+    if (!partial) return _typeName(wo.templateType == TemplateType.partialFoot
+        ? TemplateType.rebound : wo.templateType);
+    final n = left ? wo.toeFillerCountLeft : wo.toeFillerCountRight;
+    return n > 0
+        ? 'Partial Foot ($n toe filler${n > 1 ? "s" : ""})'
+        : 'Partial Foot';
+  }
+
+  static String _feetLine(WorkOrder wo) {
+    final parts = <String>[];
+    if (wo.quantityLeft > 0) parts.add('Left: ${_footProduct(wo, true)}');
+    if (wo.quantityRight > 0) parts.add('Right: ${_footProduct(wo, false)}');
+    return parts.isEmpty ? 'Quantity not set' : parts.join('      ');
   }
 
   static _RD? _rd(String label, String value) {
@@ -304,55 +415,52 @@ class PdfService {
     return _RD(label, value);
   }
 
-  static bool _hasProductSpecs(WorkOrder wo) {
-    final isPolyShell = wo.templateType == TemplateType.polyShell;
-    if (isPolyShell) return wo.shellThickness.isNotEmpty || (wo.topCoverType.isNotEmpty && wo.topCoverType != 'None');
-    return wo.baseThickness.isNotEmpty || (wo.topCoverType.isNotEmpty && wo.topCoverType != 'None');
-  }
+  static List<_RD> _clean(List<_RD?> rows) => rows.whereType<_RD>().toList();
 
-  static List<_RD?> _productSpecRows(WorkOrder wo) {
+  static List<_RD> _productSpecRows(WorkOrder wo) {
     final isPolyShell = wo.templateType == TemplateType.polyShell;
-    return [
+    return _clean([
       if (!isPolyShell) _rd('Base', wo.baseThickness),
       if (!isPolyShell) _rd('Grind', wo.baseGrind),
-      if (isPolyShell) _rd('Shell Thick', wo.shellThickness),
-      if (isPolyShell) _rd('Shell Len', wo.baseShellLength),
+      if (isPolyShell) _rd('Shell thk', wo.shellThickness),
+      if (isPolyShell) _rd('Shell len', wo.baseShellLength),
       if (isPolyShell && wo.patientWeight != null) _RD('Weight', '${wo.patientWeight} lbs'),
-      if (isPolyShell) _rd('Mid Layer', wo.midLayerType),
+      if (isPolyShell) _rd('Mid layer', wo.midLayerType),
       if (isPolyShell && wo.midLayerType.isNotEmpty && wo.midLayerType != 'None')
-        _rd('Mid Thick', wo.midLayerThickness),
-      _rd('Top Cover', wo.topCoverType),
-      if (wo.topCoverType.isNotEmpty && wo.topCoverType != 'None' && wo.topCoverType != 'P-Cell') ...[
-        _rd('Cover Thk', wo.topCoverThickness),
+        _rd('Mid thk', wo.midLayerThickness),
+      _rd('Top cover', wo.topCoverType),
+      if (wo.topCoverType.isNotEmpty &&
+          wo.topCoverType != 'None' &&
+          wo.topCoverType != 'P-Cell') ...[
+        _rd('Cover thk', wo.topCoverThickness),
         _rd('Color', wo.topCoverColor),
       ],
-    ];
+      if (wo.archModification != 0)
+        _RD('Arch mod',
+            wo.archModification > 0 ? '+${wo.archModification}' : '${wo.archModification}'),
+    ]);
   }
 
-  static bool _hasAccommodations(WorkOrder wo) =>
-      wo.heelPost != 'None' || wo.forefootPost != 'None' ||
-      wo.heelWedge != 'None' || wo.forefootWedge != 'None' ||
-      wo.metPadFoot != 'None' || wo.metBarFoot != 'None' ||
-      wo.heelLiftFoot != 'None' || wo.heelCup != 'None';
-
-  static List<_RD?> _accommodationRows(WorkOrder wo) => [
-        _rd('Heel Post', wo.heelPost),
-        _rd('FF Post', wo.forefootPost),
-        _rd('Heel Wedge', wo.heelWedge),
-        _rd('FF Wedge', wo.forefootWedge),
-        _rd('Met Pad', wo.metPadFoot != 'None'
-            ? '${wo.metPadFoot} (${wo.metPadSize})' : ''),
-        _rd('Met Bar', wo.metBarFoot != 'None'
-            ? '${wo.metBarFoot} (${wo.metBarSize})' : ''),
-        _rd('Heel Lift', wo.heelLiftFoot != 'None'
-            ? '${wo.heelLiftFoot}${wo.heelLiftHeight.isNotEmpty ? ' - ${wo.heelLiftHeight}' : ''}'
-            : ''),
-        _rd('Heel Cup', wo.heelCup),
-      ];
+  static List<_RD> _accommodationRows(WorkOrder wo) => _clean([
+        _rd('Heel post', wo.heelPost),
+        _rd('FF post', wo.forefootPost),
+        _rd('Heel wedge', wo.heelWedge),
+        _rd('FF wedge', wo.forefootWedge),
+        _rd('Met pad', wo.metPadFoot != 'None' ? '${wo.metPadFoot} (${wo.metPadSize})' : ''),
+        _rd('Met bar', wo.metBarFoot != 'None' ? '${wo.metBarFoot} (${wo.metBarSize})' : ''),
+        _rd(
+            'Heel lift',
+            wo.heelLiftFoot != 'None'
+                ? '${wo.heelLiftFoot}${wo.heelLiftHeight.isNotEmpty ? ' - ${wo.heelLiftHeight}' : ''}'
+                : ''),
+        _rd('Heel cup', wo.heelCup),
+      ]);
 
   static String _fmtDate(DateTime? d) {
     if (d == null) return '';
-    return '${d.month}/${d.day}/${d.year}';
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '$m/$day/${d.year}';
   }
 
   static String _fmtDateTime(DateTime? d) {
@@ -360,15 +468,19 @@ class PdfService {
     final hour = d.hour > 12 ? d.hour - 12 : (d.hour == 0 ? 12 : d.hour);
     final min = d.minute.toString().padLeft(2, '0');
     final ampm = d.hour >= 12 ? 'PM' : 'AM';
-    return '${d.month}/${d.day}/${d.year} $hour:$min $ampm';
+    return '${_fmtDate(d)} $hour:$min $ampm';
   }
 
   static String _typeName(TemplateType? type) {
     switch (type) {
-      case TemplateType.rebound: return 'Rebound';
-      case TemplateType.polyShell: return 'Poly Shell';
-      case TemplateType.partialFoot: return 'Partial Foot';
-      case null: return 'Unknown';
+      case TemplateType.rebound:
+        return 'Rebound';
+      case TemplateType.polyShell:
+        return 'Poly Shell';
+      case TemplateType.partialFoot:
+        return 'Partial Foot';
+      case null:
+        return 'Unknown';
     }
   }
 }
@@ -378,11 +490,3 @@ class _RD {
   final String value;
   _RD(this.label, this.value);
 }
-
-
-
-
-
-
-
-
