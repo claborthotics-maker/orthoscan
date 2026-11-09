@@ -390,7 +390,10 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   }
 
   void _applyStateToWorkOrder(WorkOrder wo) {
-    wo.name = _nameController.text.trim();
+    final autoType = _orthoticType;
+    final typedName = _nameController.text.trim();
+    final autoName = autoType == null ? '' : DefaultTemplates.defaultNameForType(autoType);
+    wo.name = typedName.isNotEmpty ? typedName : (autoName.isNotEmpty ? autoName : 'Work Order');
     wo.scanFiles = List<String>.from(_linkedScans);
     wo.specialInstructions = _instructionsController.text;
     wo.status = _status;
@@ -564,8 +567,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   Future<void> _submit() async {
     // Validation
     final errors = <String>[];
-    if (_nameController.text.trim().isEmpty)
-      errors.add('• Work order name is required');
     if (_dateOfService == null)
       errors.add('• Date of service is required');
     if (_expectedDeliveryDate == null)
@@ -962,9 +963,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                     if (widget.patient.patientId.isNotEmpty)
                       Text('ID: ${widget.patient.patientId}',
                           style: const TextStyle(color: Color(0xFF4FC3F7), fontSize: 13)),
-                    if (widget.patient.dateOfBirth.isNotEmpty)
-                      Text('DOB: ${widget.patient.dateOfBirth}',
-                          style: const TextStyle(color: Colors.white54, fontSize: 13)),
                   ],
                 ),
            ),
@@ -1003,14 +1001,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
                 const SizedBox(height: 16),
 
-                _buildSection(
-                  title: 'Work Order Name / Number',
-                icon: Icons.label,
-                child: _buildField('Name / Number', _nameController,
-                    hint: 'e.g. John Doe 1234'),
-              ),
-
-              const SizedBox(height: 16),
 
               _buildScansSection(),
 

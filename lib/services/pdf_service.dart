@@ -102,13 +102,11 @@ class PdfService {
                       children: [
                         _sec('PATIENT', fontBold, font, [
                           _rd('Name', patient.fullName),
-                          if (patient.dateOfBirth.isNotEmpty) _rd('DOB', patient.dateOfBirth),
                           if (patient.patientId.isNotEmpty) _rd('ID', patient.patientId),
                           if (patient.notes.isNotEmpty) _rd('Clinical Notes', patient.notes),
                         ]),
                         pw.SizedBox(height: 4),
                         _sec('ORDER', fontBold, font, [
-                          _rd('Work Order', wo.displayName),
                           _rd('Type', _typeName(wo.templateType)),
                           _rd('Quantity', wo.quantityLabel),
                         ]),

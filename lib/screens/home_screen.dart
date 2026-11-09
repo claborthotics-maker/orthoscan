@@ -486,10 +486,6 @@ class _NewPatientDialogState extends State<_NewPatientDialog> {
           _buildField('Last Name *', _lastNameController),
           const SizedBox(height: 12),
           _buildField('Patient ID *', _patientIdController),
-          const SizedBox(height: 12),
-          _buildField('Date of Birth', _dobController, hint: 'MM-DD-YYYY (optional)'),
-          const SizedBox(height: 12),
-          _buildField('Phone', _phoneController, hint: '555-555-5555 (optional)'),
         ]),
       ),
       actions: [

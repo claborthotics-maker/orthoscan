@@ -438,19 +438,6 @@ class _PatientScreenState extends State<PatientScreen> {
               const SizedBox(height: 12),
               _buildField('Patient ID', patientIdController,
                   hint: 'Optional'),
-              const SizedBox(height: 12),
-              _buildField('Date of Birth', dobController,
-                  hint: 'MM-DD-YYYY',
-                  formatter: DobInputFormatter(),
-                  keyboardType: TextInputType.number),
-              const SizedBox(height: 12),
-              _buildField('Phone', phoneController,
-                  hint: '555-555-5555',
-                  formatter: PhoneInputFormatter(),
-                  keyboardType: TextInputType.phone),
-              const SizedBox(height: 12),
-              _buildField('Email', emailController,
-                  hint: 'email@example.com'),
             ],
           ),
         ),
@@ -550,18 +537,6 @@ class _PatientScreenState extends State<PatientScreen> {
                   _InfoRow('Name', widget.patient.fullName),
                   if (widget.patient.patientId.isNotEmpty)
                     _InfoRow('Patient ID', widget.patient.patientId),
-                  _InfoRow('Date of Birth',
-                      widget.patient.dateOfBirth.isEmpty
-                          ? 'Not set'
-                          : widget.patient.dateOfBirth),
-                  _InfoRow('Phone',
-                      widget.patient.phone.isEmpty
-                          ? 'Not set'
-                          : widget.patient.phone),
-                  _InfoRow('Email',
-                      widget.patient.email.isEmpty
-                          ? 'Not set'
-                          : widget.patient.email),
                 ],
               ),
             ),

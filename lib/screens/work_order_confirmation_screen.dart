@@ -50,7 +50,7 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
   }
 
   Future<void> _shareZip(Uint8List pdfBytes, Rect origin) async {
-    final base = _safeName(workOrder.displayName);
+    final base = _safeName(patient.lastName + '_' + patient.firstName + '_' + workOrder.displayName);
     final pdfName = base + '_lab_order.pdf';
     final archive = Archive();
     archive.addFile(ArchiveFile(pdfName, pdfBytes.length, pdfBytes));
@@ -138,10 +138,6 @@ class WorkOrderConfirmationScreen extends StatelessWidget {
                       Text(patient.fullName,
                           style: const TextStyle(
                               color: Color(0xFF4FC3F7), fontSize: 14)),
-                      if (patient.dateOfBirth.isNotEmpty)
-                        Text('DOB: ${patient.dateOfBirth}',
-                            style: const TextStyle(
-                                color: Colors.white54, fontSize: 13)),
                       if (patient.patientId.isNotEmpty)
                         Text('ID: ${patient.patientId}',
                             style: const TextStyle(
