@@ -1598,7 +1598,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                  controller: _instructionsController,
                     style: const TextStyle(color: Colors.white),
                     maxLines: 4,
-                    maxLength: 100,
+                    maxLength: 500,
                     onChanged: (_) => setState(() {}),
                     textInputAction: TextInputAction.done,
                     onEditingComplete: () => FocusScope.of(context).unfocus(),

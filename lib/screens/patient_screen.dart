@@ -772,7 +772,7 @@ class _PatientScreenState extends State<PatientScreen> {
                     controller: _notesController,
                     style: const TextStyle(color: Colors.white),
                     maxLines: 5,
-                    maxLength: 100,
+                    maxLength: 500,
                     decoration: InputDecoration(
                       hintText: 'Enter clinical notes here...',
                       hintStyle: const TextStyle(color: Colors.white24),
