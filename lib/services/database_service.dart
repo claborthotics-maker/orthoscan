@@ -340,7 +340,7 @@ class DatabaseService {
       const shared = [
         'shoeSize', 'shoeSizeGender', 'shoeWidth', 'sameSizeForBothFeet',
         'shoeSizeLeft', 'shoeWidthLeft', 'shoeSizeRight', 'shoeWidthRight',
-        'diagramData', 'dateOfService', 'expectedDeliveryDate',
+        'diagramData',
         'clinicianId', 'clinicianName', 'clinicName', 'scanFiles',
       ];
       await db.update('work_orders', {for (final k in shared) k: map[k]},

@@ -248,8 +248,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     sib.clinicId = wo.clinicId;
     sib.clinicianId = wo.clinicianId;
     sib.clinicName = wo.clinicName;
-    sib.quantityLeft = wo.quantityLeft;
-    sib.quantityRight = wo.quantityRight;
+    // New product starts fresh: quantity, dates, specs, arch and accommodations stay at defaults.
+    sib.specialInstructions = wo.specialInstructions;
     sib.shoeSizeGender = wo.shoeSizeGender;
     sib.shoeSize = wo.shoeSize;
     sib.shoeWidth = wo.shoeWidth;
@@ -259,8 +259,6 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     sib.shoeSizeRight = wo.shoeSizeRight;
     sib.shoeWidthRight = wo.shoeWidthRight;
     sib.diagramData = wo.diagramData;
-    sib.dateOfService = wo.dateOfService;
-    sib.expectedDeliveryDate = wo.expectedDeliveryDate;
     sib.scanFiles = List<String>.from(wo.scanFiles);
     await DatabaseService().insertWorkOrder(sib);
     if (!mounted) return;
@@ -388,7 +386,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           if (members.length > 1) ...[
             const SizedBox(height: 8),
             const Text(
-                'Patient, shoe size, diagram, dates and scans are shared. Specs and lab notes are per product.',
+                'Patient, shoe size, diagram and scans are shared. Dates, quantity, specs, accommodations and lab notes are per product.',
                 style: TextStyle(color: Colors.white38, fontSize: 11)),
           ],
         ],
@@ -607,6 +605,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     return m.name.trim().isNotEmpty ? m.name.trim() : _productLabel(m.templateType);
   }
 
+  // Poly Shell: choosing a wedge adds an Extrinsic heel post (can be turned off).
+  void _autoHeelPostForWedge(String newValue) {
+    if (!_isPolyShell || newValue == 'None') return;
+    if (_heelWedge == 'None' && _forefootWedge == 'None' && _heelPost == 'None') {
+      _heelPost = 'Extrinsic';
+    }
+  }
+
   Color _productColor() {
     final n = _autoProductName();
     if (n == 'Poly Shell') return const Color(0xFFBA68C8);
@@ -813,6 +819,14 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
         if (m.id == widget.workOrder.id) continue;
         if (m.quantityLeft == 0 && m.quantityRight == 0) {
           errors.add('• ${_memberLabel(m)}: quantity must be at least 1');
+          otherProblem = true;
+        }
+        if (m.dateOfService == null) {
+          errors.add('• ${_memberLabel(m)}: date of service is required');
+          otherProblem = true;
+        }
+        if (m.expectedDeliveryDate == null) {
+          errors.add('• ${_memberLabel(m)}: expected delivery date is required');
           otherProblem = true;
         }
       }
@@ -1819,29 +1833,52 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   WedgePostRow(
                     label: 'Heel Wedge',
                     value: _heelWedge,
-                    onChanged: (v) => setState(() => _heelWedge = v),
+                    onChanged: (v) => setState(() {
+                      _autoHeelPostForWedge(v);
+                      _heelWedge = v;
+                    }),
                   ),
                   const SizedBox(height: 12),
                   WedgePostRow(
                     label: 'Forefoot Wedge',
                     value: _forefootWedge,
-                    onChanged: (v) => setState(() => _forefootWedge = v),
+                    onChanged: (v) => setState(() {
+                      _autoHeelPostForWedge(v);
+                      _forefootWedge = v;
+                    }),
                   ),
                   const SizedBox(height: 12),
-                  FootAccommodationRow(
-                    label: 'Met Pad',
-                    footValue: _metPadFoot,
-                    sizeValue: _metPadSize,
-                    onFootChanged: (v) => setState(() => _metPadFoot = v),
-                    onSizeChanged: (v) => setState(() => _metPadSize = v),
+                  // Met Pad and Met Bar are mutually exclusive: set one to None to use the other.
+                  Opacity(
+                    opacity: _metBarFoot != 'None' ? 0.35 : 1.0,
+                    child: IgnorePointer(
+                      ignoring: _metBarFoot != 'None',
+                      child: FootAccommodationRow(
+                        label: _metBarFoot != 'None'
+                            ? 'Met Pad (set Met Bar to None to use)'
+                            : 'Met Pad',
+                        footValue: _metPadFoot,
+                        sizeValue: _metPadSize,
+                        onFootChanged: (v) => setState(() => _metPadFoot = v),
+                        onSizeChanged: (v) => setState(() => _metPadSize = v),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  FootAccommodationRow(
-                    label: 'Met Bar',
-                    footValue: _metBarFoot,
-                    sizeValue: _metBarSize,
-                    onFootChanged: (v) => setState(() => _metBarFoot = v),
-                    onSizeChanged: (v) => setState(() => _metBarSize = v),
+                  Opacity(
+                    opacity: _metPadFoot != 'None' ? 0.35 : 1.0,
+                    child: IgnorePointer(
+                      ignoring: _metPadFoot != 'None',
+                      child: FootAccommodationRow(
+                        label: _metPadFoot != 'None'
+                            ? 'Met Bar (set Met Pad to None to use)'
+                            : 'Met Bar',
+                        footValue: _metBarFoot,
+                        sizeValue: _metBarSize,
+                        onFootChanged: (v) => setState(() => _metBarFoot = v),
+                        onSizeChanged: (v) => setState(() => _metBarSize = v),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   HeelLiftRow(

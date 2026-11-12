@@ -556,7 +556,7 @@ class _FullScreenFootState extends State<_FullScreenFoot> {
   late List<DrawPath> _paths;
   MarkType _selectedMarkType = MarkType.relief;
   Color _drawColor = Colors.blue;
-  DiagramMode _mode = DiagramMode.mark;
+  DiagramMode _mode = DiagramMode.draw;
   List<Offset>? _currentPath;
   List<dynamic> _history = [];
   List<dynamic> _redoStack = [];
@@ -738,15 +738,15 @@ class _FullScreenFootState extends State<_FullScreenFoot> {
               children: [
                 Row(children: [
                   _ModeButton(
-                    label: 'Mark', icon: Icons.location_on,
-                    isSelected: _mode == DiagramMode.mark,
-                    onTap: () => setState(() => _mode = _mode == DiagramMode.mark ? DiagramMode.none : DiagramMode.mark),
-                  ),
-                  const SizedBox(width: 8),
-                  _ModeButton(
                     label: 'Draw', icon: Icons.draw,
                     isSelected: _mode == DiagramMode.draw,
                     onTap: () => setState(() => _mode = _mode == DiagramMode.draw ? DiagramMode.none : DiagramMode.draw),
+                  ),
+                  const SizedBox(width: 8),
+                  _ModeButton(
+                    label: 'Mark', icon: Icons.location_on,
+                    isSelected: _mode == DiagramMode.mark,
+                    onTap: () => setState(() => _mode = _mode == DiagramMode.mark ? DiagramMode.none : DiagramMode.mark),
                   ),
                 ]),
                 if (_mode == DiagramMode.mark) ...[
