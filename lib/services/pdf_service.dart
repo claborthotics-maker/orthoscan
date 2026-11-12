@@ -236,16 +236,50 @@ class PdfService {
     );
 
     // ---------- notes ----------
-    pw.Widget notesBox(String title, String body) => box(
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              caps(title),
-              pw.SizedBox(height: 5),
-              pw.Text(body, style: reg(10.5)),
-            ],
+    // Long notes are split into stacked boxes so they can flow onto a 2nd page
+    // (a single box taller than a page cannot be split by the PDF layout).
+    List<String> chunkText(String body, {int maxChars = 650}) {
+      final out = <String>[];
+      var cur = '';
+      for (final para in body.split('\n')) {
+        var p = para;
+        while (p.length > maxChars) {
+          var cut = p.lastIndexOf(' ', maxChars);
+          if (cut <= 0) cut = maxChars;
+          if (cur.isNotEmpty) {
+            out.add(cur);
+            cur = '';
+          }
+          out.add(p.substring(0, cut));
+          p = p.substring(cut).trimLeft();
+        }
+        if (cur.isNotEmpty && cur.length + p.length + 1 > maxChars) {
+          out.add(cur);
+          cur = p;
+        } else {
+          cur = cur.isEmpty ? p : cur + '\n' + p;
+        }
+      }
+      if (cur.isNotEmpty) out.add(cur);
+      return out.isEmpty ? [''] : out;
+    }
+
+    List<pw.Widget> notesBoxes(String title, String body) {
+      final chunks = chunkText(body);
+      return [
+        for (var i = 0; i < chunks.length; i++)
+          box(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                caps(i == 0 ? title : title + ' (cont.)'),
+                pw.SizedBox(height: 5),
+                pw.Text(chunks[i], style: reg(10.5)),
+              ],
+            ),
           ),
-        );
+      ];
+    }
     final labNotes = wo.specialInstructions.trim();
     final clinNotes = patient.notes.trim();
 
@@ -363,10 +397,10 @@ class PdfService {
           gap(),
           specsBox,
           gap(),
-          notesBox('Notes for the lab', labNotes.isEmpty ? 'None' : labNotes),
+          ...notesBoxes('Notes for the lab', labNotes.isEmpty ? 'None' : labNotes),
           if (clinNotes.isNotEmpty) ...[
             gap(),
-            notesBox('Clinical notes', clinNotes),
+            ...notesBoxes('Clinical notes', clinNotes),
           ],
           gap(),
           diagramBox,
